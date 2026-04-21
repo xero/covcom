@@ -1,0 +1,56 @@
+{
+  "name": "covcom",
+  "version": "0.0.0",
+  "author": "xero (https://x-e.ro)",
+  "description": "COVCOM: covert communications for private group conversations. Share an invite, talk, close the tab, and it's gone. End-to-end encrypted with post-quantum cryptography, so the messages stay private today and unreadable to the computers coming tomorrow",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "server",
+    "web",
+    "cli",
+    "lib"
+  ],
+  "scripts": {
+    "dev:server": "bun run --cwd server dev",
+    "dev:web": "bun run --cwd web dev",
+    "start:server": "bun run --cwd server start",
+    "build:web": "bun run --cwd web build",
+    "build:web:container": "bun run --cwd web build:container",
+    "test:server": "bun run --cwd server test",
+    "test:lib": "bun run --cwd lib test",
+    "dev:cli": "bun run --cwd cli dev",
+    "build:cli": "bun run --cwd cli build",
+    "build:cli:all": "bun run --cwd cli build:all",
+    "test:web": "echo 'web: no unit tests (browser app)'",
+    "test:cli": "echo 'cli: no unit tests (TUI app)'",
+    "test": "bun run test:server && bun run test:lib && bun run test:cli",
+    "fix": "bunx eslint --fix 'server/src/**/*.ts' 'server/test/**/*.ts' 'lib/src/**/*.ts' 'lib/test/**/*.ts' 'web/src/**/*.ts' 'cli/src/**/*.ts'",
+    "build:docker": "docker compose -f docker/docker-compose.yml build",
+    "run:docker": "docker compose -f docker/docker-compose.yml up",
+    "build:docker:raw": "docker build -t covcom -f docker/Dockerfile .",
+    "run:docker:raw": "docker run -d -p 80:80 -p 443:443 -e DOMAIN=${DOMAIN} -e PORT=${PORT:-3000} -e ADMIN_TOKEN=${ADMIN_TOKEN:-} -e MAX_ROOM_SIZE=${MAX_ROOM_SIZE:-20} -v covcom_caddy_data:/data -v covcom_caddy_config:/config --name covcom covcom"
+  },
+  "devDependencies": {
+    "eslint": "^10.2.1",
+    "playwright": "^1.59.1",
+    "@eslint/js": "latest",
+    "jiti": "^2.6.1",
+    "typescript-eslint": "^8.58.2"
+  },
+  "keywords": [
+    "XChaCha20",
+    "ML-KEM-768",
+    "SPQR",
+    "E2EE",
+    "ephemeral",
+    "N-party",
+    "cryptography",
+    "encryption",
+    "crypto",
+    "chat",
+    "groupchat",
+    "messenger"
+  ]
+}

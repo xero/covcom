@@ -1,0 +1,58 @@
+name: publish wiki
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+      - 'SECURITY.md'
+  workflow_dispatch:
+jobs:
+  sync-docs:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          path: repo
+      - name: checkout wiki
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+          token: ${{ secrets.CICD_TOKEN }}
+          persist-credentials: true
+      - name: configure git
+        run: |
+          # get the last commit author name and email
+          cd repo
+          COMMIT_NAME="${{ github.event.head_commit.author.name }}"
+          COMMIT_EMAIL="${{ github.event.head_commit.author.email }}"
+          # default to actor name if head_commit info is not available (e.g. onDispatch)
+          if [ -z "$COMMIT_NAME" ]; then
+            COMMIT_NAME="${{ github.actor }}"
+            COMMIT_EMAIL="${{ github.actor }}@users.noreply.github.com"
+          fi
+          git config --global user.name "$COMMIT_NAME"
+          git config --global user.email "$COMMIT_EMAIL"
+          cd ..
+      - name: sync docs to wiki
+        run: |
+          # copy only markdown files — html diagrams don't render in github wikis
+          cp repo/docs/*.md wiki/
+          # bring in the security policy as a standalone wiki page
+          cp repo/SECURITY.md wiki/SECURITY-POLICY.md
+          cd wiki
+          # rename README to index
+          mv README.md Home.md
+          find . -name "*.md" -exec perl -pi -e 's/\]\((?!https?:\/\/)([^)]*?)README\.md([#][^)]+)?\)/](${1}index.md$2)/g' {} \;
+          # fix internal markdown links (remove .md extension for github wiki)
+          find . -name "*.md" -exec perl -pi -e 's/\]\((?!https?:\/\/)([^)]+)\.md([#][^)]+)?\)/](\1\2)/g' {} \;
+          git add .
+          if git diff --staged --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "docs(wiki): sync :recycle:"
+          git push

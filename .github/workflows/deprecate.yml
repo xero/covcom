@@ -1,0 +1,168 @@
+name: deprecate
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Bad tag to tombstone (e.g. 1.0.0)'
+        required: true
+        type: string
+      replacement:
+        description: 'Safe replacement (e.g. 1.0.1 or latest)'
+        required: true
+        type: string
+      reason:
+        description: 'Short explanation (one line)'
+        required: true
+        type: string
+      cve:
+        description: 'CVE id or advisory URL (optional)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  deprecate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: generate app token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: login to docker hub
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: login to ghcr
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: write tombstone build context
+        env:
+          REASON: ${{ inputs.reason }}
+          REPLACEMENT: ${{ inputs.replacement }}
+          CVE: ${{ inputs.cve }}
+        run: |
+          mkdir -p tombstone
+          cat > tombstone/DEPRECATED.txt <<EOF
+          DEPRECATED: ${REASON}
+          Replacement: ${REPLACEMENT}
+          Advisory: ${CVE:-n/a}
+          EOF
+          cat > tombstone/Dockerfile <<EOF
+          FROM busybox
+          LABEL deprecated="true"
+          LABEL deprecated.reason="${REASON}"
+          LABEL deprecated.replacement="${REPLACEMENT}"
+          LABEL deprecated.cve="${CVE}"
+          COPY DEPRECATED.txt /DEPRECATED.txt
+          ENTRYPOINT ["sh", "-c", "cat /DEPRECATED.txt >&2; exit 1"]
+          EOF
+
+      - name: build and push tombstone
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: ./tombstone
+          file: ./tombstone/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            xerostyle/covcom:${{ inputs.tag }}
+            ghcr.io/xerostyle/covcom:${{ inputs.tag }}
+
+      - name: prepend deprecation banner to github release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: v${{ inputs.tag }}
+          REASON: ${{ inputs.reason }}
+          REPLACEMENT: ${{ inputs.replacement }}
+          CVE: ${{ inputs.cve }}
+        run: |
+          set -e
+          gh release view "$TAG" --json body -q .body > /tmp/existing.md
+          {
+            echo "> [!CAUTION]"
+            echo "> **This release is deprecated.** ${REASON}"
+            echo ">"
+            echo "> Use \`${REPLACEMENT}\` instead. Pulling this image tag will fail with a runtime error by design."
+            if [ -n "$CVE" ]; then
+              echo ">"
+              echo "> Advisory: ${CVE}"
+            fi
+            echo ""
+            echo "---"
+            echo ""
+            cat /tmp/existing.md
+          } > /tmp/release-notes.md
+          gh release edit "$TAG" --notes-file /tmp/release-notes.md
+
+      - name: append row to docker/DOCKERHUB.md deprecation table
+        env:
+          TAG: ${{ inputs.tag }}
+          REASON: ${{ inputs.reason }}
+          REPLACEMENT: ${{ inputs.replacement }}
+        run: |
+          set -e
+          ROW="| \`${TAG}\` | ${REASON} | \`${REPLACEMENT}\` |"
+          awk -v row="$ROW" '
+            /<!-- DEPRECATED-END -->/ { print row }
+            { print }
+          ' docker/DOCKERHUB.md > docker/DOCKERHUB.md.new
+          mv docker/DOCKERHUB.md.new docker/DOCKERHUB.md
+
+      - name: configure git identity
+        run: |
+          git config user.name  "covcom-cicd[bot]"
+          git config user.email "covcom-cicd[bot]@users.noreply.github.com"
+
+      - name: commit docker/DOCKERHUB.md update
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          git add docker/DOCKERHUB.md
+          git commit -m "chore(deprecate): tombstone v${TAG}"
+          git push origin main
+
+      - name: sync hub readme
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: xerostyle/covcom
+          readme-filepath: ./docker/DOCKERHUB.md
+
+      - name: summary
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          {
+            echo "## Deprecation complete for v${TAG}"
+            echo ""
+            echo "- Tombstone pushed: \`xerostyle/covcom:${TAG}\` and \`ghcr.io/xerostyle/covcom:${TAG}\`"
+            echo "- GitHub release banner prepended"
+            echo "- docker/DOCKERHUB.md updated and synced to Hub"
+            echo ""
+            echo "### Manual follow-up (recommended, not required)"
+            echo "- Mark version deprecated in GHCR UI: https://github.com/users/xero/packages/container/covcom/versions"
+            echo "- Publish a GitHub Security Advisory if a CVE is assigned"
+          } >> "$GITHUB_STEP_SUMMARY"

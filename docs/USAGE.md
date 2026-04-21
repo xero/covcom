@@ -1,13 +1,4 @@
-# COVCOM
-
-Covert communications for private group conversations. Share an
-invite, talk, close the tab, and it's gone. End-to-end encrypted with
-post-quantum cryptography, so the messages stay private today and unreadable to
-the computers coming tomorrow.
-
-`XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party`
-
-## https://xero.github.io/covcom/
+# COVCOM Usage Reference
 
 > ### Table of Contents
 > - [how it works](#how-it-works)
@@ -24,7 +15,6 @@ the computers coming tomorrow.
 >   - [configuration](#configuration)
 >   - [navigation](#navigation)
 > - [starting a session](#starting-a-session)
-> - [documentation](#documentation)
 > - [development](#development-1)
 
 ---
@@ -312,21 +302,6 @@ joined are not recoverable. This is forward secrecy working as intended.
 
 ---
 
-## documentation
-
-Deeper references for auditors, contributors, and the curious.
-
-| Document                                  | Purpose                                                                                       |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
-| [PROTOCOL.md](./docs/PROTOCOL.md)         | Protocol reference: cipher, chains, ratchet, group model, session lifecycle, server role      |
-| [CRYPTOGRAPHY.md](./docs/CRYPTOGRAPHY.md) | Auditor's reference: primitives, KDF chains, wire format, invite encoding                     |
-| [THREAT-MODEL.md](./docs/THREAT-MODEL.md) | Dolev-Yao analysis: principals, adversary tiers, guarantees, non-goals                        |
-| [CLI-SPEC.md](./docs/CLI-SPEC.md)         | Command-line app design spec: architecture, rendering, input, widgets, views, & color system. |
-| [SECURITY.md](./SECURITY.md)              | Supported versions, disclosure policy, cryptographic foundation                               |
-| [AGENTS.md](./AGENTS.md)                  | Contract for AI-assisted development on this repository                                       |
-
----
-
 ## development
 
 **Run all tests:**
@@ -361,7 +336,3 @@ cli/       Custom zero-dependency TUI
 docker/    Dockerfile, Caddyfile template, entrypoint
 docs/      Project documentation
 ```
-
-## License
-
-**COVCOM** is released under the [MIT license](./LICENSE).

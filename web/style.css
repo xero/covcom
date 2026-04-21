@@ -1,0 +1,393 @@
+:root {
+	/* palette */
+	--scales:   #1a936f;
+	--depths:   #161925;
+	--poseidon: #114b5f;
+	--ocean:    #1c7293;
+	--mist:     #c6dabf;
+	--error:    #c0392b;
+
+	/* theme */
+	--bg:      var(--depths);
+	--text:    var(--mist);
+	--accent:  var(--ocean);
+	--border:  var(--poseidon);
+	--success: var(--scales);
+
+	/* spacing */
+	--gap:    1rem;
+	--radius: 4px;
+
+	/* sender palette — 8 distinct colors readable on --depths */
+	--sender-0: #1c7293;
+	--sender-1: #1a936f;
+	--sender-2: #e6a817;
+	--sender-3: #a855f7;
+	--sender-4: #f97316;
+	--sender-5: #ef4444;
+	--sender-6: #06b6d4;
+	--sender-7: #84cc16;
+}
+
+html,
+body {
+	height: 100%;
+	background: var(--bg);
+	color: var(--text);
+	font-size: 13px;
+	line-height: 1.6;
+	font-family: "Courier New", "Courier", monospace;
+
+	*,
+	*::before,
+	*::after {
+		box-sizing: border-box;
+		margin: 0;
+		padding: 0;
+	}
+}
+
+body {
+	display: flex;
+	flex-direction: column;
+}
+
+header {
+	display: flex;
+	align-items: center;
+	padding: 0.5rem var(--gap);
+	background: var(--poseidon);
+	border-bottom: 1px solid var(--border);
+	flex-shrink: 0;
+
+	h1 {
+		font-size: 1rem;
+		font-weight: normal;
+		letter-spacing: 0.05em;
+	}
+}
+
+main#app {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+/* ── shared components ─────────────────────────────────────────────────── */
+
+button {
+	background: var(--accent);
+	color: var(--bg);
+	border: none;
+	border-radius: var(--radius);
+	padding: 0.4rem 0.8rem;
+	cursor: pointer;
+	font-family: inherit;
+	font-size: inherit;
+
+	&:hover:not(:disabled) {
+		filter: brightness(1.2);
+	}
+
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+
+	&.btn-secondary {
+		background: transparent;
+		border: 1px solid var(--border);
+		color: var(--text);
+
+		&:hover:not(:disabled) {
+			filter: none;
+			border-color: var(--accent);
+			color: var(--accent);
+		}
+	}
+}
+
+input[type="text"],
+textarea {
+	background: color-mix(in srgb, var(--bg) 70%, var(--poseidon) 30%);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 0.4rem 0.6rem;
+	font-family: inherit;
+	font-size: inherit;
+	width: 100%;
+
+	&:focus {
+		outline: 1px solid var(--accent);
+		outline-offset: 0;
+	}
+
+	&[readonly] {
+		opacity: 0.6;
+		cursor: default;
+	}
+}
+
+label {
+	display: block;
+	font-size: 0.85rem;
+	color: color-mix(in srgb, var(--text) 70%, transparent);
+	margin-bottom: 0.2rem;
+}
+
+.field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+}
+
+.error {
+	color: var(--error);
+	font-size: 0.85rem;
+}
+
+.btn-row {
+	display: flex;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+/* ── landing view ──────────────────────────────────────────────────────── */
+
+.view-landing {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gap);
+	max-width: 400px;
+	width: 100%;
+	margin: auto;
+	padding: var(--gap);
+}
+
+.advanced-toggle {
+	color: var(--accent);
+	text-decoration: none;
+	font-size: 0.85rem;
+	align-self: flex-start;
+
+	&:hover {
+		text-decoration: underline;
+	}
+}
+
+/* ── waiting view ──────────────────────────────────────────────────────── */
+
+.view-waiting {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gap);
+	max-width: 520px;
+	width: 100%;
+	margin: auto;
+	padding: var(--gap);
+	overflow-y: auto;
+}
+
+.status-line {
+	color: color-mix(in srgb, var(--text) 60%, transparent);
+	font-style: italic;
+}
+
+.invite-block {
+	background: color-mix(in srgb, var(--bg) 60%, var(--poseidon) 40%);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: var(--gap);
+	font-size: 0.75rem;
+	overflow-x: auto;
+	white-space: pre;
+	line-height: 1.4;
+}
+
+.invite-qr {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	max-width: 100%;
+}
+
+.crypto-summary {
+	font-size: 0.8rem;
+	color: color-mix(in srgb, var(--text) 55%, transparent);
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 0.1rem 0.5rem;
+
+	dt { font-weight: bold; }
+}
+
+/* ── join view ─────────────────────────────────────────────────────────── */
+
+.view-join {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gap);
+	max-width: 520px;
+	width: 100%;
+	margin: auto;
+	padding: var(--gap);
+}
+
+.drop-zone {
+	border: 2px dashed var(--border);
+	border-radius: var(--radius);
+	padding: 2rem;
+	text-align: center;
+	transition: border-color 0.15s, background 0.15s;
+
+	&.dragover {
+		border-color: var(--accent);
+		background: color-mix(in srgb, var(--accent) 10%, transparent);
+	}
+
+	a {
+		color: var(--accent);
+		cursor: pointer;
+
+		&:hover {
+			text-decoration: underline;
+		}
+	}
+}
+
+.paste-label {
+	font-size: 0.85rem;
+	color: color-mix(in srgb, var(--text) 60%, transparent);
+}
+
+.invite-summary {
+	background: color-mix(in srgb, var(--bg) 60%, var(--poseidon) 40%);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: var(--gap);
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	font-size: 0.85rem;
+}
+
+/* ── chat view ─────────────────────────────────────────────────────────── */
+
+.view-chat {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	overflow: hidden;
+}
+
+.chat-history {
+	flex: 1;
+	overflow-y: auto;
+	padding: var(--gap);
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+}
+
+.msg {
+	display: flex;
+	gap: 0.4rem;
+	max-width: 80%;
+	word-break: break-word;
+
+	&.self {
+		align-self: flex-end;
+	}
+
+	&.peer {
+		align-self: flex-start;
+	}
+
+	&.system {
+		align-self: center;
+		max-width: 100%;
+		opacity: 0.55;
+		font-style: italic;
+	}
+}
+
+.hide-system .msg.system {
+	display: none;
+}
+
+.msg-sender {
+	font-weight: bold;
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.msg-text {
+	white-space: pre-wrap;
+}
+
+.file-card {
+	background: color-mix(in srgb, var(--bg) 60%, var(--poseidon) 40%);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 0.5rem 0.7rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+
+	.file-name {
+		font-weight: bold;
+		font-size: 0.9rem;
+	}
+
+	.file-meta {
+		font-size: 0.75rem;
+		color: color-mix(in srgb, var(--text) 60%, transparent);
+	}
+
+	.btn-download {
+		align-self: flex-start;
+		font-size: 0.8rem;
+		padding: 0.2rem 0.6rem;
+		margin-top: 0.3rem;
+	}
+}
+
+.chat-bar {
+	display: flex;
+	gap: 0.5rem;
+	padding: 0.5rem var(--gap);
+	border-top: 1px solid var(--border);
+	background: color-mix(in srgb, var(--bg) 90%, var(--poseidon) 10%);
+	flex-shrink: 0;
+	align-items: flex-end;
+}
+
+#chat-input {
+	flex: 1;
+	resize: none;
+	height: 5rem;
+	overflow-y: auto;
+}
+
+/* ── full-page drop overlay ────────────────────────────────────────────── */
+
+.drop-overlay {
+	display: none;
+	position: fixed;
+	inset: 0;
+	background: color-mix(in srgb, var(--depths) 88%, transparent);
+	align-items: center;
+	justify-content: center;
+	font-size: 2rem;
+	border: 4px dashed var(--accent);
+	pointer-events: none;
+	z-index: 100;
+	animation: drop-pulse 1s ease-in-out infinite;
+}
+
+@keyframes drop-pulse {
+	0%, 100% { opacity: 0.8; }
+	50%       { opacity: 1; }
+}
