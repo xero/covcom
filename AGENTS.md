@@ -17,10 +17,10 @@ connections. It stores no messages, no keys, and no user data. All
 cryptographic operations happen in the client.
 
 Read `./docs/PROTOCOL.md` before starting any implementation work. It defines
-the crypto protocol, the session lifecycle, the wire format, and the
-group messaging model. If something in your task file conflicts with
-`./docs/PROTOCOL.md`, `./docs/PROTOCOL.md` wins — flag the conflict rather
-than resolving it silently.
+the crypto protocol, the session lifecycle, and the group messaging model in
+narrative form. Byte-level wire format and invite encoding live in
+`./docs/CRYPTOGRAPHY.md`. If something in your task file conflicts with
+either, the doc wins — flag the conflict rather than resolving it silently.
 
 For implementation specifics — method signatures, return shapes, error
 conditions — the leviathan-crypto TypeScript type declarations are the ground
@@ -36,7 +36,7 @@ web/                Vite + vanilla TS web client
 cli/                compiled Bun binary, custom zero-dependency TUI
 lib/                shared crypto session layer (consumed by web and cli)
 docker/             Dockerfile, Caddyfile template, entrypoint
-docs/               protocol, threat model, security policy
+docs/               protocol, cryptography reference, threat model, CLI design
 package.json        Bun workspace root
 AGENTS.md           this file
 ```
@@ -92,10 +92,11 @@ rules win.
 
 ### 1. `./docs/PROTOCOL.md` is the design authority
 
-`./docs/PROTOCOL.md` defines the crypto protocol, the wire format, and the
-session lifecycle. If the task file says one thing and `./docs/PROTOCOL.md`
-says another, `./docs/PROTOCOL.md` wins. Flag the conflict; do not resolve it
-silently.
+`./docs/PROTOCOL.md` defines the crypto protocol, the session lifecycle, and
+the group messaging model in narrative form. `./docs/CRYPTOGRAPHY.md` is the
+authority for byte-level wire format and invite encoding. If the task file
+says one thing and either doc says another, the doc wins. Flag the conflict;
+do not resolve it silently.
 
 The one exception: `./docs/PROTOCOL.md` does not define cryptographic values.
 Anything involving the leviathan-crypto API — method signatures, init
@@ -125,8 +126,8 @@ architecture. Flag it and stop.
 
 All key material lives in memory only. Nothing crypto-related is written to
 disk, localStorage, sessionStorage, or any persistent store. On session end,
-all `KDFChain` instances are disposed, all `MKSKIPPED` entries are wiped, and
-all keypair material is wiped. This is non-negotiable.
+all `KDFChain` instances are disposed, all `SkippedKeyStore` entries are
+wiped, and all keypair material is wiped. This is non-negotiable.
 
 ### 5. One code path for all room sizes
 
@@ -139,8 +140,8 @@ and reconsider.
 ### 6. No crypto values in task files or planning documents
 
 Wire format byte layouts, counter values, and key sizes are documented in
-`./docs/PROTOCOL.md`. Do not add expected output values, derived key bytes, or
-encrypted test payloads to any planning document or task file. Test fixtures
+`./docs/CRYPTOGRAPHY.md`. Do not add expected output values, derived key
+bytes, or encrypted test payloads to any planning document or task file. Test fixtures
 that contain actual crypto output belong only in test files.
 
 ### 7. Never commit
@@ -229,16 +230,24 @@ expected chain seeds are received. It does not fire anywhere else.
 
 - The TUI is a custom zero-dependency implementation. No neo-neo-blessed, no
   terminal-kit, no blessed, no external TUI library of any kind. Read
-  `cli/DESIGN.md` before touching any file under `cli/src/tui/`.
-- `cli/src/tui/` contains: `screen.ts`, `keys.ts`, `focus.ts`, `widgets.ts`,
-  `views.ts`. Do not add files outside this structure without flagging it.
-- The public interface between `cli/src/state.ts` and the TUI is fixed. These
-  are the only exports `state.ts` imports from the tui modules:
-  - `createScreen()` from `tui/screen.ts`
-  - `renderLanding`, `renderWaiting`, `renderJoin`, `renderChat` from `tui/views.ts`
-  - `appendMessage`, `appendFile` from `tui/views.ts`
+  `./docs/cli_design.md` before touching any file under `cli/src/tui/`.
+- `cli/src/tui/` contains:
+  - infrastructure: `screen.ts`, `keys.ts`, `focus.ts`, `widgets.ts`
+  - rendering implementation: `views.ts`
+  - per-screen façades that re-export from `views.ts`: `landing.ts`,
+    `waiting.ts`, `join.ts`, `chat.ts`
 
-  Do not change these signatures without flagging it as a deviation.
+  Do not add files outside this structure without flagging it.
+- The public interface between `cli/src/state.ts` and the TUI is fixed.
+  `state.ts` imports through the per-screen façades:
+  - `renderLanding` from `tui/landing.ts`
+  - `renderWaiting` from `tui/waiting.ts`
+  - `renderJoin` from `tui/join.ts`
+  - `renderChat`, `appendMessage`, `appendFile` from `tui/chat.ts`
+
+  `cli/src/main.ts` imports `createScreen()` from `tui/screen.ts`. Do not
+  change these signatures or relocate exports without flagging it as a
+  deviation.
 - Config is stored at `~/.config/covcom/config.json`. Fields: `server`,
   `username`, `copyCmd`, `theme`, `systemMessages`. No key material.
 - The CLI accepts `covcom join <path>` as a positional argument. It also
@@ -271,6 +280,7 @@ expected chain seeds are received. It does not fire anywhere else.
 | Variable | Default | Description |
 |---|---|---|
 | `DOMAIN` | required | FQDN passed to Caddy |
+| `PORT` | `3000` | Internal port the Bun server listens on |
 | `ADMIN_TOKEN` | unset | Optional creation-only auth gate |
 | `ROOM_TTL` | `24` | Hours of inactivity before room deletion; `0` = never |
 | `MAX_ROOM_SIZE` | `20` | Max participants per room; `0` = unlimited |

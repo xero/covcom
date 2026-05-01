@@ -12,6 +12,7 @@
 > - [the ratchet](#the-ratchet)
 > - [group messaging](#group-messaging)
 > - [joining a room](#joining-a-room)
+> - [session lifecycle](#session-lifecycle)
 > - [the server](#the-server)
 > - [the clients](#the-clients)
 > - [security properties](#security-properties)
@@ -191,6 +192,73 @@ behavior.
 
 ---
 
+## session lifecycle
+
+A client moves through four phases during its time in a room: landing,
+joining, waiting, and ready.
+
+**Landing.** The entry screen where you create a room or paste an
+invite. No WebSocket exists yet.
+
+**Joining.** The brief window between sending a `create` or `join` and
+receiving `joined` from the server. The WebSocket is open but the
+session has not been initialized; nothing arrives in this state except
+the handshake response or an error.
+
+**Waiting.** The lobby. The session is initialized but no peers share
+the room with you. This happens in three situations: you just created
+the room, you joined a room that exists but has no active members, or
+every other participant has left. The lobby displays the invite code
+so others can join.
+
+**Ready.** Active chat. At least one peer is in the room with you and
+the welcome ratchet has fired.
+
+The novel transition in this lifecycle is `ready → waiting`. When the
+last peer leaves, you stay in the room and your chat history stays on
+screen. The client disposes the session, wiping every key, and
+generates a fresh keypair. It then sends `rekey` to the server,
+carrying the new encryption and ratchet public keys. The server
+confirms via `rekeyed`, silently updating its connection record. No
+`peer_joined` broadcast fires; from any other observer's perspective
+nothing happened. When the next peer arrives, the normal handshake
+runs against the fresh keypair.
+
+The `rekey` message is permitted only on a connection that has already
+identified. Authentication is implicit. The server checks that the
+connection has a username on file. An attacker cannot rekey as Alice
+without controlling Alice's open TCP connection, and once Alice
+disconnects, the connection is closed before any rekey could arrive.
+
+A real disconnect is different. Connection drops, sleep events, and
+network switches close the WebSocket entirely. The server's
+`handleClose` runs and tears down the connection record. The client
+polls `/health_check` until the server responds 200, opens a new
+WebSocket, and sends `join` with the saved `roomId` and `roomSecret`.
+Identify runs with a fresh keypair. The welcome ratchet fires. Chat
+history already rendered remains on screen across the reconnect;
+nothing was persisted, so closing the tab still erases everything.
+Messages sent while you were offline are unrecoverable, which is
+correct forward secrecy behavior. If your username was claimed by
+someone else while you were offline, identify returns `username_taken`
+and you choose a new name.
+
+Simultaneous joins are sequenced by the server. WebSocket over TCP
+guarantees every existing member sees `peer_joined` events in the same
+order, and the ratchet path on every client is synchronous, with no
+`await` between receiving `peer_joined` and finishing the corresponding
+ratchet step. A second join cannot interleave with the first, which
+keeps epoch state consistent regardless of how close two joins land in
+time.
+
+The room creator is not a privileged principal. After receiving
+`room_created`, the creator sends `join` exactly like any other client
+and walks the same handshake. From the moment they identify, they
+appear in `joined.members` for the next joiner. There is no host, no
+session owner, and no special-case wire flow for creators.
+
+---
+
 ## the server
 
 The server is a WebSocket message relay built with Bun. It is intentionally
@@ -220,10 +288,9 @@ entirely by the `roomSecret` embedded in the invite, which the server
 validates on every `join` message.
 
 When a client disconnects, the server broadcasts `peer_left` and removes
-the connection. The remaining members remove that sender's state. If the
-client reconnects, it re-identifies with a fresh keypair, the handshake
-runs from the beginning, and the session resumes at a new epoch. Chat
-history on the screen is preserved across reconnects on the web client.
+the connection. The remaining members remove that sender's state. The
+client side of the reconnect flow is covered in
+[session lifecycle](#session-lifecycle).
 
 ---
 

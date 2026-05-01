@@ -347,7 +347,7 @@ key behaviors:
 actually simpler — just an inline color change mid-line:
 
 ```
-  yourName:  filename.ext 
+  yourName:  filename.ext
             ^            ^
          attachBg      reset
 ```
@@ -652,7 +652,7 @@ interface Config {
 
 the theme loader runs at startup: `const theme = { ...defaultTheme, ...config.theme }`.
 
-example `~/.config/leviathan-messenger/config.json`:
+example `~/.config/covcom/config.json`:
 
 ```json
 {

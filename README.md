@@ -13,6 +13,8 @@ the computers coming tomorrow.
 > - [installation](#installation)
 > - [server](#server)
 >   - [docker](#docker)
+>   - [docker (raw)](#docker-raw)
+>   - [production (no docker)](#production-no-docker)
 >   - [development](#development)
 >   - [environment variables](#environment-variables)
 > - [web client](#web-client)
@@ -20,6 +22,7 @@ the computers coming tomorrow.
 >   - [configuration](#configuration)
 >   - [navigation](#navigation)
 > - [starting a session](#starting-a-session)
+> - [documentation](#documentation)
 > - [development](#development-1)
 
 ---
@@ -46,7 +49,7 @@ per pair. O(N) state regardless of room size.
 
 This implements the [Sparse Post-Quantum Ratchet](https://signal.org/docs/specifications/doubleratchet/#the-sparse-post-quantum-ratchet)
 from Signal's Double Ratchet spec (§5, Revision 4). For more detail, see
-[PROTOCOL.md](./PROTOCOL.md).
+[PROTOCOL.md](./docs/PROTOCOL.md).
 
 Cryptographic primitives are provided by
 [leviathan-crypto](https://github.com/xero/leviathan-crypto).
@@ -64,8 +67,8 @@ Cryptographic primitives are provided by
 ## installation
 
 ```sh
-git clone https://github.com/xero/leviathan-messenger
-cd leviathan-messenger
+git clone https://github.com/xero/covcom
+cd covcom
 bun i
 ```
 
@@ -106,16 +109,48 @@ docker compose -f docker/docker-compose.yml down
 docker compose -f docker/docker-compose.yml logs -f
 ```
 
+### docker (raw)
+
+For environments without `docker compose`. The compose file is the
+recommended path; these are escape hatches.
+
+**Build:**
+
+```sh
+bun docker:build:raw
+```
+
+**Run:**
+
+```sh
+DOMAIN=chat.example.com bun docker:run:raw
+```
+
+The raw run forwards `DOMAIN`, `PORT`, `ADMIN_TOKEN`, and `MAX_ROOM_SIZE`
+from the environment and mounts named volumes for Caddy data and config.
+
+### production (no docker)
+
+Runs the server directly via Bun without TLS or Caddy. Use this when
+fronting COVCOM with your own reverse proxy.
+
+```sh
+bun build:server
+```
+
+This invokes `bun run src/index.ts` in the `server/` workspace and listens
+on `localhost:$PORT` (default `3000`).
+
 ### development
 
-Runs the server directly without Docker or TLS, useful for local testing
-where clients connect over `ws://`.
+Runs the server in watch mode, useful for local testing where clients
+connect over `ws://`.
 
 ```sh
 bun dev:server
 ```
 
-The server starts on `localhost:3000`.
+The server starts on `localhost:3000` and reloads on source changes.
 
 ### environment variables
 
@@ -150,8 +185,26 @@ Open `http://localhost:5173`.
 bun build:web
 ```
 
-Output goes to `web/dist/`. Serve it from any static file host or include it
-in the Docker image via `bun build:web:container` before building.
+Output goes to `web/dist/`. Serve it from any static file host.
+
+**Preview the production build:**
+
+```sh
+bun run --cwd web preview
+```
+
+Serves the contents of `web/dist/` locally for smoke-testing the bundled
+output.
+
+**Container build (single-file inline bundle):**
+
+```sh
+bun build:web:container
+```
+
+Produces a single self-contained HTML file for embedding in the Docker
+image or hosting from any static host without a build step. Run before
+`bun docker:build` if you want the latest web client baked into the image.
 
 ---
 
@@ -171,15 +224,32 @@ bun dev:cli
 bun dev:cli join /path/to/invite.room
 ```
 
-**Build a standalone binary:**
+**Build a standalone binary for the current platform:**
 
 ```sh
 bun build:cli
 ```
 
+The binary lands in `cli/dist/`.
+
+**Build for a specific target:**
+
+```sh
+bun run --cwd cli build:mac-arm    # macOS Apple Silicon → cli/dist/covcom-macos-arm64
+bun run --cwd cli build:mac-x64    # macOS Intel         → cli/dist/covcom-macos-x64
+bun run --cwd cli build:linux      # Linux x86_64        → cli/dist/covcom-linux-x64
+bun run --cwd cli build:win        # Windows x86_64      → cli/dist/covcom-win-x64.exe
+```
+
+**Build all platforms at once:**
+
+```sh
+bun build:cli:all
+```
+
 ### configuration
 
-Settings save to `~/.config/leviathan-messenger/config.json` after a
+Settings save to `~/.config/covcom/config.json` after a
 successful connection. The file is optional; all fields can be set
 interactively.
 
@@ -243,12 +313,36 @@ joined are not recoverable. This is forward secrecy working as intended.
 
 ---
 
+## documentation
+
+Deeper references for auditors, contributors, and the curious.
+
+| Document | Purpose |
+|---|---|
+| [PROTOCOL.md](./docs/PROTOCOL.md) | Protocol reference: cipher, chains, ratchet, group model, session lifecycle, server role |
+| [CRYPTOGRAPHY.md](./docs/CRYPTOGRAPHY.md) | Auditor's reference: primitives, KDF chains, wire format, invite encoding |
+| [THREAT-MODEL.md](./docs/THREAT-MODEL.md) | Dolev-Yao analysis: principals, adversary tiers, guarantees, non-goals |
+| [SECURITY.md](./SECURITY.md) | Supported versions, disclosure policy, cryptographic foundation |
+| [AGENTS.md](./AGENTS.md) | Contract for AI-assisted development on this repository |
+
+---
+
 ## development
 
 **Run all tests:**
 
 ```sh
 bun test
+```
+
+This runs `test:server`, `test:lib`, and the `test:cli` stub in sequence.
+The `web/` workspace has no unit tests (browser app).
+
+**Run tests for a single package:**
+
+```sh
+bun test:server     # server WebSocket broker
+bun test:lib        # shared crypto session layer
 ```
 
 **Lint and autofix:**
