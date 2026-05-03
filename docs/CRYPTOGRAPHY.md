@@ -12,8 +12,8 @@ XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
 > [!NOTE]
 > A technical reference for auditors. Covers primitives, key derivation
 > chains, session state, wire format, and invite encoding. For narrative
-> context see [./PROTOCOL.md](./PROTOCOL.md). For the adversary
-> model see [./THREAT-MODEL.md](./THREAT-MODEL.md).
+> context see [PROTOCOL](./PROTOCOL.md). For the adversary
+> model see [THREAT-MODEL](./THREAT-MODEL.md).
 
 > ### Table of Contents
 > - [primitive set](#primitive-set)

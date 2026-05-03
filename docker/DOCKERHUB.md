@@ -1,10 +1,24 @@
 # COVCOM
 
-Covert communications for private group conversations. End-to-end
-encrypted with post-quantum cryptography. Share an invite, talk, close
-the tab, it's gone. Ratchet anytime for added forward security.
+```
+  ▄██▀ ▀█  ▄██▀ █▄  ▀██  ██▀  ▄██▀ ▀█  ▄██▀ █▄   █▄   ▄█
+ ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒  ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▒▄▒▒▒
+ ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
+  ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-`XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party`
+XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
+
+  Covert  communications  for private group conversations.
+  Invite,  talk,  close the client, and the chat vanishes.
+  End-to-end  encrypted  with  post-quantum  cryptography,
+  both manual and epoch-based ratchet events add layers of
+  forward  secrecy, ensuring messages remain private today
+  and unreadable to the computational power of tomorrow.
+```
+
+## https://xero.github.io/covcom/
+
+[![GitHub Release](https://img.shields.io/github/v/release/xero/covcom?display_name=release&style=flat-square&logo=contributorcovenant&logoColor=%23bcb83a&color=%2378740b)](https://github.com/xero/covcom/releases/latest) [![Container Image Size](https://img.shields.io/docker/image-size/xerostyle/covcom/latest?arch=amd64&style=flat-square&logo=developmentcontainers&logoColor=%23bcb83a&color=%2378740b)](https://hub.docker.com/r/xerostyle/covcom) [![GitHub Wiki Publish](https://img.shields.io/github/actions/workflow/status/xero/covcom/wiki.yml?branch=main&style=flat-square&logo=gitbook&logoColor=%23bcb83a&label=wiki&color=%2378740b)](https://github.com/xero/covcom/wiki) [![MIT Licensed](https://img.shields.io/badge/MIT-License?style=flat-square&logo=internetarchive&logoColor=%23bcb83a&label=License&color=%2378740b)](https://github.com/xero/covcom/blob/main/LICENSE)
 
 - **Code:** https://github.com/xero/covcom
 - **Docs:** https://github.com/xero/covcom/wiki
@@ -38,7 +52,10 @@ A vulnerability in either project triggers a coordinated release of both.
 
 ## Quick Start
 
+Point `chat.example.com` at the host you'll run on, then:
+
 ```sh
+docker pull xerostyle/covcom:latest
 docker run -d \
   -p 80:80 -p 443:443 \
   -e DOMAIN=chat.example.com \
@@ -46,6 +63,9 @@ docker run -d \
 ```
 
 Caddy auto-provisions a TLS certificate for `$DOMAIN` on first start.
+
+Open https://chat.example.com in a browser. Create a room, share the invite, & chat.
+
 
 ## Environment Variables
 
@@ -59,16 +79,21 @@ Caddy auto-provisions a TLS certificate for `$DOMAIN` on first start.
 
 ---
 
-## Security
+## Documentation
 
-- [Security Policy](https://github.com/xero/covcom/blob/main/SECURITY.md)
-- [Protocol Overview](https://github.com/xero/covcom/wiki/PROTOCOL)
-- [Cryptography Reference](https://github.com/xero/covcom/wiki/CRYPTOGRAPHY)
-- [Thread Model](https://github.com/xero/covcom/wiki/THREAT-MODEL)
-- [Vulnerability Reports](https://github.com/xero/covcom/security/advisories)
+| Document                                                                  | Purpose                                                              |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [USAGE](https://github.com/xero/covcom/wiki/USAGE)                        | Client and server applications development and runtime help          |
+| [PROTOCOL](https://github.com/xero/covcom/wiki/PROTOCOL)                  | Cipher, chains, ratchet, group model, session lifecycle, server role |
+| [CRYPTOGRAPHY](https://github.com/xero/covcom/wiki/CRYPTOGRAPHY)          | Primitives, KDF chains, wire format, invite encoding                 |
+| [THREAT-MODEL](https://github.com/xero/covcom/wiki/THREAT-MODEL)          | Principals, adversary tiers, guarantees, non-goals                   |
+| [CLI-SPEC](https://github.com/xero/covcom/wiki/CLI-SPEC)                  | CLI architecture, rendering, input, widgets, views, & color system   |
+| [SECURITY-POLICY](https://github.com/xero/covcom/wiki/SECURITY-POLICY)    | Supported versions, disclosure policy, cryptographic foundation      |
+| [PROTOCOL-DIAGRAM](https://xero.github.io/covcom/protocol_diagram.html)   | Animated visualization of a 3-party session and epochs               |
+| [RECONNECT-DIAGRAM](https://xero.github.io/covcom/reconnect_diagram.html) | Animated visualization of peers left / join ceremonies               |
 
 ---
 
-## license
+## License
 
-MIT
+**COVCOM** is released under the [MIT license](https://github.com/xero/covcom/blob/main/LICENSE)
