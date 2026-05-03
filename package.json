@@ -1,6 +1,6 @@
 {
   "name": "covcom",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "author": "xero (https://x-e.ro)",
   "description": "COVCOM: covert communications for private group conversations. Share an invite, talk, close the tab, and it's gone. End-to-end encrypted with post-quantum cryptography, so the messages stay private today and unreadable to the computers coming tomorrow",
   "license": "MIT",
