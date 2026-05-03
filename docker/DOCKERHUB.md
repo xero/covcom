@@ -31,6 +31,7 @@ A vulnerability in either project triggers a coordinated release of both.
 
 | Tag | Reason | Replacement |
 |-----|--------|-------------|
+| `0.0.1` | public beta | `1.0.0` |
 <!-- DEPRECATED-END -->
 
 ---
