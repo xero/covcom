@@ -88,7 +88,7 @@ jobs:
           push: true
           tags: |
             xerostyle/covcom:${{ inputs.tag }}
-            ghcr.io/xerostyle/covcom:${{ inputs.tag }}
+            ghcr.io/xero/covcom:${{ inputs.tag }}
 
       - name: prepend deprecation banner to github release
         env:
@@ -158,7 +158,7 @@ jobs:
           {
             echo "## Deprecation complete for v${TAG}"
             echo ""
-            echo "- Tombstone pushed: \`xerostyle/covcom:${TAG}\` and \`ghcr.io/xerostyle/covcom:${TAG}\`"
+            echo "- Tombstone pushed: \`xerostyle/covcom:${TAG}\` and \`ghcr.io/xero/covcom:${TAG}\`"
             echo "- GitHub release banner prepended"
             echo "- docker/DOCKERHUB.md updated and synced to Hub"
             echo ""
