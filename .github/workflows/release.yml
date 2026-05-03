@@ -36,8 +36,8 @@ jobs:
 
       - name: configure git identity
         run: |
-          git config user.name  "covcom-cicd[bot]"
-          git config user.email "covcom-cicd[bot]@users.noreply.github.com"
+          git config user.name  "leviathan-cicd[bot]"
+          git config user.email "leviathan-cicd[bot]@users.noreply.github.com"
 
       - name: bump version
         run: |
