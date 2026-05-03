@@ -1,35 +1,48 @@
 # COVCOM
 
-Covert communications for private group conversations. Share an
-invite, talk, close the tab, and it's gone. End-to-end encrypted with
-post-quantum cryptography, so the messages stay private today and unreadable to
-the computers coming tomorrow.
+```
+  ▄██▀ ▀█  ▄██▀ █▄  ▀██  ██▀  ▄██▀ ▀█  ▄██▀ █▄   █▄   ▄█
+ ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒  ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▒▄▒▒▒
+ ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
+  ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-`XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party`
+XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
+
+  Covert  communications  for private group conversations.
+  Invite,  talk,  close the client, and the chat vanishes.
+  End-to-end  encrypted  with  post-quantum  cryptography,
+  both manual and epoch-based ratchet events add layers of
+  forward  secrecy, ensuring messages remain private today
+  and unreadable to the computational power of tomorrow.
+```
 
 ## https://xero.github.io/covcom/
 
+[![GitHub Release](https://img.shields.io/github/v/release/xero/covcom?display_name=release&style=flat-square&logo=contributorcovenant&logoColor=%23bcb83a&color=%2378740b)](https://github.com/xero/covcom/releases/latest) [![Container Image Size](https://img.shields.io/docker/image-size/xerostyle/covcom/latest?arch=amd64&style=flat-square&logo=developmentcontainers&logoColor=%23bcb83a&color=%2378740b)](https://hub.docker.com/r/xerostyle/covcom) [![GitHub Wiki Publish](https://img.shields.io/github/actions/workflow/status/xero/covcom/wiki.yml?branch=main&style=flat-square&logo=gitbook&logoColor=%23bcb83a&label=wiki&color=%2378740b)](https://github.com/xero/covcom/wiki) [![MIT Licensed](https://img.shields.io/badge/MIT-License?style=flat-square&logo=internetarchive&logoColor=%23bcb83a&label=License&color=%2378740b)](https://github.com/xero/covcom/blob/main/LICENSE)
+
 > ### Table of Contents
-> - [how it works](#how-it-works)
-> - [requirements](#requirements)
-> - [installation](#installation)
-> - [server](#server)
->   - [docker](#docker)
->   - [docker (raw)](#docker-raw)
->   - [production (no docker)](#production-no-docker)
->   - [development](#development)
->   - [environment variables](#environment-variables)
-> - [web client](#web-client)
-> - [cli client](#cli-client)
->   - [configuration](#configuration)
->   - [navigation](#navigation)
-> - [starting a session](#starting-a-session)
-> - [documentation](#documentation)
-> - [development](#development-1)
+> - [How it works](#how-it-works)
+> - [Quickstart](#quickstart)
+> - [Requirements](#requirements)
+> - [Installation](#installation)
+> - [Server](#server)
+>   - [Docker](#docker)
+>   - [Docker (raw)](#docker-raw)
+>   - [Production (no docker)](#production-no-docker)
+>   - [Development](#development)
+>   - [Environment variables](#environment-variables)
+> - [Web client](#web-client)
+> - [CLI client](#cli-client)
+>   - [Configuration](#configuration)
+>   - [Navigation](#navigation)
+> - [Starting a session](#starting-a-session)
+> - [Documentation](#documentation)
+> - [Development](#development-1)
+> - [License](#license)
 
 ---
 
-## how it works
+## How it works
 
 Every message is encrypted with XChaCha20-Poly1305. That is the core cipher.
 Everything else exists to get a fresh, unique XChaCha20 key to the right
@@ -53,9 +66,23 @@ This implements the [Sparse Post-Quantum Ratchet](https://signal.org/docs/specif
 
 Cryptographic primitives are provided by [leviathan-crypto](https://github.com/xero/leviathan-crypto).
 
+## Quickstart
+
+Point `chat.example.com` at the host you'll run on, then:
+
+```sh
+docker pull xerostyle/covcom:latest
+docker run -d \
+  -p 80:80 -p 443:443 \
+  -e DOMAIN=chat.example.com \
+  xerostyle/covcom:latest
+```
+
+Open https://chat.example.com in a browser. Create a room, share the invite, & chat.
+
 ---
 
-## requirements
+## Requirements
 
 - [Bun](https://bun.sh) v1.1 or later
 - [Docker](https://docker.com) for the containerized server
@@ -63,7 +90,7 @@ Cryptographic primitives are provided by [leviathan-crypto](https://github.com/x
 
 ---
 
-## installation
+## Installation
 
 ```sh
 git clone https://github.com/xero/covcom
@@ -73,21 +100,38 @@ bun i
 
 ---
 
-## server
+## Server
 
-### docker
+### Docker
 
 The Docker image runs the Bun WebSocket server behind Caddy with automatic
 TLS via ACME. There are no build arguments; all configuration is runtime
 environment variables.
 
-**Build:**
+**Pull and run from a registry:**
+
+```sh
+docker pull xerostyle/covcom:latest
+docker run -d \
+  -p 80:80 -p 443:443 \
+  -e DOMAIN=chat.example.com \
+  xerostyle/covcom:latest
+```
+
+Published to [Docker Hub](https://hub.docker.com/r/xerostyle/covcom) as
+`xerostyle/covcom` and [GHCR](https://github.com/xero/covcom/pkgs/container/covcom)
+as `ghcr.io/xero/covcom`. Pin a specific version (e.g. `:1.0.0`) in production
+so a vulnerability disclosure does not silently upgrade you. See
+[USAGE.md](./docs/USAGE.md#docker) for tag conventions and how to extend the
+image.
+
+**Build locally:**
 
 ```sh
 bun build:docker
 ```
 
-**Run:**
+**Run locally:**
 
 ```sh
 DOMAIN=chat.example.com bun run:docker
@@ -108,7 +152,7 @@ docker compose -f docker/docker-compose.yml down
 docker compose -f docker/docker-compose.yml logs -f
 ```
 
-### docker (raw)
+### Docker (raw)
 
 For environments without `docker compose`. The compose file is the
 recommended path; these are escape hatches.
@@ -128,7 +172,7 @@ DOMAIN=chat.example.com bun run:docker:raw
 The raw run forwards `DOMAIN`, `PORT`, `ADMIN_TOKEN`, and `MAX_ROOM_SIZE`
 from the environment and mounts named volumes for Caddy data and config.
 
-### production (no docker)
+### Production (no docker)
 
 Runs the server directly via Bun without TLS or Caddy. Use this when
 fronting COVCOM with your own reverse proxy.
@@ -140,7 +184,7 @@ bun start:server
 This invokes `bun run src/index.ts` in the `server/` workspace and listens
 on `localhost:$PORT` (default `3000`).
 
-### development
+### Development
 
 Runs the server in watch mode, useful for local testing where clients
 connect over `ws://`.
@@ -151,7 +195,7 @@ bun dev:server
 
 The server starts on `localhost:3000` and reloads on source changes.
 
-### environment variables
+### Environment Variables
 
 | Variable        | Default  | Description                                                           |
 | --------------- | -------- | --------------------------------------------------------------------- |
@@ -168,7 +212,7 @@ time. You do not need `ADMIN_TOKEN` set to run a private server; the
 
 ---
 
-## web client
+## Web Client
 
 **Development:**
 
@@ -207,7 +251,7 @@ image or hosting from any static host without a build step. Run before
 
 ---
 
-## cli client
+## CLI client
 
 The CLI is a compiled Bun binary with a custom zero-dependency TUI.
 
@@ -246,7 +290,7 @@ bun run --cwd cli build:win     # Windows x86_64      → cli/dist/covcom-win-x6
 bun build:cli:all
 ```
 
-### configuration
+### Configuration
 
 Settings save to `~/.config/covcom/config.json` after a
 successful connection. The file is optional; all fields can be set
@@ -272,7 +316,7 @@ CLI probes for `pbcopy`, `xclip`, `xsel`, and `wl-copy` in that order.
 `{ "type": "ansi16", "n": 0-15 }`, `{ "type": "256", "n": 0-255 }`, or
 `{ "type": "hex", "value": "#rrggbb" }`.
 
-### navigation
+### Navigation
 
 | Key                 | Action                                |
 |---------------------|---------------------------------------|
@@ -287,7 +331,7 @@ filenames get a numeric suffix.
 
 ---
 
-## starting a session
+## Starting a session
 
 **Create a room:**
 
@@ -312,22 +356,27 @@ joined are not recoverable. This is forward secrecy working as intended.
 
 ---
 
-## documentation
+## Documentation
 
-Deeper references for auditors, contributors, and the curious.
+Deeper references for users, auditors, contributors, and the curious.
 
-| Document                                  | Purpose                                                                                       |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
-| [PROTOCOL.md](./docs/PROTOCOL.md)         | Protocol reference: cipher, chains, ratchet, group model, session lifecycle, server role      |
-| [CRYPTOGRAPHY.md](./docs/CRYPTOGRAPHY.md) | Auditor's reference: primitives, KDF chains, wire format, invite encoding                     |
-| [THREAT-MODEL.md](./docs/THREAT-MODEL.md) | Dolev-Yao analysis: principals, adversary tiers, guarantees, non-goals                        |
-| [CLI-SPEC.md](./docs/CLI-SPEC.md)         | Command-line app design spec: architecture, rendering, input, widgets, views, & color system. |
-| [SECURITY.md](./SECURITY.md)              | Supported versions, disclosure policy, cryptographic foundation                               |
-| [AGENTS.md](./AGENTS.md)                  | Contract for AI-assisted development on this repository                                       |
+| Document                                                                  | Purpose                                                              |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [USAGE](USAGE.md)                                                         | Client and server applications development and runtime help          |
+| [PROTOCOL](PROTOCOL.md)                                                   | Cipher, chains, ratchet, group model, session lifecycle, server role |
+| [CRYPTOGRAPHY](CRYPTOGRAPHY.md)                                           | Primitives, KDF chains, wire format, invite encoding                 |
+| [THREAT-MODEL](THREAT-MODEL.md)                                           | Principals, adversary tiers, guarantees, non-goals                   |
+| [CLI-SPEC](CLI-SPEC.md)                                                   | CLI architecture, rendering, input, widgets, views, & color system   |
+| [SECURITY-POLICY](SECURITY-POLICY.md)                                     | Supported versions, disclosure policy, cryptographic foundation      |
+| [PROTOCOL-DIAGRAM](https://xero.github.io/covcom/protocol_diagram.html)   | Animated visualization of a 3-party session and epochs               |
+| [RECONNECT-DIAGRAM](https://xero.github.io/covcom/reconnect_diagram.html) | Animated visualization of peers left / join ceremonies               |
+
+> [!TIP]
+> Documentation is available in the repo `./docs` folder and published to the project [wiki](https://github.com/xero/covcom/wiki).
 
 ---
 
-## development
+## Development
 
 **Run all tests:**
 
@@ -359,7 +408,7 @@ lib/       Shared crypto session layer
 web/       Vite + vanilla TS web client
 cli/       Custom zero-dependency TUI
 docker/    Dockerfile, Caddyfile template, entrypoint
-docs/      Project documentation
+docs/      Project documentation / Wiki sources
 ```
 
 ## License

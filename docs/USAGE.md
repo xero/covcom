@@ -71,13 +71,68 @@ The Docker image runs the Bun WebSocket server behind Caddy with automatic
 TLS via ACME. There are no build arguments; all configuration is runtime
 environment variables.
 
-**Build:**
+The image is published to two registries on every release:
+
+- **Docker Hub:** [`xerostyle/covcom`](https://hub.docker.com/r/xerostyle/covcom)
+- **GHCR:** [`ghcr.io/xero/covcom`](https://github.com/xero/covcom/pkgs/container/covcom)
+
+Two tags are published per release:
+
+- `X.Y.Z` — the pinned semantic version. Use this in production.
+- `latest` — moves with each release. A new release will silently upgrade you on the next pull.
+
+If a vulnerability is disclosed, the affected `X.Y.Z` tag is hard-deprecated
+via the [tombstone process](../docker-tag-tombstone.md): pulling it then
+exits nonzero with an error message pointing at the safe replacement. Pinning
+a specific version means you find out immediately. See [SECURITY.md](../SECURITY.md)
+for the full disclosure and deprecation policy.
+
+**Pull and run:**
+
+```sh
+docker pull xerostyle/covcom:latest
+docker run -d \
+  -p 80:80 -p 443:443 \
+  -e DOMAIN=chat.example.com \
+  -v covcom_caddy_data:/data \
+  -v covcom_caddy_config:/config \
+  xerostyle/covcom:latest
+```
+
+The volume mounts persist Caddy's TLS certificates and config across container
+restarts. Without them, Caddy re-provisions a certificate on every start, which
+will hit Let's Encrypt rate limits, or break SSL pinning if used.
+
+**Extend the image:**
+
+The published image is a sensible base for layering your own Caddy config,
+extra binaries, or sidecar tooling. Pin to a specific version so your custom
+image does not drift on every COVCOM release.
+
+```Dockerfile
+FROM ghcr.io/xero/covcom:1.0.0
+
+# example: drop in additional Caddy directives
+COPY my-caddy-extras.conf /etc/caddy/extras.conf
+
+# example: add a sidecar utility (base image is debian-based)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      dnsutils \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+The base image's entrypoint and exposed ports (80, 443) remain in effect
+unless you override them. The same environment variables documented in
+[environment variables](#environment-variables) below apply to your derived
+image.
+
+**Build locally:**
 
 ```sh
 bun build:docker
 ```
 
-**Run:**
+**Run locally:**
 
 ```sh
 DOMAIN=chat.example.com bun run:docker
