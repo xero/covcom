@@ -6,14 +6,14 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
-
-  Covert  communications  for private group conversations.
-  Invite,  talk,  close the client, and the chat vanishes.
-  End-to-end  encrypted  with  post-quantum  cryptography,
-  both manual and epoch-based ratchet events add layers of
-  forward  secrecy, ensuring messages remain private today
-  and unreadable to the computational power of tomorrow.
+  Covert communications for private group conversations.
+  Invite, talk, close the client, and the chat vanishes.
+  Every message is encrypted with XChaCha20 and signed
+  with Ed25519. A BLAKE3 fingerprint on each key allows
+  peers to verify one another. SPQR's manual and epoch
+  ratchets add forward secrecy, while post-quantum
+  ML-KEM-768 encapsulation keeps recorded communications
+  unreadable and secure against future cryptanalysis.
 ```
 
 ## https://xero.github.io/covcom/
@@ -61,6 +61,18 @@ rotates immediately after use.
 
 The group uses a Sender Keys model: one send chain per participant, not one
 per pair. O(N) state regardless of room size.
+
+Every session also mints a fresh Ed25519 signing keypair on construction.
+Identity claims and every broadcast are signed under it. Each peer's
+claims form a BLAKE3-chained log: every claim binds the previous payload's
+hash, so the server cannot reorder, drop, or substitute a structural event
+mid-session without breaking the chain. The session signing public key
+derives a fingerprint surface (`BLAKE3(sessionPk, 16)` → eight OKLCh
+swatches + 16-char hex) for out-of-band verification. Both clients expose
+a sidebar with two panels: **Verify** lists your fingerprint and every
+peer's side-by-side; **Event Log** captures every inbound/outbound
+WebSocket frame and every crypto action with redacted payloads and
+expandable detail rows.
 
 This implements the [Sparse Post-Quantum Ratchet](https://signal.org/docs/specifications/doubleratchet/#the-sparse-post-quantum-ratchet) from Signal's Double Ratchet spec (§5, Revision 4). For more detail, see [PROTOCOL.md](./docs/PROTOCOL.md).
 
@@ -228,7 +240,13 @@ Open `http://localhost:5173`.
 bun build:web
 ```
 
-Output goes to `web/dist/`. Serve it from any static file host.
+Produces `web/dist/`: an inlined `index.html` plus a same-origin pool worker
+(`covcom-pool-worker.js`) used for encrypted file transfer. The policy is
+strict-CSP friendly — `worker-src 'self'` with no `blob:`, so file transfer
+works in Safari/WebKit under a strict CSP (see
+[leviathan-crypto/docs/csp.md](https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md)).
+Serve the directory from any static file host with no build step, or let
+`bun build:docker` bake it into the image.
 
 **Preview the production build:**
 
@@ -238,16 +256,6 @@ bun run --cwd web preview
 
 Serves the contents of `web/dist/` locally for smoke-testing the bundled
 output.
-
-**Container build (single-file inline bundle):**
-
-```sh
-bun build:web:container
-```
-
-Produces a single self-contained HTML file for embedding in the Docker
-image or hosting from any static host without a build step. Run before
-`bun build:docker` if you want the latest web client baked into the image.
 
 ---
 
@@ -301,7 +309,7 @@ interactively.
   "server": "chat.example.com",
   "username": "xero",
   "copyCmd": "xsel -b",
-  "systemMessages": true,
+  "showSystem": true,
   "theme": {
     "btnFocusBg": { "type": "256", "n": 33 },
     "yourName":   { "type": "hex", "value": "#ff8800" }
@@ -323,7 +331,13 @@ CLI probes for `pbcopy`, `xclip`, `xsel`, and `wl-copy` in that order.
 | `Tab` / `Shift+Tab` | Cycle focus                           |
 | `Enter`             | Send message / confirm                |
 | `Ctrl+R`            | Rotate encryption keys (ratchet step) |
+| `Ctrl+E`            | Toggle event-log sidebar              |
+| `Ctrl+V`            | Toggle fingerprint-verify sidebar     |
 | `Ctrl+C`            | Quit and wipe session                 |
+
+When the sidebar has focus, `↑/↓` move selection in the event log, `PgUp/PgDn`
+page through, `Enter` expands the selected entry's details, and `+`/`-` step
+the sidebar width by 5%. `Esc` closes the sidebar.
 
 Files attach via the `+` button. Type or paste a path and use `Tab` for
 completion. Received files save to the current working directory; existing
@@ -336,8 +350,8 @@ filenames get a numeric suffix.
 **Create a room:**
 
 1. Enter a server address and a username, then select **Create Room**.
-2. The lobby screen shows an armored invite block. Copy or download it and
-   share it via any channel.
+2. The lobby screen shows an armored invite block, a QR code of the same
+   bytes, and copy/download buttons. Share it via any channel.
 3. The screen waits until a peer joins.
 
 **Join a room:**
@@ -362,12 +376,12 @@ Deeper references for users, auditors, contributors, and the curious.
 
 | Document                                                                  | Purpose                                                              |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [USAGE](USAGE.md)                                                         | Client and server applications development and runtime help          |
-| [PROTOCOL](PROTOCOL.md)                                                   | Cipher, chains, ratchet, group model, session lifecycle, server role |
-| [CRYPTOGRAPHY](CRYPTOGRAPHY.md)                                           | Primitives, KDF chains, wire format, invite encoding                 |
-| [THREAT-MODEL](THREAT-MODEL.md)                                           | Principals, adversary tiers, guarantees, non-goals                   |
-| [CLI-SPEC](CLI-SPEC.md)                                                   | CLI architecture, rendering, input, widgets, views, & color system   |
-| [SECURITY-POLICY](SECURITY-POLICY.md)                                     | Supported versions, disclosure policy, cryptographic foundation      |
+| [USAGE](./docs/USAGE.md)                                                  | Client and server applications development and runtime help          |
+| [PROTOCOL](./docs/PROTOCOL.md)                                            | Cipher, chains, ratchet, group model, session lifecycle, server role |
+| [CRYPTOGRAPHY](./docs/CRYPTOGRAPHY.md)                                    | Primitives, KDF chains, wire format, invite encoding                 |
+| [THREAT-MODEL](./docs/THREAT-MODEL.md)                                    | Principals, adversary tiers, guarantees, non-goals                   |
+| [CLI-SPEC](./docs/CLI-SPEC.md)                                            | CLI architecture, rendering, input, widgets, views, & color system   |
+| [SECURITY-POLICY](./SECURITY.md)                                          | Supported versions, disclosure policy, cryptographic foundation      |
 | [PROTOCOL-DIAGRAM](https://xero.github.io/covcom/protocol_diagram.html)   | Animated visualization of a 3-party session and epochs               |
 | [RECONNECT-DIAGRAM](https://xero.github.io/covcom/reconnect_diagram.html) | Animated visualization of peers left / join ceremonies               |
 
@@ -378,21 +392,34 @@ Deeper references for users, auditors, contributors, and the curious.
 
 ## Development
 
-**Run all tests:**
+**Run all unit tests:**
 
 ```sh
 bun test
 ```
 
-This runs `test:server`, `test:lib`, and the `test:cli` stub in sequence.
-The `web/` workspace has no unit tests (browser app).
+This runs `test:server`, `test:lib`, `test:web`, and the `test:cli` stub in
+sequence (all via `bun test`). The `cli/` TUI has no unit tests.
 
 **Run tests for a single package:**
 
 ```sh
 bun test:server     # server WebSocket broker
 bun test:lib        # shared crypto session layer
+bun test:web        # web client (store, session, bridge, views) via happy-dom
 ```
+
+**Run the end-to-end test (Playwright):**
+
+```sh
+bunx playwright install chromium   # one time
+bun test:e2e
+```
+
+`test:e2e` auto-starts the Bun broker and the Vite dev server, then drives two
+browser contexts through a real two-party encrypted chat (create → invite →
+join → exchange messages → verify fingerprints). It is not part of `bun test`
+because it needs running servers and a browser.
 
 **Lint and autofix:**
 

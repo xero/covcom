@@ -1,206 +1,315 @@
-import { inviteFilename } from '@covcom/lib';
+import {
+	armorInvite,
+	inviteFilename,
+	INVITE_VERSION,
+	serializeInvite,
+} from '@covcom/lib';
+import type { CovcomSession } from '../session.js';
+import { getState, subscribe } from '../store.js';
+import type { ChatItem, PeerView, Room } from '../store.js';
 import { el, clear, formatBytes, senderColor } from '../util.js';
+import { renderRich } from '../rich.js';
+import { ICON_COG, ICON_SEND, ICON_ATTACH } from '../icons.js';
+import { mountSidebar } from './sidebar.js';
+import { mountEventLog } from './event-log.js';
+import { mountVerify } from './verify.js';
 
-interface PeerInfo {
-	ek:        string
-	ratchetEk: string
-	colorIdx:  number
+function b64enc(bytes: Uint8Array): string {
+	let s = '';
+	const CHUNK = 8192;
+	for (let i = 0; i < bytes.length; i += CHUNK)
+		s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as unknown as number[]);
+	return btoa(s);
 }
 
-interface ChatOpts {
-	username: string
-	peers:    Map<string, PeerInfo>
-	onSend:   (text: string) => void
-	onFile:   (file: File) => void
-	onRotate: () => void
+function makeArmoredInvite(room: Room): string {
+	return armorInvite(serializeInvite({
+		version: INVITE_VERSION,
+		roomId: room.id,
+		roomSecret: b64enc(room.secret),
+		dns: room.dns,
+	}));
 }
 
-interface MsgOpts {
-	sender:    string
-	text:      string
-	isSelf:    boolean
-	className?: string
+function colorFor(name: string, peers: Map<string, PeerView>): string {
+	const peer = peers.get(name);
+	// Self isn't in peers → colorIdx 0; peers carry their assigned slot.
+	return senderColor(peer ? peer.colorIdx : 0);
 }
 
-interface FileOpts {
-	sender:   string
-	filename: string
-	size:     number
-	mime:     string
-	isSelf:   boolean
+// ── chat-item renderers ────────────────────────────────────────────────────
+
+function liBase(sender: string, isSelf: boolean, peers: Map<string, PeerView>, clearLayout: boolean): HTMLLIElement {
+	const li = document.createElement('li');
+	li.className = `msg ${isSelf ? 'self' : 'peer'}${clearLayout ? ' clear' : ''}`;
+	const name = el('span', 'msg-sender', `${sender}:`);
+	name.style.color = colorFor(sender, peers);
+	li.appendChild(name);
+	return li;
 }
 
-let _history: HTMLOListElement | null = null;
-let _bar:     HTMLDivElement    | null = null;
-let _barSaved: Node[] = [];
-let _peers = new Map<string, PeerInfo>();
-let _hideSystem = false;
+function renderMessage(item: ChatItem & { kind: 'message' }, peers: Map<string, PeerView>): HTMLLIElement {
+	const li = liBase(item.from, item.isSelf, peers, false);
+	li.appendChild(el('span', 'msg-text', item.text));
+	return li;
+}
 
-export function renderChat(root: Element, opts: ChatOpts): void {
-	clear(root);
-	_peers    = opts.peers;
-	_barSaved = [];
+function renderFile(item: ChatItem & { kind: 'file' }, peers: Map<string, PeerView>): HTMLLIElement {
+	const li    = liBase(item.from, item.isSelf, peers, true);
+	const card  = el('article', 'file-card');
+	const name  = el('p', 'file-name', item.filename);
+	const meta  = el('p', 'file-meta', `${formatBytes(item.size)} · ${item.mime}`);
+	const btnDl = el('button', 'btn-download', 'Download');
+	btnDl.addEventListener('click', () => {
+		const buf  = item.bytes.buffer.slice(item.bytes.byteOffset, item.bytes.byteOffset + item.bytes.byteLength) as ArrayBuffer;
+		const blob = new Blob([buf], { type: item.mime });
+		const url  = URL.createObjectURL(blob);
+		const a    = document.createElement('a');
+		a.href     = url;
+		a.download = item.filename;
+		a.click();
+		URL.revokeObjectURL(url);
+	});
+	card.append(name, meta, btnDl);
+	li.appendChild(card);
+	return li;
+}
 
-	const view    = el('section', 'view-chat');
-	const history = document.createElement('ol');
-	history.className = 'chat-history';
-	history.id = 'chat-history';
-	_history = history;
-	if (_hideSystem) _history.classList.add('hide-system');
+function renderSystem(item: ChatItem & { kind: 'system' }): HTMLLIElement {
+	const li = document.createElement('li');
+	li.className = `msg system${item.className ? ' ' + item.className : ''}`;
+	const text = el('span', 'msg-text');
+	renderRich(text, item.text);
+	li.appendChild(text);
+	return li;
+}
 
-	const bar = el('div', 'chat-bar');
-	_bar = bar as HTMLDivElement;
+function renderRatchet(item: ChatItem & { kind: 'ratchet' }, peers: Map<string, PeerView>): HTMLLIElement {
+	const li = liBase(item.from, item.isSelf, peers, false);
+	li.classList.add('ratchet');
+	li.appendChild(el('span', 'msg-text', 'keys rotated'));
+	return li;
+}
+
+function renderItem(item: ChatItem, peers: Map<string, PeerView>): HTMLLIElement {
+	switch (item.kind) {
+	case 'message': return renderMessage(item, peers);
+	case 'file':    return renderFile(item, peers);
+	case 'system':  return renderSystem(item);
+	case 'ratchet': return renderRatchet(item, peers);
+	}
+}
+
+// ── bar variants ───────────────────────────────────────────────────────────
+
+interface RegularBar {
+	root:     HTMLDivElement;
+	textarea: HTMLTextAreaElement;
+}
+
+function buildRegularBar(session: CovcomSession): RegularBar {
+	const bar = el('div', 'chat-bar') as HTMLDivElement;
 
 	const textarea = document.createElement('textarea');
 	textarea.id = 'chat-input';
-	textarea.rows = 5;
-	textarea.placeholder = 'type a message\u2026';
+	textarea.placeholder = 'type a message…';
 
-	const btnSend   = el('button', undefined, 'Send');
-	const btnRotate = el('button', undefined, '\uD83D\uDD12');
-	const btnToggle = el('button', 'btn-toggle-system', 'events \u25bc');
-	btnToggle.title = 'hide system messages';
-	btnToggle.addEventListener('click', () => {
-		_hideSystem = !_hideSystem;
-		_history?.classList.toggle('hide-system', _hideSystem);
-		btnToggle.textContent = _hideSystem ? 'events \u25b6' : 'events \u25bc';
-		btnToggle.title = _hideSystem ? 'show system messages' : 'hide system messages';
-	});
-	const btnAttach = el('button', undefined, 'Attach');
+	const btnSend = el('button', undefined, '');
+	btnSend.innerHTML = ICON_SEND;
+	const btnAttach = el('button', undefined, '');
+	btnAttach.innerHTML = ICON_ATTACH;
+	const btnRotate = el('button', undefined, '');
+	btnRotate.innerHTML = ICON_COG;
+
 	const fileInput = document.createElement('input');
-	fileInput.type = 'file';
-	fileInput.id = 'file-input';
-	fileInput.style.display = 'none';
+	fileInput.type           = 'file';
+	fileInput.id             = 'file-input';
+	fileInput.style.display  = 'none';
 
-	const overlay = el('div', 'drop-overlay', 'drop file to send');
-	overlay.id = 'drop-overlay';
-
-	function sendCurrentMessage(): void {
+	function sendCurrent(): void {
 		const text = textarea.value.trim();
 		if (!text) return;
-		textarea.value = '';
-		opts.onSend(text);
+		if (session.sendMessage(text)) textarea.value = '';
 	}
 
 	textarea.addEventListener('keydown', (e) => {
 		if (e.key === 'Enter' && !e.shiftKey) {
 			e.preventDefault();
-			sendCurrentMessage();
+			sendCurrent();
 		}
 	});
-	btnSend.addEventListener('click', sendCurrentMessage);
-	btnRotate.addEventListener('click', () => opts.onRotate());
-
+	btnSend.addEventListener('click', sendCurrent);
+	btnRotate.addEventListener('click', () => {
+		btnRotate.classList.add('spin');
+		setTimeout(() => btnRotate.classList.remove('spin'), 2000);
+		session.rotate();
+	});
 	btnAttach.addEventListener('click', () => fileInput.click());
 	fileInput.addEventListener('change', () => {
 		const file = fileInput.files?.[0];
-		if (file) opts.onFile(file);
+		if (file) void session.sendFile(file);
 		fileInput.value = '';
 	});
 
-	document.addEventListener('dragenter', () => {
-		overlay.style.display = 'flex';
-	});
-	document.addEventListener('dragleave', (e) => {
-		if (!e.relatedTarget) overlay.style.display = 'none';
-	});
-	document.addEventListener('dragover', (e) => e.preventDefault());
-	document.addEventListener('drop', (e) => {
-		e.preventDefault();
-		overlay.style.display = 'none';
-		const file = e.dataTransfer?.files[0];
-		if (file) opts.onFile(file);
-	});
-
-	bar.append(textarea, btnSend, btnRotate, btnToggle, btnAttach, fileInput);
-	view.append(history, bar);
-	root.append(view, overlay);
+	bar.append(textarea, btnSend, btnAttach, btnRotate, fileInput);
+	return { root: bar, textarea };
 }
 
-function _colorIdx(sender: string): number {
-	return _peers.get(sender)?.colorIdx ?? 0;
-}
-
-function _msgLi(sender: string, isSelf: boolean): HTMLLIElement {
-	const li = document.createElement('li');
-	li.className = `msg ${isSelf ? 'self' : 'peer'}`;
-
-	const color = senderColor(_colorIdx(sender));
-	const name  = el('span', 'msg-sender', `${sender}:`);
-	name.style.color = color;
-	li.appendChild(name);
-	return li;
-}
-
-function _scroll(): void {
-	if (_history) _history.scrollTop = _history.scrollHeight;
-}
-
-export function appendMessage(opts: MsgOpts): void {
-	if (!_history) return;
-	const li = _msgLi(opts.sender, opts.isSelf);
-	if (opts.className) li.classList.add(opts.className);
-	li.appendChild(el('span', 'msg-text', opts.text));
-	_history.appendChild(li);
-	_scroll();
-}
-
-export function appendFile(opts: FileOpts, bytes: Uint8Array): void {
-	if (!_history) return;
-	const li = _msgLi(opts.sender, opts.isSelf);
-
-	const card  = el('article', 'file-card');
-	const name  = el('p', 'file-name', opts.filename);
-	const meta  = el('p', 'file-meta', `${formatBytes(opts.size)} \u00b7 ${opts.mime}`);
-	const btnDl = el('button', 'btn-download', 'Download');
-
-	btnDl.addEventListener('click', () => {
-		const buf  = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-		const blob = new Blob([buf], { type: opts.mime });
-		const url  = URL.createObjectURL(blob);
-		const a    = document.createElement('a');
-		a.href     = url;
-		a.download = opts.filename;
-		a.click();
-		URL.revokeObjectURL(url);
-	});
-
-	card.append(name, meta, btnDl);
-	li.appendChild(card);
-	_history.appendChild(li);
-	_scroll();
-}
-
-export function showLobbyBar(armoredInvite: string, roomId: string): void {
-	if (!_history || !_bar) return;
-	_barSaved = Array.from(_bar.childNodes);
-	_bar.innerHTML = '';
+function buildLobbyBar(room: Room): HTMLDivElement {
+	const bar = el('div', 'chat-bar') as HTMLDivElement;
+	const armored = makeArmoredInvite(room);
 
 	const pre = el('pre', 'invite-block');
-	pre.textContent = armoredInvite;
+	pre.textContent = armored;
 
 	const btnCopy = el('button', undefined, 'Copy');
 	btnCopy.addEventListener('click', () => {
-		navigator.clipboard.writeText(armoredInvite).catch(() => { /* ignore */ });
+		navigator.clipboard.writeText(armored).then(() => {
+			btnCopy.textContent = 'Copied!';
+			setTimeout(() => {
+				btnCopy.textContent = 'Copy';
+			}, 1500);
+		}).catch(() => {
+			btnCopy.textContent = 'Copy failed - select manually';
+			setTimeout(() => {
+				btnCopy.textContent = 'Copy';
+			}, 2000);
+		});
 	});
 
 	const btnDl = el('button', 'btn-secondary', 'Download');
 	btnDl.addEventListener('click', () => {
-		const blob = new Blob([armoredInvite], { type: 'text/plain' });
+		const blob = new Blob([armored], { type: 'text/plain' });
 		const url  = URL.createObjectURL(blob);
 		const a    = document.createElement('a');
 		a.href     = url;
-		a.download = inviteFilename(roomId);
+		a.download = inviteFilename(room.id);
 		a.click();
 		URL.revokeObjectURL(url);
 	});
 
-	_bar.append(pre, btnCopy, btnDl);
+	bar.append(pre, btnCopy, btnDl);
+	return bar;
 }
 
-export function hideLobbyBar(): void {
-	if (!_history || !_bar) return;
-	_bar.innerHTML = '';
-	for (const child of _barSaved) _bar.appendChild(child);
-	_barSaved = [];
+// ── mount ──────────────────────────────────────────────────────────────────
+
+export function mountChat(app: Element, session: CovcomSession): () => void {
+	clear(app);
+
+	const view    = el('section', 'view-chat');
+	const history = document.createElement('ol');
+	history.className = 'chat-history';
+	history.id        = 'chat-history';
+
+	const regular = buildRegularBar(session);
+	view.append(history, regular.root);
+
+	const overlay = el('div', 'drop-overlay', 'drop file to send');
+	overlay.id = 'drop-overlay';
+
+	app.append(view, overlay);
+
+	// Sidebar must mount first; sections look up their bodies by data-section.
+	const cleanupSidebar  = mountSidebar(view, session);
+	const cleanupEventLog = mountEventLog(view);
+	const cleanupVerify   = mountVerify(view);
+
+	// Document-level DnD: the overlay shows while a drag is active anywhere on
+	// the page. The relatedTarget==null check catches the cursor leaving the
+	// viewport, which is the only dragleave we want to act on.
+	const onDragEnter = (): void => {
+		overlay.style.display = 'flex';
+	};
+	const onDragLeave = (e: DragEvent): void => {
+		if (!e.relatedTarget) overlay.style.display = 'none';
+	};
+	const onDragOver = (e: DragEvent): void => {
+		e.preventDefault();
+	};
+	const onDrop = (e: DragEvent): void => {
+		e.preventDefault();
+		overlay.style.display = 'none';
+		const file = e.dataTransfer?.files[0];
+		if (file) void session.sendFile(file);
+	};
+	document.addEventListener('dragenter', onDragEnter);
+	document.addEventListener('dragleave', onDragLeave);
+	document.addEventListener('dragover',  onDragOver);
+	document.addEventListener('drop',      onDrop);
+
+	let lastMessagesLen = 0;
+	let lastScreenName  = '';
+	let lastHideSystem: boolean | null = null;
+
+	let currentLobby: HTMLDivElement | null = null;
+
+	function swapBar(toLobby: boolean): void {
+		if (toLobby) {
+			const s = getState().screen;
+			if (s.name !== 'waiting') return;
+			currentLobby = buildLobbyBar(s.room);
+			regular.root.replaceWith(currentLobby);
+			// Keep the regular bar node alive in memory so the textarea draft
+			// survives a lobby round-trip.
+		} else if (currentLobby) {
+			currentLobby.replaceWith(regular.root);
+			currentLobby = null;
+		}
+	}
+
+	function scrollHistory(): void {
+		history.scrollTop = history.scrollHeight;
+	}
+
+	const off = subscribe(() => {
+		const s = getState();
+
+		if (s.ui.hideSystem !== lastHideSystem) {
+			history.classList.toggle('hide-system', s.ui.hideSystem);
+			lastHideSystem = s.ui.hideSystem;
+		}
+
+		// Bar variant: lobby when in standalone-waiting (everReady latched true,
+		// shell mounts chat). Regular otherwise (ready, or transient others).
+		if (s.screen.name !== lastScreenName) {
+			if (s.screen.name === 'waiting') swapBar(true);
+			else if (lastScreenName === 'waiting') swapBar(false);
+			lastScreenName = s.screen.name;
+		}
+
+		// Delta-append. messages is mutated in place; comparing length is safe.
+		if (s.messages.length !== lastMessagesLen) {
+			for (let i = lastMessagesLen; i < s.messages.length; i++) {
+				history.appendChild(renderItem(s.messages[i], s.peers));
+			}
+			lastMessagesLen = s.messages.length;
+			scrollHistory();
+		}
+	});
+
+	// Replay any existing items + initial flags so a chat remount picks up the
+	// pre-mount state without needing a synthetic dispatch.
+	{
+		const s = getState();
+		for (const item of s.messages) history.appendChild(renderItem(item, s.peers));
+		lastMessagesLen = s.messages.length;
+		lastHideSystem  = s.ui.hideSystem;
+		history.classList.toggle('hide-system', s.ui.hideSystem);
+		lastScreenName  = s.screen.name;
+		if (s.screen.name === 'waiting') swapBar(true);
+		scrollHistory();
+	}
+
+	return (): void => {
+		off();
+		document.removeEventListener('dragenter', onDragEnter);
+		document.removeEventListener('dragleave', onDragLeave);
+		document.removeEventListener('dragover',  onDragOver);
+		document.removeEventListener('drop',      onDrop);
+		cleanupEventLog();
+		cleanupVerify();
+		cleanupSidebar();
+		clear(app);
+	};
 }

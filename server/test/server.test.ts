@@ -6,6 +6,10 @@ type AnyMsg = Record<string, unknown>
 // ML-KEM-768 ek/ratchetEk: base64 of 1184 bytes = exactly 1580 chars
 const EK  = 'A'.repeat(1580);
 const REK = 'B'.repeat(1580);
+// Synthetic v3 identity-claim envelope and per-message signature.
+// Server does not verify cryptographic content; only enforces shape + size.
+const CLAIM = 'C'.repeat(300);
+const SIG   = 'S'.repeat(88);
 
 class TestWS {
 	private ws: WebSocket;
@@ -84,9 +88,9 @@ async function createAndJoin(port: number): Promise<{ ws: TestWS; roomId: string
 	return { ws, roomId, roomSecret };
 }
 
-// ── tests 1-21 — default server config ────────────────────────────────────
+// ── tests 1-21: default server config ────────────────────────────────────
 
-describe('server — default config', () => {
+describe('server: default config', () => {
 	let port: number;
 	let server: ReturnType<typeof startServer>;
 
@@ -128,9 +132,9 @@ describe('server — default config', () => {
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 		const msg = await b.recv();
-		expect(msg).toEqual({ type: 'peer_joined', username: 'alice', ek: EK, ratchetEk: REK });
+		expect(msg).toEqual({ type: 'peer_joined', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 
 		a.close();
 		b.close();
@@ -143,10 +147,10 @@ describe('server — default config', () => {
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await b.recv(); // peer_joined alice
 
-		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await a.recv(); // peer_joined bob
 
 		const payload = 'dGVzdC1wYXlsb2Fk';
@@ -170,25 +174,25 @@ describe('server — default config', () => {
 		await c.recv(); // joined
 
 		// identify all three; drain peer_joined notifications
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await b.recv(); // peer_joined alice
 		await c.recv(); // peer_joined alice
 
-		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await a.recv(); // peer_joined bob
 		await c.recv(); // peer_joined bob
 
-		c.send({ type: 'identify', username: 'carol', ek: EK, ratchetEk: REK });
+		c.send({ type: 'identify', username: 'carol', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await a.recv(); // peer_joined carol
 		await b.recv(); // peer_joined carol
 
 		const payload = 'YnJvYWRjYXN0';
 		const meta = { type: 'message', counter: 1, ts: 1713000000000 };
-		b.send({ type: 'broadcast', payload, meta });
+		b.send({ type: 'broadcast', payload, meta, sig: SIG });
 
 		const [fromA, fromC] = await Promise.all([a.recv(), c.recv()]);
-		expect(fromA).toEqual({ type: 'broadcast', from: 'bob', payload, meta });
-		expect(fromC).toEqual({ type: 'broadcast', from: 'bob', payload, meta });
+		expect(fromA).toEqual({ type: 'broadcast', from: 'bob', payload, meta, sig: SIG });
+		expect(fromC).toEqual({ type: 'broadcast', from: 'bob', payload, meta, sig: SIG });
 
 		// sender must not receive their own broadcast
 		const fromB = await b.tryRecv(100);
@@ -206,10 +210,10 @@ describe('server — default config', () => {
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await b.recv(); // peer_joined alice
 
-		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await a.recv(); // peer_joined bob
 
 		a.close();
@@ -229,7 +233,7 @@ describe('server — default config', () => {
 		b.close();
 		await delay(50);
 
-		// room still exists — a new client can join
+		// room still exists; a new client can join
 		const c = await connect(port);
 		c.send({ type: 'join', roomId, roomSecret });
 		const msg = await c.recv();
@@ -272,10 +276,10 @@ describe('server — default config', () => {
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await b.recv(); // peer_joined alice
 
-		b.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 		const msg = await b.recv();
 		expect(msg).toEqual({ type: 'error', reason: 'username_taken' });
 
@@ -286,12 +290,12 @@ describe('server — default config', () => {
 	test('12. malformed input', async () => {
 		const a = await connect(port);
 
-		// non-JSON — dropped silently, no response
+		// non-JSON is dropped silently, no response
 		a.sendRaw('not json at all');
 		const r1 = await a.tryRecv(100);
 		expect(r1).toBeUndefined();
 
-		// JSON with unknown type — dropped silently
+		// JSON with unknown type is dropped silently
 		a.send({ type: 'frobnicate' } as object);
 		const r2 = await a.tryRecv(100);
 		expect(r2).toBeUndefined();
@@ -311,10 +315,10 @@ describe('server — default config', () => {
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await b.recv(); // peer_joined alice
 
-		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await a.recv(); // peer_joined bob
 
 		a.send({
@@ -323,6 +327,8 @@ describe('server — default config', () => {
 			newEk: EK,
 			payload: 'ciphertext',
 			meta: { epoch: 1, counter: 0 },
+			sig: SIG,
+			claim: CLAIM,
 		});
 
 		const msg = await b.recv();
@@ -335,6 +341,8 @@ describe('server — default config', () => {
 			newEk: EK,
 			payload: 'ciphertext',
 			meta: { epoch: 1, counter: 0 },
+			sig: SIG,
+			claim: CLAIM,
 		});
 
 		// sender must not receive their own ratchet_step
@@ -356,15 +364,15 @@ describe('server — default config', () => {
 		c.send({ type: 'join', roomId, roomSecret });
 		await c.recv(); // joined
 
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await b.recv(); // peer_joined alice
 		await c.recv(); // peer_joined alice
 
-		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await a.recv(); // peer_joined bob
 		await c.recv(); // peer_joined bob
 
-		c.send({ type: 'identify', username: 'carol', ek: EK, ratchetEk: REK });
+		c.send({ type: 'identify', username: 'carol', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await a.recv(); // peer_joined carol
 		await b.recv(); // peer_joined carol
 
@@ -375,6 +383,8 @@ describe('server — default config', () => {
 			newEk: EK,
 			payload: 'ct',
 			meta: {},
+			sig: SIG,
+			claim: CLAIM,
 		});
 
 		await b.recv(); // ratchet_step_fwd to bob
@@ -399,24 +409,24 @@ describe('server — default config', () => {
 		c.send({ type: 'join', roomId, roomSecret });
 		await c.recv(); // joined
 
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await b.recv();
 		await c.recv();
 
-		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await a.recv();
 		await c.recv();
 
-		c.send({ type: 'identify', username: 'carol', ek: EK, ratchetEk: REK });
+		c.send({ type: 'identify', username: 'carol', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await a.recv();
 		await b.recv();
 
 		// A sends ek_update
-		a.send({ type: 'ek_update', ek: 'new-rek-a' });
+		a.send({ type: 'ek_update', ek: 'new-rek-a', claim: CLAIM });
 
 		const [fromB, fromC] = await Promise.all([b.recv(), c.recv()]);
-		expect(fromB).toEqual({ type: 'ek_update_fwd', from: 'alice', ek: 'new-rek-a' });
-		expect(fromC).toEqual({ type: 'ek_update_fwd', from: 'alice', ek: 'new-rek-a' });
+		expect(fromB).toEqual({ type: 'ek_update_fwd', from: 'alice', ek: 'new-rek-a', claim: CLAIM });
+		expect(fromC).toEqual({ type: 'ek_update_fwd', from: 'alice', ek: 'new-rek-a', claim: CLAIM });
 
 		// sender must not receive their own ek_update
 		const fromA = await a.tryRecv(100);
@@ -434,9 +444,9 @@ describe('server — default config', () => {
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK, claim: CLAIM });
 		const msg = await a.recv();
-		expect(msg).toEqual({ type: 'peer_joined', username: 'bob', ek: EK, ratchetEk: REK });
+		expect(msg).toEqual({ type: 'peer_joined', username: 'bob', ek: EK, ratchetEk: REK, claim: CLAIM });
 
 		a.close();
 		b.close();
@@ -450,20 +460,20 @@ describe('server — default config', () => {
 		await b.recv(); // joined (members=[])
 
 		// A and B identify
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await b.recv(); // peer_joined alice
-		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK, claim: CLAIM });
 		await a.recv(); // peer_joined bob
 
-		// C joins — should receive alice and bob in members
+		// C joins and should receive alice and bob in members
 		const c = await connect(port);
 		c.send({ type: 'join', roomId, roomSecret });
 		const joined = await c.recv();
 		expect(joined.type).toBe('joined');
 		const members = (joined as { members: unknown[] }).members;
 		expect(members).toHaveLength(2);
-		expect(members).toContainEqual({ username: 'alice', ek: EK, ratchetEk: REK });
-		expect(members).toContainEqual({ username: 'bob',   ek: EK, ratchetEk: REK });
+		expect(members).toContainEqual({ username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
+		expect(members).toContainEqual({ username: 'bob',   ek: EK, ratchetEk: REK, claim: CLAIM });
 
 		a.close(); b.close(); c.close();
 	});
@@ -482,10 +492,10 @@ describe('server — default config', () => {
 		// b joins and identifies before the creator joins
 		const b = await connect(port);
 		b.send({ type: 'join', roomId, roomSecret });
-		await b.recv();  // joined — no peer_joined because a is not in room yet
-		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK });
+		await b.recv();  // joined, no peer_joined because a is not in room yet
+		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: REK, claim: CLAIM });
 
-		// creator now joins — should see bob in members
+		// creator now joins, should see bob in members
 		// if the bug existed (creator auto-added to room.conns), a would never
 		// receive a 'joined' response at all, and this recv() would time out
 		a.send({ type: 'join', roomId, roomSecret });
@@ -501,11 +511,11 @@ describe('server — default config', () => {
 	test('21. rekey updates ConnData', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
 
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 		// no other client yet to drain peer_joined
 
-		// alice rekeyed (lobby transition — same connection, still identified)
-		a.send({ type: 'rekey', ek: 'new-ek-a', ratchetEk: 'new-rek-a' });
+		// alice rekeyed (lobby transition; same connection, still identified)
+		a.send({ type: 'rekey', ek: 'new-ek-a', ratchetEk: 'new-rek-a', claim: CLAIM });
 		const rekeyed = await a.recv();
 		expect(rekeyed).toEqual({ type: 'rekeyed' });
 
@@ -523,12 +533,12 @@ describe('server — default config', () => {
 
 	test('22. joined.members reflects current ratchetEk after ek_update', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 
-		// alice sends ek_update — simulates her receiving a ratchet_step_fwd and
+		// alice sends ek_update, simulates her receiving a ratchet_step_fwd and
 		// rotating her keypair. the server must persist the new key so late joiners
 		// see the current ratchetEk in joined.members, not the stale identify-time value.
-		a.send({ type: 'ek_update', ek: 'updated-rek-a' });
+		a.send({ type: 'ek_update', ek: 'updated-rek-a', claim: CLAIM });
 		await delay(20);
 
 		const b = await connect(port);
@@ -542,9 +552,9 @@ describe('server — default config', () => {
 	});
 });
 
-// ── test 8 — room capacity ─────────────────────────────────────────────────
+// ── test 8: room capacity ─────────────────────────────────────────────────
 
-describe('server — room capacity', () => {
+describe('server: room capacity', () => {
 	let port: number;
 	let server: ReturnType<typeof startServer>;
 
@@ -558,13 +568,13 @@ describe('server — room capacity', () => {
 	test('8. room full', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
 
-		// second client joins — room now at capacity
+		// second client joins, room now at capacity
 		const b = await connect(port);
 		b.send({ type: 'join', roomId, roomSecret });
 		const joined = await b.recv();
 		expect((joined as { type: string }).type).toBe('joined');
 
-		// third client — should be rejected
+		// third client should be rejected
 		const c = await connect(port);
 		c.send({ type: 'join', roomId, roomSecret });
 		const msg = await c.recv();
@@ -576,9 +586,9 @@ describe('server — room capacity', () => {
 	});
 });
 
-// ── test 15 — adminToken ───────────────────────────────────────────────────
+// ── test 15: adminToken ───────────────────────────────────────────────────
 
-describe('server — adminToken', () => {
+describe('server: adminToken', () => {
 	let port: number;
 	let server: ReturnType<typeof startServer>;
 
@@ -590,21 +600,21 @@ describe('server — adminToken', () => {
 	afterAll(() => server.stop(true));
 
 	test('15. adminToken gates room creation', async () => {
-		// no adminToken field — rejected
+		// no adminToken field, rejected
 		const a = await connect(port);
 		a.send({ type: 'create' });
 		const msg1 = await a.recv();
 		expect(msg1).toEqual({ type: 'error', reason: 'forbidden' });
 		a.close();
 
-		// wrong adminToken — rejected
+		// wrong adminToken, rejected
 		const b = await connect(port);
 		b.send({ type: 'create', adminToken: 'wrong' });
 		const msg2 = await b.recv();
 		expect(msg2).toEqual({ type: 'error', reason: 'forbidden' });
 		b.close();
 
-		// correct adminToken — accepted
+		// correct adminToken, accepted
 		const c = await connect(port);
 		c.send({ type: 'create', adminToken: 'test-admin' });
 		const msg3 = await c.recv();
@@ -628,11 +638,11 @@ describe('unauthenticated message drop', () => {
 
 	test('broadcast dropped for unidentified sender', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 
 		const b = await connect(port);
 		b.send({ type: 'join', roomId, roomSecret });
-		await b.recv(); // joined — b never sends identify
+		await b.recv(); // joined, b never sends identify
 
 		b.send({ type: 'broadcast', payload: 'ct', meta: {} });
 		const msg = await a.tryRecv();
@@ -644,7 +654,7 @@ describe('unauthenticated message drop', () => {
 
 	test('relay dropped for unidentified sender', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 
 		const b = await connect(port);
 		b.send({ type: 'join', roomId, roomSecret });
@@ -660,7 +670,7 @@ describe('unauthenticated message drop', () => {
 
 	test('ratchet_step dropped for unidentified sender', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 
 		const b = await connect(port);
 		b.send({ type: 'join', roomId, roomSecret });
@@ -676,7 +686,7 @@ describe('unauthenticated message drop', () => {
 
 	test('ek_update dropped for unidentified sender', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
-		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK });
+		a.send({ type: 'identify', username: 'alice', ek: EK, ratchetEk: REK, claim: CLAIM });
 
 		const b = await connect(port);
 		b.send({ type: 'join', roomId, roomSecret });
@@ -734,14 +744,14 @@ describe('identify validation', () => {
 		]);
 	});
 
-	test('empty username — no peer_joined delivered', async () => {
+	test('empty username: no peer_joined delivered', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
 
 		const b = await connect(port);
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		b.send({ type: 'identify', username: '', ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: '', ek: EK, ratchetEk: REK, claim: CLAIM });
 		const msg = await a.tryRecv();
 		expect(msg).toBeUndefined();
 
@@ -749,14 +759,14 @@ describe('identify validation', () => {
 		b.close();
 	});
 
-	test('username over 64 chars — no peer_joined delivered', async () => {
+	test('username over 64 chars: no peer_joined delivered', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
 
 		const b = await connect(port);
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		b.send({ type: 'identify', username: 'x'.repeat(65), ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: 'x'.repeat(65), ek: EK, ratchetEk: REK, claim: CLAIM });
 		const msg = await a.tryRecv();
 		expect(msg).toBeUndefined();
 
@@ -764,14 +774,14 @@ describe('identify validation', () => {
 		b.close();
 	});
 
-	test('ek wrong length — no peer_joined delivered', async () => {
+	test('ek wrong length: no peer_joined delivered', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
 
 		const b = await connect(port);
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		b.send({ type: 'identify', username: 'bob', ek: 'short-ek', ratchetEk: REK });
+		b.send({ type: 'identify', username: 'bob', ek: 'short-ek', ratchetEk: REK, claim: CLAIM });
 		const msg = await a.tryRecv();
 		expect(msg).toBeUndefined();
 
@@ -779,14 +789,14 @@ describe('identify validation', () => {
 		b.close();
 	});
 
-	test('ratchetEk wrong length — no peer_joined delivered', async () => {
+	test('ratchetEk wrong length: no peer_joined delivered', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
 
 		const b = await connect(port);
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: 'short-rek' });
+		b.send({ type: 'identify', username: 'bob', ek: EK, ratchetEk: 'short-rek', claim: CLAIM });
 		const msg = await a.tryRecv();
 		expect(msg).toBeUndefined();
 
@@ -794,16 +804,16 @@ describe('identify validation', () => {
 		b.close();
 	});
 
-	test('valid inputs at exact limits — peer_joined delivered', async () => {
+	test('valid inputs at exact limits: peer_joined delivered', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
 
 		const b = await connect(port);
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		b.send({ type: 'identify', username: 'x'.repeat(64), ek: EK, ratchetEk: REK });
+		b.send({ type: 'identify', username: 'x'.repeat(64), ek: EK, ratchetEk: REK, claim: CLAIM });
 		const msg = await a.recv();
-		expect(msg).toEqual({ type: 'peer_joined', username: 'x'.repeat(64), ek: EK, ratchetEk: REK });
+		expect(msg).toEqual({ type: 'peer_joined', username: 'x'.repeat(64), ek: EK, ratchetEk: REK, claim: CLAIM });
 
 		a.close();
 		b.close();
@@ -832,8 +842,8 @@ describe('identify cleanup', () => {
 	test('zombie close frees room slot', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
 
-		// first client joins but sends an oversized username — server closes it
-		a.send({ type: 'identify', username: 'x'.repeat(65), ek: EK, ratchetEk: REK });
+		// first client joins but sends an oversized username, server closes it
+		a.send({ type: 'identify', username: 'x'.repeat(65), ek: EK, ratchetEk: REK, claim: CLAIM });
 		// wait for the server-initiated close to complete
 		await delay(200);
 

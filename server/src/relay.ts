@@ -60,8 +60,13 @@ export function handleJoin(
 
 	const members = [];
 	for (const conn of room.conns) {
-		if (conn !== ws && conn.data.username && conn.data.ek && conn.data.ratchetEk)
-			members.push({ username: conn.data.username, ek: conn.data.ek, ratchetEk: conn.data.ratchetEk });
+		if (conn !== ws && conn.data.username && conn.data.ek && conn.data.ratchetEk && conn.data.claim)
+			members.push({
+				username: conn.data.username,
+				ek: conn.data.ek,
+				ratchetEk: conn.data.ratchetEk,
+				claim: conn.data.claim,
+			});
 	}
 	send(ws, { type: 'joined', members });
 }
@@ -82,6 +87,9 @@ export function handleIdentify(
 	if (msg.ratchetEk.length !== 1580)         {
 		ws.close(); return;
 	}
+	if (!msg.claim || msg.claim.length === 0 || msg.claim.length > 4000) {
+		ws.close(); return;
+	}
 	const room = getRoom(rooms, ws.data.roomId);
 	if (!room) return;
 	room.lastActivity = Date.now();
@@ -94,6 +102,7 @@ export function handleIdentify(
 	ws.data.username  = uname;
 	ws.data.ek        = msg.ek;
 	ws.data.ratchetEk = msg.ratchetEk;
+	ws.data.claim     = msg.claim;
 	for (const conn of room.conns) {
 		if (conn !== ws)
 			send(conn, {
@@ -101,6 +110,7 @@ export function handleIdentify(
 				username: uname,
 				ek: msg.ek,
 				ratchetEk: msg.ratchetEk,
+				claim: msg.claim,
 			});
 	}
 }
@@ -113,10 +123,13 @@ export function handleRatchetStep(
 	if (!ws.data.roomId) return;
 	if (!ws.data.username) return;
 	if (msg.newEk.length !== 1580) return;
+	if (!msg.claim || msg.claim.length === 0 || msg.claim.length > 4000) return;
+	if (!msg.sig || msg.sig.length === 0 || msg.sig.length > 200) return;
 	const room = getRoom(rooms, ws.data.roomId);
 	if (!room) return;
 	room.lastActivity    = Date.now();
 	ws.data.ratchetEk    = msg.newEk;   // keep ConnData current for late joiners
+	ws.data.claim        = msg.claim;   // refresh stored claim for late joiners
 	const from = ws.data.username;
 	for (const conn of room.conns) {
 		if (conn === ws) continue;
@@ -133,6 +146,8 @@ export function handleRatchetStep(
 			newEk: msg.newEk,
 			payload: msg.payload,
 			meta: msg.meta,
+			sig: msg.sig,
+			claim: msg.claim,
 		});
 	}
 }
@@ -144,13 +159,15 @@ export function handleEkUpdate(
 ): void {
 	if (!ws.data.roomId) return;
 	if (!ws.data.username) return;
+	if (!msg.claim || msg.claim.length === 0 || msg.claim.length > 4000) return;
 	const room = getRoom(rooms, ws.data.roomId);
 	if (!room) return;
 	room.lastActivity = Date.now();
-	ws.data.ratchetEk = msg.ek;   // keep ConnData current for late joiners
+	ws.data.ratchetEk = msg.ek;       // keep ConnData current for late joiners
+	ws.data.claim     = msg.claim;    // refresh stored claim
 	for (const conn of room.conns) {
 		if (conn !== ws)
-			send(conn, { type: 'ek_update_fwd', from: ws.data.username, ek: msg.ek });
+			send(conn, { type: 'ek_update_fwd', from: ws.data.username, ek: msg.ek, claim: msg.claim });
 	}
 }
 
@@ -179,6 +196,7 @@ export function handleBroadcast(
 ): void {
 	if (!ws.data.roomId) return;
 	if (!ws.data.username) return;
+	if (!msg.sig || msg.sig.length === 0 || msg.sig.length > 200) return;
 	const room = getRoom(rooms, ws.data.roomId);
 	if (!room) return;
 	room.lastActivity = Date.now();
@@ -189,6 +207,7 @@ export function handleBroadcast(
 				from: ws.data.username,
 				payload: msg.payload,
 				meta: msg.meta,
+				sig: msg.sig,
 			});
 		}
 	}
@@ -215,10 +234,12 @@ export function handleRekey(
 ): void {
 	if (!ws.data.username) return;
 	if (!ws.data.roomId) return;
+	if (!msg.claim || msg.claim.length === 0 || msg.claim.length > 4000) return;
 	const room = getRoom(rooms, ws.data.roomId);
 	if (!room) return;
 	ws.data.ek        = msg.ek;
 	ws.data.ratchetEk = msg.ratchetEk;
+	ws.data.claim     = msg.claim;    // refresh so late joiners see the new identity
 	room.lastActivity = Date.now();
 	send(ws, { type: 'rekeyed' });
 }

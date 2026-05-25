@@ -1,4 +1,4 @@
-// Inbound — client to server
+// Inbound client to server messages
 
 export interface CreateMsg {
 	type:        'create'
@@ -14,8 +14,9 @@ export interface JoinMsg {
 export interface IdentifyMsg {
 	type:      'identify'
 	username:  string
-	ek:        string   // base64 — Seal encapsulation key (chain seed distribution)
-	ratchetEk: string   // base64 — RatchetKeypair ek (for KEM ratchet steps)
+	ek:        string   // base64 Seal encapsulation key (chain seed distribution)
+	ratchetEk: string   // base64 RatchetKeypair ek (for KEM ratchet steps)
+	claim:     string   // base64 Sign.sign envelope of the identity claim
 }
 
 export interface RelayMsg {
@@ -28,6 +29,7 @@ export interface BroadcastMsg {
 	type: 'broadcast'
 	payload: string
 	meta: Record<string, unknown>
+	sig:  string  // base64 detached Ed25519PreHash signature
 }
 
 // client sends one ratchet_step containing a per-recipient payload map.
@@ -36,21 +38,25 @@ export interface RatchetStepMsg {
 	type:     'ratchet_step'
 	// keyed by recipient username; each value is that peer's pairwise payload
 	payloads: Record<string, { kemCt: string; encSeed: string; pn: number }>
-	newEk:    string  // base64 — sender's new ratchetEk after this step
+	newEk:    string  // base64 sender's new ratchetEk after this step
 	payload:  string  // base64 ciphertext of the message accompanying this step
 	meta:     Record<string, unknown>  // MessageEnvelope (epoch, counter, etc.)
+	sig:      string  // base64 detached signature over the accompanying message
+	claim:    string  // base64 Sign.sign envelope of the ratchet-step claim
 }
 
 // announces a new ratchet ek after keypair rotation
 export interface EkUpdateMsg {
-	type: 'ek_update'
-	ek:   string  // base64
+	type:  'ek_update'
+	ek:    string  // base64
+	claim: string  // base64 Sign.sign envelope binding the new ek to the session pk
 }
 
 export interface RekeyMsg {
 	type:      'rekey'
 	ek:        string
 	ratchetEk: string
+	claim:     string   // fresh identity claim for the post-transition session
 }
 
 export type InboundMsg =
@@ -63,7 +69,7 @@ export type InboundMsg =
 	| EkUpdateMsg
 	| RekeyMsg
 
-// Outbound — server to client
+// Outbound server to client messages
 
 export interface RoomCreatedMsg {
 	type:       'room_created'
@@ -73,7 +79,7 @@ export interface RoomCreatedMsg {
 
 export interface JoinedMsg {
 	type:    'joined'
-	members: { username: string; ek: string; ratchetEk: string }[]
+	members: { username: string; ek: string; ratchetEk: string; claim: string }[]
 }
 
 export interface PeerJoinedMsg {
@@ -81,6 +87,7 @@ export interface PeerJoinedMsg {
 	username:  string
 	ek:        string
 	ratchetEk: string
+	claim:     string
 }
 
 export interface PeerLeftMsg {
@@ -99,6 +106,7 @@ export interface BroadcastFwdMsg {
 	from: string
 	payload: string
 	meta: Record<string, unknown>
+	sig:  string
 }
 
 export interface ErrorMsg {
@@ -116,12 +124,15 @@ export interface RatchetStepFwdMsg {
 	newEk:   string  // sender's new ek
 	payload: string  // ciphertext for this recipient to decrypt after applying the step
 	meta:    Record<string, unknown>
+	sig:     string  // detached signature over the accompanying message
+	claim:   string  // ratchet-step claim envelope
 }
 
 export interface EkUpdateFwdMsg {
-	type: 'ek_update_fwd'
-	from: string
-	ek:   string
+	type:  'ek_update_fwd'
+	from:  string
+	ek:    string
+	claim: string
 }
 
 export interface RekeyedMsg {

@@ -1,43 +1,47 @@
+import type { CovcomSession } from '../session.js';
+import type { Screen } from '../store.js';
 import { el, clear } from '../util.js';
+import { buildJoinForm } from './join.js';
 
-interface LandingOpts {
-	onCreate:    (server: string, username: string, adminToken?: string) => void
-	onJoinClick: (username: string) => void
+interface MainFormOpts {
+	session:    CovcomSession;
+	error?:     string;
+	prefillUsername?: string;
+	onJoinClick: (username: string) => void;
 }
 
-export function renderLanding(root: Element, opts: LandingOpts): void {
-	clear(root);
+// The two sub-trees live in separate builders so the back-from-join swap doesn't
+// have to reconcile against a single root.
+function buildMainForm(opts: MainFormOpts): HTMLElement {
 	const view = el('section', 'view-landing');
 
-	// Server DNS
 	const serverField = el('div', 'field');
-	const serverLabel = el('label', undefined, 'server');
+	const serverLabel = el('label', undefined, 'Server');
 	serverLabel.htmlFor = 'server';
-	const serverInput = el('input') as HTMLInputElement;
+	const serverInput = el('input');
 	serverInput.type = 'text';
-	serverInput.id = 'server';
+	serverInput.id   = 'server';
 	serverInput.placeholder = 'example.com or localhost:3000';
 	serverField.append(serverLabel, serverInput);
 
-	// Username
 	const usernameField = el('div', 'field');
-	const usernameLabel = el('label', undefined, 'username');
+	const usernameLabel = el('label', undefined, 'Username');
 	usernameLabel.htmlFor = 'username';
-	const usernameInput = el('input') as HTMLInputElement;
+	const usernameInput   = el('input');
 	usernameInput.type = 'text';
-	usernameInput.id = 'username';
-	usernameInput.placeholder = 'your name';
+	usernameInput.id   = 'username';
+	usernameInput.placeholder = 'handle';
+	if (opts.prefillUsername) usernameInput.value = opts.prefillUsername;
 	usernameField.append(usernameLabel, usernameInput);
 
-	// Server password (hidden by default)
-	const advancedToggle = el('a', 'advanced-toggle', 'advanced');
+	const advancedToggle = el('a', 'advanced-toggle', 'Advanced');
 	advancedToggle.href = '#';
 
 	const tokenField = el('div', 'field');
 	tokenField.style.display = 'none';
-	const tokenLabel = el('label', undefined, 'server password');
+	const tokenLabel = el('label', undefined, 'Server Password');
 	tokenLabel.htmlFor = 'token';
-	const tokenInput = el('input') as HTMLInputElement;
+	const tokenInput = el('input');
 	tokenInput.type = 'password';
 	tokenInput.autocomplete = 'off';
 	tokenInput.id = 'token';
@@ -50,14 +54,19 @@ export function renderLanding(root: Element, opts: LandingOpts): void {
 	});
 
 	const errorEl = el('p', 'error');
-	errorEl.style.display = 'none';
-
-	function showError(msg: string): void {
-		errorEl.textContent = msg;
-		errorEl.style.display = '';
+	if (opts.error) {
+		errorEl.textContent     = opts.error;
+		errorEl.style.display   = 'inline';
+	} else {
+		errorEl.style.display = 'none';
 	}
 
-	const btnRow = el('div', 'btn-row');
+	function showError(msg: string): void {
+		errorEl.textContent   = msg;
+		errorEl.style.display = 'inline';
+	}
+
+	const btnRow    = el('div', 'btn-row');
 	const btnCreate = el('button', undefined, 'Create Room');
 	const btnJoin   = el('button', 'btn-secondary', 'Join Room');
 
@@ -69,9 +78,12 @@ export function renderLanding(root: Element, opts: LandingOpts): void {
 			return;
 		}
 		errorEl.style.display = 'none';
-		opts.onCreate(server, username, tokenInput.value.trim() || undefined);
+		void opts.session.create({
+			server,
+			username,
+			adminToken: tokenInput.value.trim() || undefined,
+		});
 	});
-
 	btnJoin.addEventListener('click', () => {
 		const username = usernameInput.value.trim();
 		if (!username) {
@@ -84,5 +96,50 @@ export function renderLanding(root: Element, opts: LandingOpts): void {
 
 	btnRow.append(btnCreate, btnJoin);
 	view.append(serverField, usernameField, advancedToggle, tokenField, errorEl, btnRow);
-	root.appendChild(view);
+	return view;
+}
+
+export function mountLanding(
+	app:     Element,
+	session: CovcomSession,
+	screen:  Screen & { name: 'landing' },
+): () => void {
+	clear(app);
+
+	let current: HTMLElement;
+
+	const showMain = (prefillUsername?: string): void => {
+		const next = buildMainForm({
+			session,
+			error: screen.error,
+			prefillUsername: prefillUsername ?? screen.prefill?.username,
+			onJoinClick: (u) => showJoin(u),
+		});
+		current.replaceWith(next);
+		current = next;
+	};
+
+	const showJoin = (username: string): void => {
+		const next = buildJoinForm({
+			username,
+			onConnect: (invite) => {
+				void session.join(invite, username);
+			},
+			onBack: () => showMain(username),
+		});
+		current.replaceWith(next);
+		current = next;
+	};
+
+	current = buildMainForm({
+		session,
+		error: screen.error,
+		prefillUsername: screen.prefill?.username,
+		onJoinClick: (u) => showJoin(u),
+	});
+	app.appendChild(current);
+
+	return (): void => {
+		clear(app);
+	};
 }

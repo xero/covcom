@@ -1,1 +1,1 @@
-export { renderChat, appendMessage, appendFile } from './views.js';
+export { renderChat, appendMessage, appendFile, showModal } from './views.js';

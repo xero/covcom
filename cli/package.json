@@ -1,9 +1,10 @@
 {
-	"//": "Custom zero-dependency TUI — no native bindings required.",
+	"//": "Custom zero-dependency TUI, no native bindings required.",
 	"name": "@covcom/cli",
 	"private": true,
 	"type": "module",
 	"scripts": {
+		"test": "bun test",
 		"bundle": "bun build.ts",
 		"dev": "bun build.ts && bun run src/main.ts",
 		"build": "bun build.ts --compile",
@@ -15,10 +16,10 @@
 	},
 	"dependencies": {
 		"@covcom/lib": "workspace:*",
-		"leviathan-crypto": "^2.1.0"
+		"leviathan-crypto": "3.0.0"
 	},
 	"devDependencies": {
-		"@types/node": "^25.6.0",
-		"bun-types": "^1.3.12"
+		"@types/node": "^25.9.1",
+		"bun-types": "^1.3.14"
 	}
 }

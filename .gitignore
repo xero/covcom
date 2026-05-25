@@ -6,6 +6,10 @@ dist/
 src/ts/embedded/
 src/ts/ct-wasm.ts
 test/e2e/results/
+web/test/e2e/results/
+web/public/covcom-pool-worker.js
+playwright-report/
+.last-run.json
 *.tsbuildinfo
 tests/results/
 test-results/
@@ -134,4 +138,4 @@ tags
 web_modules/
 yarn-debug.log*
 yarn-error.log*
-CLAUDE.md
+.claude/

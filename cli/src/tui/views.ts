@@ -1,13 +1,35 @@
 import { join, resolve } from 'path';
 import { readdirSync } from 'fs';
 import { parseArmoredInvite, inviteFilename } from '@covcom/lib';
-import type { InvitePayload } from '@covcom/lib';
-import { Screen, loadTheme, colorFg, colorBg, ansi } from './screen.js';
+import type { InvitePayload, FingerprintSurface } from '@covcom/lib';
+import { Screen, Theme, ColorValue, loadTheme, colorFg, colorBg, ansi } from './screen.js';
 import { parseInput, InputEvent } from './keys.js';
 import { FocusRing } from './focus.js';
-import { TextInput, TextArea, Button, ScrollView, Widget } from './widgets.js';
-import { readConfig } from '../config.js';
+import { TextInput, TextArea, Button, ScrollView, Sidebar, Widget, drawModal } from './widgets.js';
+import type { SidebarMode, ModalOpts } from './widgets.js';
+import { readConfig, readSidebarWidth, writeSidebarWidth, SIDEBAR_MIN_COLS } from '../config.js';
 import { resolveUniqueFilename } from '../util.js';
+import { BANNER } from './banner.js';
+
+// ─── banner ──────────────────────────────────────────────────────────────────
+
+const BANNER_LINES = BANNER.split('\n').filter(l => l.length > 0);
+const BANNER_W     = 56;  // visible cell width of the banner
+const BANNER_H     = BANNER_LINES.length;
+const BANNER_TOP   = 2;   // row offset from top of screen
+
+// draw the banner if there's room; skips silently when terminal is too small.
+// formY is the first row of the form below it. The banner only renders if it
+// won't collide.
+function drawBanner(scr: Screen, formY: number): void {
+	if (scr.w < BANNER_W + 4) return;
+	if (formY < BANNER_TOP + BANNER_H + 1) return;
+	const ox = Math.floor((scr.w - BANNER_W) / 2);
+	for (let i = 0; i < BANNER_LINES.length; i++) {
+		scr.moveTo(ox, BANNER_TOP + i);
+		scr.write(BANNER_LINES[i] + ansi.reset);
+	}
+}
 
 // ─── module-level state for appendMessage / appendFile ───────────────────────
 
@@ -17,18 +39,33 @@ let _chatScreen:    Screen     | null  = null;
 let _chatRender:    (() => void) | null = null;
 let _resizeCleanup: (() => void) | null = null;
 let _errorDisplay:  ((msg: string) => void) | null = null;
+let _sidebar:       Sidebar    | null  = null;
+let _focusRing:     FocusRing  | null  = null;
+
+interface ModalState { title: string; body: string; accent?: ColorValue }
+let _modal:      ModalState | null = null;
+let _activeView: { gen: number; scr: Screen; render: () => void; theme: Theme } | null = null;
+
+function disposeSidebar(): void {
+	if (_sidebar) {
+		_sidebar.dispose(); _sidebar = null;
+	}
+}
 
 function chatDoRender() {
 	if (!_chatScreen || !_chatRender) return;
 	_chatScreen.beginRender();
 	_chatScreen.clear();
 	_chatRender();
+	if (_modal && _activeView && _activeView.scr === _chatScreen) {
+		drawModal(_chatScreen, _activeView.theme, _modal);
+	}
 	_chatScreen.endRender();
 }
 
 // ─── shared view setup ───────────────────────────────────────────────────────
 
-function setupView(scr: Screen, render: () => void, onEv: (ev: InputEvent) => void) {
+function setupView(scr: Screen, theme: Theme, render: () => void, onEv: (ev: InputEvent) => void) {
 	viewGen++;
 	const gen = viewGen;
 	if (_resizeCleanup) {
@@ -36,21 +73,55 @@ function setupView(scr: Screen, render: () => void, onEv: (ev: InputEvent) => vo
 	}
 	process.stdin.removeAllListeners('data');
 
+	const renderAll = () => {
+		render();
+		if (_modal) drawModal(scr, theme, _modal);
+	};
+
+	_modal = null;
+	_activeView = { gen, scr, render: renderAll, theme };
+
+	const handle = (ev: InputEvent) => {
+		if (_modal) {
+			if (ev.kind === 'key') {
+				if (ev.key.ctrl && ev.key.name === 'c') {
+					process.emit('SIGINT'); return;
+				}
+				_modal = null; scr.markDirty(); return;
+			}
+			if (ev.kind === 'mouse' && ev.mouse.type === 'click') {
+				_modal = null; scr.markDirty(); return;
+			}
+			return;
+		}
+		onEv(ev);
+	};
+
 	process.stdin.on('data', (buf: Buffer) => {
-		onEv(parseInput(buf));
+		handle(parseInput(buf));
 		if (viewGen === gen && scr.needsRender()) {
-			scr.beginRender(); scr.clear(); render(); scr.endRender();
+			scr.beginRender(); scr.clear(); renderAll(); scr.endRender();
 		}
 	});
 
 	const onResize = () => {
 		scr.needsRender();
-		scr.beginRender(); scr.clear(); render(); scr.endRender();
+		scr.beginRender(); scr.clear(); renderAll(); scr.endRender();
 	};
 	process.stdout.on('resize', onResize);
 	_resizeCleanup = () => process.stdout.removeListener('resize', onResize);
 
-	scr.beginRender(); scr.clear(); render(); scr.endRender();
+	scr.beginRender(); scr.clear(); renderAll(); scr.endRender();
+}
+
+export function showModal(opts: ModalOpts): void {
+	if (!_activeView) return;
+	const captured = _activeView;
+	_modal = { title: opts.title, body: opts.body, accent: opts.accent };
+	captured.scr.beginRender();
+	captured.scr.clear();
+	captured.render();
+	captured.scr.endRender();
 }
 
 function clickHit(widgets: Widget[], x: number, y: number): Widget | null {
@@ -103,6 +174,7 @@ export function renderLanding(
 		onJoinClick: (username: string) => void
 	},
 ): void {
+	disposeSidebar();
 	_scrollView = null; _chatScreen = null; _chatRender = null; _errorDisplay = null;
 	const theme = loadTheme(readConfig());
 
@@ -141,6 +213,7 @@ export function renderLanding(
 		const oy = Math.max(1, Math.floor((scr.h - 14) / 2));
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
+		drawBanner(scr, oy);
 
 		scr.moveTo(ox, oy);   scr.write(colorFg(theme.fg) + 'Server DNS:' + ansi.reset);
 		serverInput.render(scr, { x: ox, y: oy + 1, w: cw, h: 1 }, ring.isFocused('server'), theme);
@@ -166,7 +239,7 @@ export function renderLanding(
 		}
 	}
 
-	setupView(scr, render, ev => {
+	setupView(scr, theme, render, ev => {
 		if (ev.kind === 'key') {
 			if (ev.key.ctrl && ev.key.name === 'c') {
 				process.emit('SIGINT'); return;
@@ -205,44 +278,28 @@ export function renderWaiting(
 	scr: Screen,
 	opts: { armoredInvite: string; roomId: string },
 ): void {
+	disposeSidebar();
 	_scrollView = null; _chatScreen = null; _chatRender = null; _errorDisplay = null;
 	const config = readConfig();
 	const theme  = loadTheme(config);
 
-	type Callout = { type: 'copy_ok' } | { type: 'copy_fail' } | { type: 'download'; path: string }
-	let callout: Callout | null = null;
-
 	const copyBtn     = new Button('copy',     'Copy Code', () => {
 		void tryCopy(opts.armoredInvite, config.copyCmd).then(ok => {
-			callout = ok ? { type: 'copy_ok' } : { type: 'copy_fail' };
-			scr.beginRender(); scr.clear(); render(); scr.endRender();
+			showModal(ok
+				? { title: 'Copied',      body: 'Room code copied to your clipboard.' }
+				: { title: 'Copy Failed', body: 'No clipboard manager found on this system.', accent: theme.error });
 		});
 	});
 	const downloadBtn = new Button('download', 'Download', () => {
 		const outPath = resolveUniqueFilename(join(process.cwd(), inviteFilename(opts.roomId)));
 		void Bun.write(outPath, opts.armoredInvite).then(() => {
-			callout = { type: 'download', path: resolve(outPath) };
-			scr.beginRender(); scr.clear(); render(); scr.endRender();
+			showModal({ title: 'Invite Downloaded', body: resolve(outPath) });
 		});
 	});
 
 	const ring    = new FocusRing();
 	ring.register('copy'); ring.register('download');
 	const widgets: Widget[] = [copyBtn, downloadBtn];
-
-	function calloutLines(cw: number): string[] {
-		if (!callout) return [];
-		if (callout.type === 'copy_ok')   return ['Code copied to your clipboard'.padEnd(cw)];
-		if (callout.type === 'copy_fail') return ['Failed to find a clipboard manager'.padEnd(cw)];
-		// download: wrap path
-		const lines = ['file downloaded to:'.padEnd(cw)];
-		let p = callout.path;
-		while (p.length > cw) {
-			lines.push(p.slice(0, cw)); p = p.slice(cw);
-		}
-		lines.push(p.padEnd(cw));
-		return lines;
-	}
 
 	const TABLE = [
 		'┌────────┬───────────────────────┐',
@@ -254,8 +311,7 @@ export function renderWaiting(
 
 	function render() {
 		scr.hideCursor();
-		const cw     = Math.min(scr.w - 8, 52);
-		const ox     = Math.floor((scr.w - cw) / 2);
+		const ox     = Math.floor((scr.w - 52) / 2);
 		const oy     = Math.max(1, Math.floor((scr.h - 11) / 2));
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
@@ -268,24 +324,13 @@ export function renderWaiting(
 		copyBtn.render(scr,     { x: ox,      y: oy + 3, w: 14, h: 1 }, ring.isFocused('copy'),     theme);
 		downloadBtn.render(scr, { x: ox + 16, y: oy + 3, w: 14, h: 1 }, ring.isFocused('download'), theme);
 
-		const cls  = calloutLines(cw);
-		const tY   = callout ? oy + 5 + cls.length : oy + 5;
-
-		// render callout
-		for (let i = 0; i < cls.length; i++) {
-			scr.fillRect(ox, oy + 5 + i, cw, 1, theme.calloutBg);
-			scr.moveTo(ox, oy + 5 + i);
-			scr.write(colorBg(theme.calloutBg) + colorFg(theme.calloutFg) + cls[i] + ansi.reset);
-		}
-
-		// table
 		for (let i = 0; i < TABLE.length; i++) {
-			scr.moveTo(ox, tY + i);
+			scr.moveTo(ox, oy + 5 + i);
 			scr.write(colorFg(theme.fg) + TABLE[i] + ansi.reset);
 		}
 	}
 
-	setupView(scr, render, ev => {
+	setupView(scr, theme, render, ev => {
 		if (ev.kind === 'key') {
 			if (ev.key.ctrl && ev.key.name === 'c') {
 				process.emit('SIGINT'); return;
@@ -319,6 +364,7 @@ export function renderJoin(
 		onConnect:   (invite: InvitePayload) => void
 	},
 ): void {
+	disposeSidebar();
 	_scrollView = null; _chatScreen = null; _chatRender = null; _errorDisplay = null;
 	const theme = loadTheme(readConfig());
 
@@ -405,6 +451,7 @@ export function renderJoin(
 		const oy = Math.max(1, Math.floor((scr.h - 20) / 2));
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
+		drawBanner(scr, oy);
 
 		scr.moveTo(ox, oy);     scr.write(colorFg(theme.fg) + 'Path to .room file:' + ansi.reset);
 		pathInput.render(scr,   { x: ox, y: oy + 1, w: cw,  h: 1 }, ring.isFocused('path'),    theme);
@@ -443,7 +490,7 @@ export function renderJoin(
 		});
 	}
 
-	setupView(scr, render, ev => {
+	setupView(scr, theme, render, ev => {
 		if (ev.kind === 'key') {
 			if (ev.key.ctrl && ev.key.name === 'c') {
 				process.emit('SIGINT'); return;
@@ -487,28 +534,64 @@ interface PeerInfo {
 export function renderChat(
 	scr: Screen,
 	opts: {
-		username: string
-		peers:    Map<string, PeerInfo>
-		onSend:   (text: string) => void
-		onFile:   (filePath: string) => Promise<void>
-		onRotate: () => void
+		username:        string
+		peers:           Map<string, PeerInfo>
+		onSend:          (text: string) => void
+		onFile:          (filePath: string) => Promise<void>
+		onRotate:        () => void
+		getFingerprints: () => { local: FingerprintSurface; peers: { username: string; fingerprint: FingerprintSurface }[] }
 	},
 ): void {
 	_chatScreen = scr;
-	const theme = loadTheme(readConfig());
+	const cfg   = readConfig();
+	const theme = loadTheme(cfg);
 
 	const scrollView = new ScrollView('msgArea');
 	_scrollView = scrollView;
 
+	const lblSend    = cfg.icons?.send    ?? '>';
+	const lblAttach  = cfg.icons?.attach  ?? '+';
+	const lblRatchet = cfg.icons?.ratchet ?? 'R';
+
 	const chatInput = new TextInput('chatInput', '');
-	const sendBtn   = new Button('sendBtn',   '>',  () => doSend());
-	const rotateBtn = new Button('rotateBtn', 'R',  () => opts.onRotate());
-	const attachBtn = new Button('attachBtn', '+',  () => enterPicking());
+	const sendBtn   = new Button('sendBtn',   lblSend,    () => doSend());
+	const attachBtn = new Button('attachBtn', lblAttach,  () => enterPicking());
+	const rotateBtn = new Button('rotateBtn', lblRatchet, () => opts.onRotate());
+
+	// Sidebar mirrors the web's two-mode pane. Hidden by default; toggled with
+	// Ctrl+E (event log) and Ctrl+V (verify). Width is read from / persisted to
+	// the user's config.
+	disposeSidebar();
+	const sidebar = new Sidebar(readSidebarWidth(cfg), opts.getFingerprints, opts.username);
+	_sidebar = sidebar;
+	sidebar.attach(() => {
+		scr.markDirty();
+		chatDoRender();
+	});
 
 	const ring = new FocusRing();
-	ring.register('chatInput'); ring.register('sendBtn');
-	ring.register('rotateBtn'); ring.register('attachBtn'); ring.register('msgArea');
-	const baseWidgets: Widget[] = [chatInput, sendBtn, rotateBtn, attachBtn, scrollView];
+	_focusRing = ring;
+	function rebuildRing() {
+		ring.clear();
+		if (picking) {
+			ring.register('pathInput'); ring.register('cancelBtn');
+		} else {
+			ring.register('chatInput'); ring.register('sendBtn');
+			ring.register('attachBtn'); ring.register('rotateBtn'); ring.register('msgArea');
+			if (sidebar.isOpen() && sidebarLayoutWidth() > 0) ring.register('sidebar');
+		}
+	}
+
+	// Landing on msgArea arms the attachment cursor; landing anywhere else
+	// (input bar, action buttons, file picker) re-arms auto-scroll so the
+	// view snaps to the latest line. Sidebar focus stays parked.
+	function afterFocusChange() {
+		const fid = ring.current();
+		if (fid === 'msgArea')      scrollView.selectLatest();
+		else if (fid !== 'sidebar') scrollView.enableAutoScroll();
+	}
+
+	const baseWidgets: Widget[] = [chatInput, sendBtn, rotateBtn, attachBtn, scrollView, sidebar];
 
 	// FilePicker state
 	let picking        = false;
@@ -518,10 +601,61 @@ export function renderChat(
 	let tabIdx         = -1;
 	let tabCycled      = '';
 
+	rebuildRing();
+
+	function showHelp(): void {
+		const text = [
+			'available commands:',
+			'  /exit (/quit, /q, /part)  quit covcom',
+			'  /ratchet                  rotate keys (Ctrl+R)',
+			'  /events                   toggle event log (Ctrl+E)',
+			'  /verify                   toggle verify pane (Ctrl+V)',
+			'  /help (/?)                show this list',
+		].join('\n');
+		appendMessage({ sender: 'system', text, isSelf: false, senderIndex: 7 });
+	}
+
+	const commands: Record<string, () => void> = {
+		exit: () => {
+			process.emit('SIGINT');
+		},
+		quit: () => {
+			process.emit('SIGINT');
+		},
+		q: () => {
+			process.emit('SIGINT');
+		},
+		part: () => {
+			process.emit('SIGINT');
+		},
+		ratchet: () => opts.onRotate(),
+		events: () => toggleMode('event-log'),
+		verify: () => toggleMode('verify'),
+		help: () => showHelp(),
+		'?': () => showHelp(),
+	};
+
+	function dispatchCommand(raw: string): void {
+		const name = raw.slice(1).split(/\s+/)[0].toLowerCase();
+		const fn   = commands[name];
+		if (fn) {
+			fn(); return;
+		}
+		appendMessage({
+			sender: 'system',
+			text: `unknown command: ${raw}. type /help for a list`,
+			isSelf: false,
+			senderIndex: 7,
+		});
+	}
+
 	function doSend() {
 		const text = chatInput.value.trim();
 		if (!text) return;
 		chatInput.setValue('');
+		if (text.startsWith('/')) {
+			dispatchCommand(text); return;
+		}
 		opts.onSend(text);
 	}
 
@@ -531,8 +665,7 @@ export function renderChat(
 		cancelBtn  = new Button('cancelBtn', 'x', () => exitPicking());
 		tabMatches = []; tabIdx = -1; tabCycled = '';
 
-		ring.clear();
-		ring.register('pathInput'); ring.register('cancelBtn');
+		rebuildRing();
 		scr.markDirty();
 	}
 
@@ -540,9 +673,7 @@ export function renderChat(
 		picking   = false;
 		pathInput = null; cancelBtn = null;
 
-		ring.clear();
-		ring.register('chatInput'); ring.register('sendBtn');
-		ring.register('rotateBtn'); ring.register('attachBtn'); ring.register('msgArea');
+		rebuildRing();
 		scr.markDirty();
 	}
 
@@ -560,27 +691,75 @@ export function renderChat(
 		pathInput.cursor = tabCycled.length;
 	}
 
+	// Compute the actual sidebar column width given the current screen size.
+	// Returns 0 when the sidebar should not be drawn (closed, or terminal too
+	// narrow). Reserves 1 col for the separator.
+	function sidebarLayoutWidth(): number {
+		if (!sidebar.isOpen()) return 0;
+		if (scr.w < SIDEBAR_MIN_COLS) return 0;
+		const w = Math.floor(scr.w * sidebar.width / 100);
+		return Math.max(10, Math.min(w, scr.w - 24));
+	}
+
+	function toggleMode(target: SidebarMode) {
+		if (target === null) return;
+		const prev = sidebar.mode;
+		if (prev === target)      sidebar.setMode(null);
+		else                      sidebar.setMode(target);
+		rebuildRing();
+		// When opening from closed, jump focus to the sidebar so keyboard nav works.
+		if (prev === null && sidebar.mode !== null) ring.setById('sidebar');
+		// When closing, drop focus back onto chatInput.
+		if (sidebar.mode === null) ring.setById('chatInput');
+		afterFocusChange();
+		scr.markDirty();
+	}
+
 	function render() {
 		scr.hideCursor();
-		const msgH = scr.h - 3;
-		const sepY = scr.h - 2;
-		const barY = scr.h - 1;
+		const sideW   = sidebarLayoutWidth();
+		const sideOn  = sideW > 0;
+		const chatW   = sideOn ? scr.w - sideW - 1 : scr.w;
+		const sepY    = scr.h - 1;
+		const barY    = scr.h;
+		const msgH    = scr.h - 2;
 
-		scrollView.render(scr, { x: 1, y: 1, w: scr.w, h: msgH }, ring.isFocused('msgArea'), theme);
+		scrollView.render(scr, { x: 1, y: 1, w: chatW, h: msgH }, ring.isFocused('msgArea'), theme);
 
-		// separator
-		scr.fillRect(1, sepY, scr.w, 1, theme.barBg);
-		// bar background
-		scr.fillRect(1, barY, scr.w, 1, theme.barBg);
+		// chat-side separator and input bar
+		scr.fillRect(1, sepY, chatW, 1, theme.barBg);
+		scr.fillRect(1, barY, chatW, 1, theme.barBg);
 
 		if (picking && pathInput && cancelBtn) {
-			pathInput.render(scr, { x: 2, y: barY, w: scr.w - 6, h: 1 }, ring.isFocused('pathInput'), theme);
-			cancelBtn.render(scr, { x: scr.w - 3, y: barY, w: 3, h: 1 }, ring.isFocused('cancelBtn'), theme);
+			const wIcon  = [...lblAttach].length;
+			const iconX  = 2;
+			const inputX = iconX + wIcon + 1;
+			const inputW = Math.max(1, chatW - 3 - inputX);
+
+			scr.moveTo(iconX, barY);
+			scr.write(colorBg(theme.barBg) + colorFg(theme.attachBg) + ansi.bold + lblAttach + ansi.reset);
+
+			pathInput.render(scr, { x: inputX,    y: barY, w: inputW, h: 1 }, ring.isFocused('pathInput'), theme);
+			cancelBtn.render(scr, { x: chatW - 3, y: barY, w: 3,      h: 1 }, ring.isFocused('cancelBtn'), theme);
 		} else {
-			chatInput.render(scr, { x: 2,          y: barY, w: scr.w - 16, h: 1 }, ring.isFocused('chatInput'), theme);
-			sendBtn.render(scr,   { x: scr.w - 13, y: barY, w: 5,          h: 1 }, ring.isFocused('sendBtn'),   theme);
-			rotateBtn.render(scr, { x: scr.w - 7,  y: barY, w: 4,          h: 1 }, ring.isFocused('rotateBtn'), theme);
-			attachBtn.render(scr, { x: scr.w - 3,  y: barY, w: 3,          h: 1 }, ring.isFocused('attachBtn'), theme);
+			const wSend    = [...lblSend].length    + 2;
+			const wAttach  = [...lblAttach].length  + 2;
+			const wRatchet = [...lblRatchet].length + 2;
+			const xRatchet = chatW - wRatchet;
+			const xAttach  = xRatchet - wAttach;
+			const xSend    = xAttach - wSend;
+			const inputW   = Math.max(1, xSend - 3);
+
+			chatInput.render(scr, { x: 2,        y: barY, w: inputW,   h: 1 }, ring.isFocused('chatInput'), theme);
+			sendBtn.render(scr,   { x: xSend,    y: barY, w: wSend,    h: 1 }, ring.isFocused('sendBtn'),   theme);
+			attachBtn.render(scr, { x: xAttach,  y: barY, w: wAttach,  h: 1 }, ring.isFocused('attachBtn'), theme);
+			rotateBtn.render(scr, { x: xRatchet, y: barY, w: wRatchet, h: 1 }, ring.isFocused('rotateBtn'), theme);
+		}
+
+		if (sideOn) {
+			// vertical separator column
+			scr.fillRect(chatW + 1, 1, 1, scr.h, theme.barBg);
+			sidebar.render(scr, { x: chatW + 2, y: 1, w: sideW, h: scr.h }, ring.isFocused('sidebar'), theme);
 		}
 
 		// cursor
@@ -594,7 +773,7 @@ export function renderChat(
 
 	_chatRender = render;
 
-	setupView(scr, render, ev => {
+	setupView(scr, theme, render, ev => {
 		if (ev.kind === 'key') {
 			const key = ev.key;
 			if (key.ctrl && key.name === 'c') {
@@ -606,7 +785,11 @@ export function renderChat(
 					exitPicking(); return;
 				}
 				if (key.name === 'enter') {
-					const p = resolve(pathInput.value.trim());
+					const raw = pathInput.value.trim();
+					if (!raw) {
+						exitPicking(); return;
+					}
+					const p = resolve(raw);
 					exitPicking();
 					void opts.onFile(p);
 					return;
@@ -630,11 +813,43 @@ export function renderChat(
 			if (key.ctrl && key.name === 'r') {
 				opts.onRotate(); return;
 			}
+			if (key.ctrl && key.name === 'e') {
+				toggleMode('event-log'); return;
+			}
+			if (key.ctrl && key.name === 'v') {
+				toggleMode('verify'); return;
+			}
+			if (key.name === 'escape' && sidebar.isOpen() && ring.isFocused('sidebar')) {
+				sidebar.setMode(null);
+				rebuildRing();
+				ring.setById('chatInput');
+				afterFocusChange();
+				scr.markDirty(); return;
+			}
+			if (key.name === 'escape' && ring.isFocused('msgArea')) {
+				ring.setById('chatInput');
+				afterFocusChange();
+				scr.markDirty(); return;
+			}
+			// Width-stepping is only active while focus is on the sidebar so the
+			// chat input still accepts '+'/'-' as normal characters.
+			if (ring.isFocused('sidebar') && key.ch === '+') {
+				writeSidebarWidth(sidebar.stepWidth(+1));
+				scr.markDirty(); return;
+			}
+			if (ring.isFocused('sidebar') && key.ch === '-') {
+				writeSidebarWidth(sidebar.stepWidth(-1));
+				scr.markDirty(); return;
+			}
 			if (key.name === 'tab' && !key.shift) {
-				ring.next(); scr.markDirty(); return;
+				ring.next();
+				afterFocusChange();
+				scr.markDirty(); return;
 			}
 			if (key.name === 'tab' && key.shift)  {
-				ring.prev(); scr.markDirty(); return;
+				ring.prev();
+				afterFocusChange();
+				scr.markDirty(); return;
 			}
 
 			const fw = baseWidgets.find(w => w.id === ring.current());
@@ -655,6 +870,11 @@ export function renderChat(
 					if (m.button === 64) scrollView.scrollUp(3);
 					else                  scrollView.scrollDown(3);
 					scr.markDirty();
+				} else if (sidebar.isOpen() &&
+				    m.x >= sidebar.rect.x && m.x < sidebar.rect.x + sidebar.rect.w &&
+				    m.y >= sidebar.rect.y && m.y < sidebar.rect.y + sidebar.rect.h) {
+					sidebar.scrollByLines(m.button === 64 ? -3 : +3);
+					scr.markDirty();
 				}
 				return;
 			}
@@ -671,6 +891,7 @@ export function renderChat(
 					: clickHit(baseWidgets, m.x, m.y);
 				if (aw) {
 					ring.setById(aw.id);
+					afterFocusChange();
 					aw.onClick?.();
 					scr.markDirty();
 				}
@@ -695,10 +916,15 @@ export function appendMessage(msg: {
 	senderIndex: number
 }): void {
 	if (!_scrollView || !_chatScreen) {
-		// not in chat — route system messages (server errors, etc.) to active view
+		// not in chat; route system messages (server errors, etc.) to active view
 		if (msg.sender === 'system' && _errorDisplay) _errorDisplay(msg.text);
 		return;
 	}
+	// Snap to bottom when the user is acting on the input bar (chat input,
+	// send/rotate/attach, or the file picker). Reading backlog (msgArea) or
+	// the sidebar (verify / event log) preserves their scroll position.
+	const fid = _focusRing?.current() ?? '';
+	if (fid !== 'msgArea' && fid !== 'sidebar') _scrollView.enableAutoScroll();
 	_scrollView.addMessage(msg);
 	_chatScreen.markDirty();
 	chatDoRender();
@@ -712,8 +938,11 @@ export function appendFile(msg: {
 	isSelf:      boolean
 	senderIndex: number
 	saved?:      string
+	download?:   () => Promise<string>
 }): void {
 	if (!_scrollView || !_chatScreen) return;
+	const fid = _focusRing?.current() ?? '';
+	if (fid !== 'msgArea' && fid !== 'sidebar') _scrollView.enableAutoScroll();
 	_scrollView.addFile(msg);
 	_chatScreen.markDirty();
 	chatDoRender();

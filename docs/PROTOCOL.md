@@ -4,7 +4,7 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
+XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-party
 ```
 
 # COVCOM Protocol Spec
@@ -22,6 +22,7 @@ XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
 > - [session lifecycle](#session-lifecycle)
 > - [the server](#the-server)
 > - [the clients](#the-clients)
+> - [identity claims](#identity-claims)
 > - [security properties](#security-properties)
 > - [honest limitations](#honest-limitations)
 
@@ -80,7 +81,7 @@ chain until someone catches on. The ratchet limits that window by
 periodically generating a new chain seed from fresh cryptographic material.
 
 The Double Ratchet algorithm was originally published as the Axolotl Ratchet
-in 2013 — named for the Mexican salamander famous for regenerating lost
+in 2013, named for the Mexican salamander famous for regenerating lost
 limbs. The name fits: compromise a key, the next ratchet step heals it. The
 [rename to Double Ratchet][DR-RENAME] happened before the first public spec
 release, but the regeneration metaphor stuck.
@@ -188,7 +189,7 @@ enter at exactly those positions, not at epoch 0.
 
 Once you have received a seed from every current member, you fire the
 welcome ratchet. The joiner always initiates this step, not the existing
-members — the joiner is the only principal guaranteed to be present at join
+members. The joiner is the only principal guaranteed to be present at join
 time, so no host election is needed and the protocol stays symmetric. Your
 epoch advances, and you broadcast your fresh chain credentials to the group. Existing members set up receive chains for you
 and can now decrypt your messages. You are in.
@@ -306,10 +307,26 @@ client side of the reconnect flow is covered in
 COVCOM ships two clients and a Docker image.
 
 The web client is a Vite-built TypeScript application with no UI framework.
-Its state machine is a single module-level variable tracking the session
-phase: landing, joining, waiting in the lobby, and chat. System events
-such as peer joins, peer departures, and other people's key rotations are
-toggleable. Your own key rotations are always visible.
+State lives in a single in-memory store keyed by screen (landing, joining,
+waiting, ready) plus chat-history and sidebar UI flags. A shell module
+mounts the matching view and latches an "ever ready" flag so the chat
+view stays mounted across the ready and post-handshake lobby states; the
+input bar swaps to an armored-invite block when the room is back in the
+lobby, and the chat history stays on screen across the transition.
+
+The header bar holds three buttons. The fingerprint badge is tinted with
+the local ambient color and opens a sidebar panel listing the swatch row
+and hex for you and every peer side by side. The log button opens a
+per-session wire-event sidebar that captures every inbound and outbound
+WebSocket frame with redacted payloads and expandable detail rows. The
+visibility toggle hides peer joins, peer departures, and dropped-message
+notices when the chat history gets noisy. Key rotation rows are always
+visible, regardless of who triggered them.
+
+The waiting view shows the armored invite as text, a QR code rendering of
+the same bytes, copy and download buttons, and a small table summarizing
+the active cipher suite. File attachments arrive via a drop overlay that
+covers the entire page during an active drag.
 
 The CLI is a compiled Bun binary with a custom terminal UI built from
 scratch using only `process.stdin`, `process.stdout`, and ANSI escape
@@ -327,6 +344,83 @@ The Docker image is two stages: a Bun build stage for the web client and
 server, then Caddy 2 Alpine as a reverse proxy with the Bun server behind
 it. There are no build arguments. All configuration is runtime environment
 variables.
+
+---
+
+## identity claims
+
+Every session mints a fresh Ed25519 signing keypair on construction. The
+public key publishes once in the initial `identify`, wrapped in a signed
+claim that binds it to the username and the session's ML-KEM ratchet ek.
+Every later structural event (ratchet step, ek update) ships a signed
+continuation claim; every broadcast carries a detached signature over its
+ciphertext.
+
+The signing keypair is ephemeral. It lives in the same memory as the chain
+seed and is wiped in `dispose()`. Nothing reaches disk. Compromise across
+sessions is impossible because there is nothing to persist.
+
+**Claim payload.** The signed bytes bind the session public key, the
+current ratchet ek, the username, a 16-byte session id derived from the
+room id, the local epoch, a monotonic sequence number, a millisecond
+timestamp, and the BLAKE3 hash of the previous claim's payload (or 32
+zeros for the first claim). The wire envelope follows
+leviathan-crypto's v3 attached form, signed with `Ed25519PreHashSuite`
+(formatEnum `0x11`) under the ctx string `covcom-identity-claim-v3`. See
+[CRYPTOGRAPHY.md](./CRYPTOGRAPHY.md) for the byte layout.
+
+**Verification.** The first claim a receiver sees from a peer
+self-attests. The receiver extracts the session pk from the payload and
+uses it to verify the signature, then records the pk as that peer's
+identity for the rest of the session, anchoring continuity at whatever
+sequence number that first claim carried. Anchoring trust-on-first-sight
+matters because a late joiner reaches an established room after the
+existing members have already ratcheted; their current claim is well past
+sequence zero. Every later claim from the same peer must carry the same
+session pk, must increment the sequence number by one from the observed
+baseline, and must reference the previous claim's BLAKE3 hash as
+`prevLogRoot`. A break in either chain rejects the claim and surfaces a
+system message to the user.
+
+**Per-message signatures.** Every `broadcast` carries a detached
+signature over `counter || epoch || sender || ts || ciphertext` under
+the ctx `covcom-message-sig-v3`. The receiver verifies before
+decrypting. A tampered or reattributed message fails signature check
+before any AEAD work runs.
+
+**Per-sender Merkle log.** Each client maintains a SHA-256 Merkle tree
+per other sender for the duration of the session. Leaves are the
+canonical claim-payload bytes. The tree provides inclusion proofs for
+specific events and exercises the leviathan-crypto v3 Merkle substrate.
+Per-message signatures stay outside the log, which keeps log growth
+bounded by structural-event count rather than message count.
+
+**Session fingerprint.** The session signing public key drives two
+surfaces. Both derive deterministically from `BLAKE3.hash(sessionPk, 16)`.
+The full 16 bytes split into eight chunks of two bytes; each chunk maps
+through an OKLCh perceptual remap to a sRGB hex color. The row of eight
+colors is the out-of-band verification surface, with a 128-bit
+second-preimage budget. The first two bytes form a single OKLCh color
+rendered as the user's ambient badge. The web client tints the
+fingerprint button in the header with the ambient color; clicking it
+opens a Verify sidebar panel that lists the swatch row and hex for you
+and every peer side by side. The CLI opens an equivalent Verify pane in
+its sidebar with `Ctrl+V`. Users compare their colors with peers
+out-of-band. A mismatch means one of you is looking at a different
+session than the other thinks.
+
+**What this layer does not defend against.** The server cannot inject a
+forged `peer_joined` for an existing peer mid-session, because every
+later claim would fail the chain continuity check. The server can, in
+principle, swap the very first `identify` claim seen by a fresh joiner,
+because the joiner has no prior session pk for that peer. Out-of-band
+fingerprint comparison is the only mitigation against first-contact
+substitution, which is why the color row exists.
+
+**Versioning.** The v3 wire format is version-locked to leviathan-crypto's
+v3 signing API surface. All covcom ctx strings carry `-v3` suffixes
+(`covcom-identity-claim-v3`, `covcom-message-sig-v3`). Future breaking
+changes in either project bump both in lockstep.
 
 ---
 
@@ -356,12 +450,27 @@ quantum adversary ([§8.11][S811]).
 bytes, a 2^128 space. You cannot guess a room to join; you need an invite.
 
 **Zero persistent identity.** No accounts, no registration, no retained
-history. Usernames are per-room and first-come-first-served. When the room
-expires, nothing remains. The server never sees a persistent identity key —
-it only knows your public key for the duration of a session. Signal's X3DH
-handshake requires long-term identity keys that the server observes during
-initial key agreement ([Johansen et al.][JOH18]); COVCOM has no equivalent.
-There is nothing to correlate across sessions.
+history. Usernames are per-room and first-come-first-served. The session
+signing key, the ML-KEM keypair, and every chain key all live in memory
+for the lifetime of one session and are wiped on disposal. The server
+never sees anything that persists across sessions. Signal's X3DH handshake
+requires long-term identity keys that the server observes during initial
+key agreement ([Johansen et al.][JOH18]); COVCOM has no equivalent. There
+is nothing to correlate across sessions.
+
+**Within-session identity binding.** Identity claims sign the session's
+public state (ratchet ek, username) with the session signing key, so the
+server cannot reattribute messages or substitute keys mid-session without
+breaking the chain. See [identity claims](#identity-claims).
+
+**Per-message provenance.** Every broadcast carries a detached signature
+under the session signing key, verified before decryption. Forged or
+reattributed messages fail signature check before any AEAD work runs.
+
+**Tamper-evident transcript.** Each client builds a SHA-256 Merkle log of
+the structural events it observes from every other sender. Split views,
+where the server feeds different participants different orderings, are
+detectable by comparing fingerprints out-of-band.
 
 ---
 
@@ -381,15 +490,17 @@ Without it, old epoch state remains open until the three-epoch pruning window
 closes. For ephemeral chat the difference is small, but it is a known
 deviation from the tightest possible PCS cleanup.
 
-**No signed session transcripts.** Authentication covers individual
-ciphertexts; Poly1305 tells you the message was encrypted by someone who
-held the chain key. It does not prove the server delivered messages in the
-order they were sent. The server could reorder or replay within a session
-without either party being able to prove it cryptographically.
+**First-contact MITM is undefendable in-band.** A malicious server can
+swap the very first identify claim a fresh joiner sees for a given peer.
+The joiner has no prior session pk to verify against, so the substitute
+pk verifies its own claim. Every subsequent claim must chain off this
+forged baseline, so mid-session substitution still fails, but the
+initial impression is the attacker's. Out-of-band fingerprint comparison
+is the only mitigation; the color row exists for this purpose.
 
 **Username squatting on reconnect.** The session model has no persistent
-identity. If you disconnect and someone else claims your username before you
-reconnect, you rejoin as a stranger with a new name. This is a known
+identity. If you disconnect and someone else claims your username before
+you reconnect, you rejoin as a stranger with a new name. This is a known
 limitation of the first-come-first-served model and is acceptable for
 ephemeral use.
 

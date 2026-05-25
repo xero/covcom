@@ -4,7 +4,7 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
+XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-party
 ```
 
 # COVCOM Usage Reference
@@ -48,7 +48,19 @@ rotates immediately after use.
 The group uses a Sender Keys model: one send chain per participant, not one
 per pair. O(N) state regardless of room size.
 
-This implements the [Sparse Post-Quantum Ratchet](https://signal.org/docs/specifications/doubleratchet/#the-sparse-post-quantum-ratchet) from Signal's Double Ratchet spec (§5, Revision 4). For more detail, see [PROTOCOL.md](./docs/PROTOCOL.md).
+Every session also mints a fresh Ed25519 signing keypair on construction.
+Identity claims and every broadcast are signed under it. Each peer's
+claims form a BLAKE3-chained log: every claim binds the previous payload's
+hash, so the server cannot reorder, drop, or substitute a structural event
+mid-session without breaking the chain. The session signing public key
+derives a fingerprint surface (`BLAKE3(sessionPk, 16)` → eight OKLCh
+swatches + 16-char hex) for out-of-band verification. Both clients expose
+a sidebar with two panels: **Verify** lists your fingerprint and every
+peer's side-by-side; **Event Log** captures every inbound/outbound
+WebSocket frame and every crypto action with redacted payloads and
+expandable detail rows.
+
+This implements the [Sparse Post-Quantum Ratchet](https://signal.org/docs/specifications/doubleratchet/#the-sparse-post-quantum-ratchet) from Signal's Double Ratchet spec (§5, Revision 4). For more detail, see [PROTOCOL.md](./PROTOCOL.md).
 
 Cryptographic primitives are provided by [leviathan-crypto](https://github.com/xero/leviathan-crypto).
 
@@ -87,14 +99,14 @@ The image is published to two registries on every release:
 
 Two tags are published per release:
 
-- `X.Y.Z` — the pinned semantic version. Use this in production.
-- `latest` — moves with each release. A new release will silently upgrade you on the next pull.
+- `X.Y.Z` is the pinned semantic version. Use this in production.
+- `latest` moves with each release. A new release will silently upgrade you on the next pull.
 
 If a vulnerability is disclosed, the affected `X.Y.Z` tag is hard-deprecated
-via the [tombstone process](../docker-tag-tombstone.md): pulling it then
-exits nonzero with an error message pointing at the safe replacement. Pinning
-a specific version means you find out immediately. See [SECURITY.md](../SECURITY.md)
-for the full disclosure and deprecation policy.
+via a tombstone wrapper: pulling it then exits nonzero with an error message
+pointing at the safe replacement. Pinning a specific version means you find
+out immediately. See [SECURITY.md](../SECURITY.md) for the full disclosure
+and deprecation policy.
 
 **Pull and run:**
 
@@ -238,7 +250,13 @@ Open `http://localhost:5173`.
 bun build:web
 ```
 
-Output goes to `web/dist/`. Serve it from any static file host.
+Produces `web/dist/`: an inlined `index.html` plus a same-origin pool worker
+(`covcom-pool-worker.js`) used for encrypted file transfer. The policy is
+strict-CSP friendly — `worker-src 'self'` with no `blob:`, so file transfer
+works in Safari/WebKit under a strict CSP (see
+[leviathan-crypto/docs/csp.md](https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md)).
+Serve the directory from any static file host with no build step, or let
+`bun build:docker` bake it into the image.
 
 **Preview the production build:**
 
@@ -248,16 +266,6 @@ bun run --cwd web preview
 
 Serves the contents of `web/dist/` locally for smoke-testing the bundled
 output.
-
-**Container build (single-file inline bundle):**
-
-```sh
-bun build:web:container
-```
-
-Produces a single self-contained HTML file for embedding in the Docker
-image or hosting from any static host without a build step. Run before
-`bun build:docker` if you want the latest web client baked into the image.
 
 ---
 
@@ -311,7 +319,7 @@ interactively.
   "server": "chat.example.com",
   "username": "xero",
   "copyCmd": "xsel -b",
-  "systemMessages": true,
+  "showSystem": true,
   "theme": {
     "btnFocusBg": { "type": "256", "n": 33 },
     "yourName":   { "type": "hex", "value": "#ff8800" }
@@ -333,7 +341,14 @@ CLI probes for `pbcopy`, `xclip`, `xsel`, and `wl-copy` in that order.
 | `Tab` / `Shift+Tab` | Cycle focus                           |
 | `Enter`             | Send message / confirm                |
 | `Ctrl+R`            | Rotate encryption keys (ratchet step) |
+| `Ctrl+E`            | Toggle event-log sidebar              |
+| `Ctrl+V`            | Toggle fingerprint-verify sidebar     |
 | `Ctrl+C`            | Quit and wipe session                 |
+
+When the sidebar has focus, `↑/↓` move selection in the event log, `PgUp/PgDn`
+page through, `Enter` expands the selected entry's details, and `+`/`-` step
+the sidebar width by 5%. `Esc` closes the sidebar. The sidebar is auto-hidden
+on terminals narrower than 80 columns.
 
 Files attach via the `+` button. Type or paste a path and use `Tab` for
 completion. Received files save to the current working directory; existing
@@ -346,8 +361,8 @@ filenames get a numeric suffix.
 **Create a room:**
 
 1. Enter a server address and a username, then select **Create Room**.
-2. The lobby screen shows an armored invite block. Copy or download it and
-   share it via any channel.
+2. The lobby screen shows an armored invite block, a QR code of the same
+   bytes, and copy/download buttons. Share it via any channel.
 3. The screen waits until a peer joins.
 
 **Join a room:**

@@ -4,7 +4,7 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
+XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-party
 ```
 
 # COVCOM CLI TUI Design Spec
@@ -33,7 +33,7 @@ src/tui/
 ├── screen.ts     terminal primitives, alternate buffer, cursor, fill, ANSI helpers
 ├── keys.ts       raw keypress + mouse event parser
 ├── focus.ts      focus ring, tab/shift-tab cycling, direct set-by-id
-├── widgets.ts    TextInput, TextArea, Button, ScrollView, FilePicker
+├── widgets.ts    TextInput, TextArea, Button, ScrollView, Sidebar, FilePicker
 └── views.ts      LoginView, WaitingView, JoinView, ChatView
 ```
 
@@ -254,7 +254,7 @@ interface Widget {
 ```
 
 `rect` is always written at the top of `render()` before drawing anything.
-this is what makes hit testing work — after every render pass, every widget's
+this is what makes hit testing work. After every render pass, every widget's
 `rect` reflects where it currently lives on screen.
 
 ### `TextInput`
@@ -266,7 +266,7 @@ single-line. tracks value + cursor position.
   or a space if at end of string
 - backspace, left/right arrows, home/end, ctrl+a/e, ctrl+k (clear to end),
   ctrl+u (clear to start) all handled
-- enter: does not consume — propagates to view to trigger form action
+- enter: does not consume, propagates to view to trigger form action
 - paste: inserts pasted text at cursor position
 
 ### `TextArea`
@@ -316,8 +316,8 @@ class Button implements Widget {
 }
 ```
 
-disabled buttons render with `btnDisabledFg === btnDisabledBg` — label invisible,
-just a gray slab. clearly inert.
+disabled buttons render with `btnDisabledFg === btnDisabledBg`. The label is
+invisible, just a gray slab. clearly inert.
 
 ### `ScrollView`
 
@@ -340,7 +340,7 @@ type RenderedLine = {
 key behaviors:
 
 - new messages appended to `lines[]`, word-wrapped to current width
-- `autoScroll = true` by default — new messages scroll to bottom
+- `autoScroll = true` by default, so new messages scroll to bottom
 - scrolling up (keyboard or mouse wheel) disables autoScroll
 - scrolling back to bottom re-enables autoScroll
 - during render, fills each visible row with spaces at default bg (terminal inherits),
@@ -353,7 +353,7 @@ key behaviors:
   yourName: ┤ filename.ext ├
 ```
 
-actually simpler — just an inline color change mid-line:
+actually simpler, just an inline color change mid-line:
 
 ```
   yourName:  filename.ext
@@ -384,6 +384,76 @@ only when scrollView is focused.
 
 **mouse wheel:** scroll events whose `(x, y)` falls inside `scrollView.rect` always
 route to scrollView regardless of focus.
+
+### `Sidebar`
+
+two-mode side pane mirroring the web client's sidebar. either hidden, or
+showing the `event-log` (live session activity feed), or showing `verify` (the
+local + per-peer fingerprints as colored swatches + hex). data comes from the
+shared `eventLog.ts` ring buffer (subscribed to in `attach()`) and a
+`getFingerprints()` callback from `state.ts`. width is a percentage of the
+screen, persisted to `~/.config/covcom/config.json` under `sidebar.width`.
+
+```ts
+type SidebarMode = 'event-log' | 'verify' | null
+
+class Sidebar implements Widget {
+  id    = 'sidebar'
+  rect: Rect
+  mode:  SidebarMode
+  width: number       // bounded by SIDEBAR_WIDTH_MIN..MAX (10..70)
+
+  setMode(m: SidebarMode): void
+  isOpen(): boolean
+  setWidth(w: number): number
+  stepWidth(direction: -1 | 1): number
+  scrollByLines(delta: number): void
+
+  attach(onChange: () => void): () => void  // subscribes to event-log; returns dispose
+  dispose(): void
+}
+```
+
+event-log row layout (one line per entry, expanded entries insert detail
+lines beneath the header):
+
+```
+HH:MM:SS  →  message    you: hello there
+HH:MM:SS  ←  ratchet    peer1: keys rotated
+HH:MM:SS  ·  join       peer2 joined
+```
+
+- direction glyph: `→` out, `←` in, `·` local
+- `kind` column padded to 9 cols; error kinds (`fatal`, `error`) render in `theme.error`
+- summary truncated to remaining width with a trailing `…`
+- selected row (when sidebar focused) gets a `btnFocusBg` fill
+- enter on selected row toggles `expanded`; details render as `  key: value`
+  lines beneath the row in `theme.disabled`
+- auto-scrolls to bottom unless the user has scrolled away from the tail
+
+verify layout: ` You` heading, 8 colored 2-col swatches drawn with truecolor
+hex from `FingerprintSurface.swatches[]`, 16-char hex below. blank line, then
+each peer in the same shape with their username heading. no `[verified]`
+marker; verification is out-of-band, matching the web.
+
+**toggling and keybindings (handled in `renderChat`):**
+- `Ctrl+E` toggles `event-log`. open/switch/close semantics: closed → open in
+  event-log; open in verify → switch to event-log; open in event-log → close.
+- `Ctrl+V` toggles `verify`, same semantics.
+- when sidebar is focused: `↑/↓` move selection, `PgUp/PgDn` page, `Home/End`
+  jump, `Enter` expand/collapse the selected entry's details, `Esc` close.
+- when sidebar is focused: `+` widens by `SIDEBAR_WIDTH_STEP` (5%), `-` narrows
+  by the same. changes persist immediately via `writeSidebarWidth`. width
+  stepping is gated on focus so `+`/`-` still work as normal characters in
+  the chat input.
+- mouse wheel over the sidebar scrolls the event log (line-by-line, 3 lines
+  per tick), regardless of focus.
+
+**min-width fallback:** when `screen.w < SIDEBAR_MIN_COLS` (80), the sidebar
+is force-hidden even if `sidebar.isOpen()` is true. `Ctrl+E` / `Ctrl+V` still
+toggle the mode; on a subsequent resize past the threshold the sidebar
+re-appears. this keeps the chat usable on small terminals without losing the
+user's preference.
 
 ### `FilePicker`
 
@@ -504,7 +574,7 @@ copy success:
 
 copy failure:
   [Failed to find a clipboard manager]
-  bg=calloutBg, fg=calloutFg    (same color — content communicates state)
+  bg=calloutBg, fg=calloutFg    (same color, content communicates state)
 
 download success (path wraps continuously, no truncation):
   [file downloaded to:          ]
@@ -514,8 +584,8 @@ download success (path wraps continuously, no truncation):
 ```
 
 the callout is rendered as filled rows of width `contentW`. each row is padded
-with spaces to fill the full width. path lines wrap purely by character count —
-no ellipsis, no truncation. tmux users can select the path directly.
+with spaces to fill the full width. path lines wrap purely by character count,
+with no ellipsis and no truncation. tmux users can select the path directly.
 
 **download behavior:**
 - writes `<inviteFilename()>.room` to `process.cwd()`
@@ -534,23 +604,54 @@ no ellipsis, no truncation. tmux users can select the path directly.
 ### `ChatView`
 
 ```
-layout (full screen):
+layout (sidebar closed, full screen):
   msgArea   [ScrollView]  @ (1, 1)              w=screen.w   h=screen.h-3
   separator                                      1 row of barBg fill
-  chatInput [TextInput]   @ (2, screen.h-1)     w=screen.w-12
-  sendBtn   [Button]      @ (screen.w-9, ...)   w=5   label=">"
-  attachBtn [Button]      @ (screen.w-3, ...)   w=3   label="+"
+  chatInput [TextInput]   @ (2, screen.h-1)     w=inputW
+  sendBtn   [Button]      @ (xSend, ...)        w=cellW(send)+2     default label ">"
+  attachBtn [Button]      @ (xAttach, ...)      w=cellW(attach)+2   default label "+"
+  rotateBtn [Button]      @ (xRatchet, ...)     w=cellW(ratchet)+2  default label "R"
 
-tab order: chatInput → sendBtn → attachBtn → msgArea
+  positions are derived right-to-left from the right edge:
+    xRatchet = chatW - cellW(ratchet) - 2
+    xAttach  = xRatchet - cellW(attach) - 2
+    xSend    = xAttach - cellW(send) - 2
+    inputW   = max(1, xSend - 3)   // leaves a 1-col gap before sendBtn
+
+  labels come from `config.icons` (see [config](#config)); cellW counts
+  unicode codepoints so Nerd Font glyphs in supplementary plane render
+  in a single cell.
+
+layout (sidebar open):
+  sideW = floor(screen.w * sidebar.width / 100), clamped to [10, screen.w-24]
+  chatW = screen.w - sideW - 1
+  msgArea / separator / input bar use chatW instead of screen.w
+  vertical separator column @ x=chatW+1 (1 col, full height, barBg)
+  sidebar   [Sidebar]    @ (chatW+2, 1)         w=sideW   h=screen.h
+
+tab order: chatInput → sendBtn → attachBtn → rotateBtn → msgArea → sidebar
+  (sidebar is only registered when open and width > 0)
 ```
 
 **chat input special behavior:**
 - enter → sends message (calls send action), does not Tab to next widget
 - Tab → normal focus cycle
+- a value starting with `/` is dispatched as a slash command instead of
+  being sent. recognized commands: `/exit` (`/quit`, `/q`, `/part`) quit,
+  `/ratchet` rotate keys (Ctrl+R equivalent), `/events` toggle event log
+  (Ctrl+E equivalent), `/verify` toggle verify pane (Ctrl+V equivalent),
+  `/help` (`/?`) print the list. unknown slash inputs surface a system
+  message; the text is not transmitted.
 
 **scrollView focus:**
 - when msgArea is focused, up/down/pgup/pgdn scroll the chat
 - mouse wheel over msgArea scrolls regardless of focus
+
+**sidebar toggles (always active in chat mode):**
+- `Ctrl+E` toggles event-log mode
+- `Ctrl+V` toggles verify mode
+- when sidebar is open, focus jumps to it; closing returns focus to chatInput
+- see the `Sidebar` widget section above for in-pane bindings
 
 **FilePicker mode (attach):**
 - attachBtn.onClick() → ChatView enters `picking` state
@@ -558,10 +659,23 @@ tab order: chatInput → sendBtn → attachBtn → msgArea
 - `pathInput [TextInput]` takes chatInput's rect, with tab-completion active
 - enter → confirms path, calls upload handler, exits picking state
 - esc → cancels, exits picking state
+- sidebar remains rendered (its toggles still work) but is unfocusable while
+  picking; the focus ring is reduced to `pathInput → cancelBtn`
 
 **attach click in chat:**
 - mouse click on an attachment chip → calls download handler for that attachment id
 - no focus change, no keyboard equivalent needed for this action
+
+**file download flow:**
+- the download handler decrypts the file payload, resolves a non-colliding
+  path in `process.cwd()` via `resolveUniqueFilename` (existing filenames
+  receive a `_1`, `_2`, … suffix), and writes the plaintext via
+  `Bun.write`
+- on success: a Modal renders with title `File Downloaded` and a body of
+  `<filename>\n<resolved absolute path>`. an event-log entry is appended
+  with `direction: 'in'`, `kind: 'file'`
+- on failure: a system message is appended to the chat scroll with the
+  resolved path and the error reason; no modal renders
 
 ---
 
@@ -635,7 +749,7 @@ const defaultTheme: Theme = {
   peerMsg:       { type: 'ansi16', n: 15 },   // bright white
 
   attachBg:      { type: 'ansi16', n: 6  },   // cyan
-  attachFg:      { type: 'ansi16', n: 15 },   // bright white
+  attachFg:      { type: 'ansi16', n: 0  },   // black
 
   calloutBg:     { type: 'ansi16', n: 3  },   // yellow
   calloutFg:     { type: 'ansi16', n: 0  },   // black
@@ -647,32 +761,159 @@ const defaultTheme: Theme = {
 
 ### config extension
 
-`cli/src/config.ts` `Config` interface gains two new optional fields:
+see [config](#config) for the canonical list of every field, every theme
+slot, and an example file. the theme loader runs at startup as
+`const theme = { ...defaultTheme, ...config.theme }`, so any subset of
+slots can be overridden without restating the defaults.
 
-```ts
-interface Config {
-  server?:    string
-  username?:  string
-  authToken?: string
-  copyCmd?:   string          // e.g. "xsel -b", "xclip -selection clipboard"
-  theme?:     Partial<Theme>  // any subset of Theme slots
-}
+---
+
+## config
+
+config is read from `~/.config/covcom/config.json` at startup and written
+back by the CLI when the user changes a persisted setting (currently just
+the sidebar width). every field is optional; missing fields fall back to
+the documented default.
+
+### top-level fields
+
+| field            | type                    | default | notes                                                                                       |
+|------------------|-------------------------|---------|---------------------------------------------------------------------------------------------|
+| `server`         | string                  | unset   | prefilled into the Server DNS input on the login screen. updated after a successful create. |
+| `username`       | string                  | unset   | prefilled into the Username input on the login screen. updated after a successful create.   |
+| `copyCmd`        | string                  | unset   | clipboard command for "Copy Code". whitespace-split into argv. see [copyCmd](#copycmd).     |
+| `showSystem`     | boolean                 | `true`  | when `false`, system messages (`<peer> joined`, server errors, etc.) are not appended to the chat scroll. event log still receives them. |
+| `sidebar`        | `{ width?: number }`    | `{}`    | see [sidebar](#sidebar-1).                                                                  |
+| `icons`          | `{ send?, attach?, ratchet?, keys?: string }` | `{}` | glyph overrides for the chat input bar and key-rotation status. see [icons](#icons). |
+| `theme`          | `Partial<Theme>`        | `{}`    | per-slot color overrides. see [theme](#theme).                                              |
+
+### copyCmd
+
+the value is a single command string. covcom splits on whitespace and
+spawns the result with the armored invite piped to stdin.
+
+```json
+{ "copyCmd": "xsel -b" }
+{ "copyCmd": "xclip -selection clipboard" }
+{ "copyCmd": "wl-copy" }
+{ "copyCmd": "pbcopy" }
 ```
 
-the theme loader runs at startup: `const theme = { ...defaultTheme, ...config.theme }`.
+if unset, covcom probes `pbcopy`, `xclip -selection clipboard`, `xsel -b`,
+`wl-copy` in that order and uses the first one that succeeds.
 
-example `~/.config/covcom/config.json`:
+### sidebar
+
+| field               | type   | default | range | notes                                          |
+|---------------------|--------|---------|-------|------------------------------------------------|
+| `sidebar.width`     | number | `30`    | 10-70 | percent of terminal width. clamped on read.    |
+
+stepping `+` / `-` from inside the sidebar adjusts this value by 5% per
+press and writes it back to disk immediately. the sidebar is force-hidden
+when `screen.w < 80` regardless of this value.
+
+### icons
+
+| field           | type   | default | notes                                       |
+|-----------------|--------|---------|---------------------------------------------|
+| `icons.send`    | string | `">"`   | label for the send button.                  |
+| `icons.attach`  | string | `"+"`   | label for the attach button.                |
+| `icons.ratchet` | string | `"R"`   | label for the ratchet (key rotation) button. |
+| `icons.keys`    | string | `""`    | optional glyph shown before `keys rotated` in chat history when a ratchet occurs. empty (default) renders just `keys rotated`; a non-empty value renders `<icon> keys rotated` with one space between. emojis in terminals can mis-render width or break cursor positioning, which is why the default is unset. |
+
+labels can be any string, including multi-character text and Nerd Font /
+PUA glyphs. valid values include `">"`, `"send"`, `"❯"`, `">>"`,
+`"󰒊"`. each button is sized as `cellWidth(label) + 2`, giving exactly one
+column of background padding on each side. cell width is measured as the
+codepoint count, which is accurate for ASCII, BMP unicode, and the
+single-cell glyphs in the Nerd Font PUA ranges. labels containing
+combining marks or wide CJK characters render correctly but may not center
+visually.
+
+the three buttons render in this order from left to right: `send`,
+`attach`, `ratchet`. the rightmost button sits one column in from the
+right edge of the chat pane.
+
+### theme
+
+`theme` is a partial map of `Theme` slots. each slot accepts a
+`ColorValue`:
+
+```ts
+type ColorValue =
+  | { type: 'ansi16'; n: number }     // 0-15, the user's terminal palette
+  | { type: '256';    n: number }     // 0-255, xterm 256-color
+  | { type: 'hex';    value: string } // '#rrggbb' truecolor
+  | null                              // inherit terminal default (bg/fg only)
+```
+
+prefer `ansi16` for consistency with the user's shell theme. `256` and
+`hex` are escape hatches for users who want a specific color independent
+of the terminal palette.
+
+| slot                | default (ansi16 n) | role                                              |
+|---------------------|--------------------|---------------------------------------------------|
+| `bg`                | `null`             | screen background. `null` keeps the terminal default. |
+| `fg`                | `null`             | default text. `null` keeps the terminal default.  |
+| `inputBg`           | 0 (black)          | text input background.                            |
+| `inputFg`           | 15 (bright white)  | text input foreground.                            |
+| `btnBg`             | 8 (dark gray)      | unfocused button background.                      |
+| `btnFg`             | 15 (bright white)  | unfocused button foreground.                      |
+| `btnFocusBg`        | 4 (blue)           | focused button background.                        |
+| `btnFocusFg`        | 15 (bright white)  | focused button foreground.                        |
+| `btnDisabledBg`     | 8 (dark gray)      | disabled button background.                       |
+| `btnDisabledFg`     | 8 (dark gray)      | disabled button foreground (invisible label).     |
+| `barBg`             | 8 (dark gray)      | chat input bar and sidebar tab strip background.  |
+| `barFg`             | 15 (bright white)  | chat input bar foreground.                        |
+| `yourName`          | 14 (bright cyan)   | own username prefix in the chat scroll.           |
+| `yourMsg`           | 7 (white)          | own message body.                                 |
+| `peerName`          | 10 (bright green)  | peer username prefix in the chat scroll.          |
+| `peerMsg`           | 15 (bright white)  | peer message body.                                |
+| `attachBg`          | 6 (cyan)           | attachment chip background.                       |
+| `attachFg`          | 0 (black)          | attachment chip foreground.                       |
+| `attachSelectedBg`  | 2 (green)          | attachment chip background when keyboard-selected. |
+| `attachSelectedFg`  | 0 (black)          | attachment chip foreground when keyboard-selected. |
+| `calloutBg`         | 3 (yellow)         | callout strip background in WaitingView.          |
+| `calloutFg`         | 0 (black)          | callout strip foreground.                         |
+| `modalBg`           | 0 (black)          | modal body background.                            |
+| `modalFg`           | 15 (bright white)  | modal body foreground.                            |
+| `modalBorder`       | 6 (cyan)           | modal border ring.                                |
+| `modalTitle`        | 14 (bright cyan)   | modal title row.                                  |
+| `disabled`          | 8 (dark gray)      | secondary or muted UI text (status lines, etc.).  |
+| `error`             | 9 (bright red)     | error text (parse errors, server errors, etc.).   |
+| `evtTime`           | 8 (dark gray)      | event-log timestamp column.                       |
+| `evtArrow`          | 15 (bright white)  | event-log direction glyph (`→`, `←`, `·`).        |
+| `evtMsg`            | 15 (bright white)  | event-log summary body text.                      |
+| `evtKey`            | 8 (dark gray)      | event-log expanded-detail key label.              |
+| `evtVal`            | 15 (bright white)  | event-log expanded-detail value.                  |
+| `evtSelf`           | 5 (magenta)        | event-log username prefix when the user is you.   |
+| `evtPeer`           | 6 (cyan)           | event-log username prefix when the user is a peer. |
+| `evtKindDefault`    | 4 (blue)           | event-log kind column for uncategorized kinds.    |
+| `evtKindError`      | 1 (red)            | event-log kind column for `error`, `fatal`, `message-fail`, `claim-reject`, `decrypt-fail`, `send-fail`. |
+| `evtKindMember`     | 2 (green)          | event-log kind column for `join`, `rejoin`, `part`, `peer_joined`, `peer_left`. |
+| `evtKindRatchet`    | 3 (yellow)         | event-log kind column for `ratchet`, `ratchet-step`, `ratchet-step-fwd`, `ratchet_step`, `ratchet_step_fwd`. |
+
+### example
 
 ```json
 {
-  "server": "chat.example.com",
-  "username": "xero",
-  "copyCmd": "xsel -b",
-  "theme": {
-    "btnFocusBg":  { "type": "256",    "n": 33          },
-    "yourName":    { "type": "hex",    "value": "#ff8800" },
-    "peerName":    { "type": "ansi16", "n": 13           }
-  }
+	"server": "chat.example.com",
+		"username": "xero",
+		"copyCmd": "xsel -b",
+		"showSystem": true,
+		"sidebar": { "width": 35 },
+		"icons": {
+			"send": "󰒊",
+			"attach": "",
+			"ratchet": "󰒓",
+			"keys": "󱕵"
+		},
+		"theme": {
+			"btnFocusBg":     { "type": "256",    "n":33 },
+			"yourName":       { "type": "hex",    "value": "#ff8800" },
+			"peerName":       { "type": "ansi16", "n":13 },
+			"evtKindRatchet": { "type": "ansi16", "n":5 }
+		}
 }
 ```
 

@@ -1,6 +1,6 @@
 export interface KeyPair {
-	ek: Uint8Array // encapsulation key — 1184 bytes (MlKem768)
-	dk: Uint8Array // decapsulation key — 2400 bytes (MlKem768)
+	ek: Uint8Array // encapsulation key, 1184 bytes (MlKem768)
+	dk: Uint8Array // decapsulation key, 2400 bytes (MlKem768)
 }
 
 export interface InvitePayload {
