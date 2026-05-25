@@ -11,7 +11,7 @@ import {
 	wipe,
 } from '@covcom/lib';
 import { XChaCha20CipherBun } from './cipher-suites.js';
-import type { InvitePayload, MessageEnvelope } from '@covcom/lib';
+import type { InvitePayload, MessageEnvelope, FingerprintSurface } from '@covcom/lib';
 import { WS } from './ws.js';
 import { b64enc, b64dec, wsUrl, resolveUniqueFilename } from './util.js';
 import { writeConfig } from './config.js';
@@ -27,6 +27,7 @@ interface PeerInfo {
   ek: string;
   ratchetEk: string;
   colorIdx: number;
+  fingerprint: FingerprintSurface;
 }
 
 type AppState =
@@ -73,6 +74,12 @@ function httpUrl(server: string): string {
 	const host  = server.split(':')[0];
 	const local = host === 'localhost' || host.startsWith('127.');
 	return `${local ? 'http' : 'https'}://${server}`;
+}
+
+function peerFingerprints(peers: Map<string, PeerInfo>): { username: string; fingerprint: FingerprintSurface }[] {
+	const out: { username: string; fingerprint: FingerprintSurface }[] = [];
+	for (const [username, info] of peers) out.push({ username, fingerprint: info.fingerprint });
+	return out;
 }
 
 export function mount(
@@ -163,7 +170,7 @@ function doConnect(
 	roomSecret:  string,
 	dns:         string,
 	username:    string,
-	members:     { username: string; ek: string; ratchetEk: string }[],
+	members:     { username: string; ek: string; ratchetEk: string; claim: string }[],
 	isReconnect  = false,
 ): void {
 	let session  = new Session(generateKeypair(), roomId);
@@ -172,12 +179,32 @@ function doConnect(
 	let chainsReceived = 0;
 	let pendingRekey   = false;
 
-	ws.send({ type: 'identify', username, ek: b64enc(session.ek), ratchetEk: b64enc(session.ratchetEk) });
+	const selfClaim = session.identity.buildClaim(session.ratchetEk, username, roomId, session.epoch);
+	ws.send({
+		type: 'identify',
+		username,
+		ek: b64enc(session.ek),
+		ratchetEk: b64enc(session.ratchetEk),
+		claim: b64enc(selfClaim),
+	});
 
 	for (const m of members) {
+		try {
+			session.identity.acceptClaim(m.username, b64dec(m.claim));
+		} catch (err) {
+			if (_showSystem)
+				appendMessage({
+					sender: 'system',
+					text: `[${m.username}: identity claim rejected (${err instanceof Error ? err.message : 'invalid'})]`,
+					isSelf: false, senderIndex: 7,
+				});
+			continue;
+		}
 		const blob = session.wrapChainSeedFor(b64dec(m.ek), m.username);
 		ws.send({ type: 'relay', to: m.username, payload: b64enc(blob) });
-		peers.set(m.username, { ek: m.ek, ratchetEk: m.ratchetEk, colorIdx: peers.size + 1 });
+		const fp = session.identity.peerFingerprint(m.username);
+		if (!fp) continue;
+		peers.set(m.username, { ek: m.ek, ratchetEk: m.ratchetEk, colorIdx: peers.size + 1, fingerprint: fp });
 		session.updatePeerRatchetEk(m.username, b64dec(m.ratchetEk));
 		chainsExpected++;
 	}
@@ -203,7 +230,8 @@ function doConnect(
 		chainsExpected = 0;
 		chainsReceived = 0;
 		pendingRekey   = true;
-		ws.send({ type: 'rekey', ek: b64enc(session.ek), ratchetEk: b64enc(session.ratchetEk) });
+		const claim = session.identity.buildClaim(session.ratchetEk, username, roomId, session.epoch);
+		ws.send({ type: 'rekey', ek: b64enc(session.ek), ratchetEk: b64enc(session.ratchetEk), claim: b64enc(claim) });
 	}
 
 	ws.onMessage = (msg) => {
@@ -216,12 +244,25 @@ function doConnect(
 
 		if (msg.type === 'peer_joined') {
 			if (current.phase !== 'waiting' && current.phase !== 'ready') return;
-			const st     = current;
+			const st = current;
+			try {
+				st.session.identity.acceptClaim(msg.username, b64dec(msg.claim));
+			} catch (err) {
+				if (_showSystem)
+					appendMessage({
+						sender: 'system',
+						text: `[${msg.username}: identity claim rejected (${err instanceof Error ? err.message : 'invalid'})]`,
+						isSelf: false, senderIndex: 7,
+					});
+				return;
+			}
 			const peerEk = b64dec(msg.ek);
 			const blob   = st.session.wrapChainSeedFor(peerEk, msg.username);
 			ws.send({ type: 'relay', to: msg.username, payload: b64enc(blob) });
 			st.session.updatePeerRatchetEk(msg.username, b64dec(msg.ratchetEk));
-			st.peers.set(msg.username, { ek: msg.ek, ratchetEk: msg.ratchetEk, colorIdx: st.peers.size + 1 });
+			const fp = st.session.identity.peerFingerprint(msg.username);
+			if (!fp) return;
+			st.peers.set(msg.username, { ek: msg.ek, ratchetEk: msg.ratchetEk, colorIdx: st.peers.size + 1, fingerprint: fp });
 			if (_showSystem)
 				appendMessage({ sender: 'system', text: `${msg.username} joined`, isSelf: false, senderIndex: 7 });
 			if (current.phase === 'waiting') chainsExpected++;
@@ -238,7 +279,17 @@ function doConnect(
 				if (chainsReceived >= chainsExpected && chainsExpected > 0) {
 					current = { phase: 'ready', roomId, roomSecret, dns, session: st.session, ws, username, peers: st.peers };
 					if (!isReconnect)
-						renderChat(_screen, { username, peers: st.peers, onSend: doSendMessage, onFile: doSendFile, onRotate: doRatchetStep });
+						renderChat(_screen, {
+							username,
+							peers: st.peers,
+							onSend: doSendMessage,
+							onFile: doSendFile,
+							onRotate: doRatchetStep,
+							getFingerprints: () => ({
+								local: st.session.identity.localFingerprint(),
+								peers: peerFingerprints(st.peers),
+							}),
+						});
 					doRatchetStep();
 				}
 			} else if (current.phase === 'ready') {
@@ -249,12 +300,24 @@ function doConnect(
 
 		if (msg.type === 'ratchet_step_fwd' && current.phase === 'ready') {
 			const st = current;
+			try {
+				st.session.identity.acceptClaim(msg.from, b64dec(msg.claim));
+			} catch (err) {
+				if (_showSystem)
+					appendMessage({
+						sender: 'system',
+						text: `[${msg.from}: ratchet claim rejected (${err instanceof Error ? err.message : 'invalid'})]`,
+						isSelf: false, senderIndex: 7,
+					});
+				return;
+			}
 			st.session.receiveRatchetStep(msg.from, b64dec(msg.kemCt), b64dec(msg.encSeed), msg.pn);
 			st.session.updatePeerRatchetEk(msg.from, b64dec(msg.newEk));
 			const pi = st.peers.get(msg.from);
 			if (pi) st.peers.set(msg.from, { ...pi, ratchetEk: msg.newEk });
-			ws.send({ type: 'ek_update', ek: b64enc(st.session.ratchetEk) });
-			doReceiveMessage(st, msg.from, msg.payload, msg.meta as unknown as MessageEnvelope)
+			const ekClaim = st.session.identity.buildClaim(st.session.ratchetEk, st.username, roomId, st.session.epoch);
+			ws.send({ type: 'ek_update', ek: b64enc(st.session.ratchetEk), claim: b64enc(ekClaim) });
+			doReceiveMessage(st, msg.from, msg.payload, msg.meta as unknown as MessageEnvelope, msg.sig)
 				.catch((err: unknown) => {
 					if (_showSystem) {
 						const text = err instanceof Error ? err.message : 'decryption failed';
@@ -266,6 +329,17 @@ function doConnect(
 
 		if (msg.type === 'ek_update_fwd') {
 			if (current.phase !== 'ready' && current.phase !== 'waiting') return;
+			try {
+				current.session.identity.acceptClaim(msg.from, b64dec(msg.claim));
+			} catch (err) {
+				if (_showSystem)
+					appendMessage({
+						sender: 'system',
+						text: `[${msg.from}: ek_update claim rejected (${err instanceof Error ? err.message : 'invalid'})]`,
+						isSelf: false, senderIndex: 7,
+					});
+				return;
+			}
 			current.session.updatePeerRatchetEk(msg.from, b64dec(msg.ek));
 			const pi = current.peers.get(msg.from);
 			if (pi) current.peers.set(msg.from, { ...pi, ratchetEk: msg.ek });
@@ -273,7 +347,7 @@ function doConnect(
 		}
 
 		if (msg.type === 'broadcast' && current.phase === 'ready') {
-			doReceiveMessage(current, msg.from, msg.payload, msg.meta as unknown as MessageEnvelope)
+			doReceiveMessage(current, msg.from, msg.payload, msg.meta as unknown as MessageEnvelope, msg.sig)
 				.catch((err: unknown) => {
 					if (_showSystem) {
 						const text = err instanceof Error ? err.message : 'decryption failed';
@@ -341,17 +415,14 @@ function doSendMessage(text: string): void {
 	if (st.session.counter >= AUTO_RATCHET_INTERVAL && st.peers.size > 0) doRatchetStep();
 	const bytes = new TextEncoder().encode(text);
 	const { ciphertext, counter, epoch } = st.session.sealMessage(bytes);
-	const meta: MessageEnvelope = {
-		type: 'message',
-		sender: st.username,
-		counter,
-		epoch,
-		ts: Date.now(),
-	};
+	const ts   = Date.now();
+	const sig  = st.session.identity.signMessage(counter, epoch, st.username, ts, ciphertext);
+	const meta: MessageEnvelope = { type: 'message', sender: st.username, counter, epoch, ts };
 	st.ws.send({
 		type: 'broadcast',
 		payload: b64enc(ciphertext),
 		meta: meta as unknown as Record<string, unknown>,
+		sig: b64enc(sig),
 	});
 	const idx = st.peers.get(st.username)?.colorIdx ?? 0;
 	appendMessage({ sender: st.username, text, isSelf: true, senderIndex: idx });
@@ -375,12 +446,14 @@ async function doSendFile(filePath: string): Promise<void> {
 			chunkSize: 65536,
 		});
 		const ciphertext = await pool.seal(bytes);
+		const ts  = Date.now();
+		const sig = st.session.identity.signMessage(counter, epoch, st.username, ts, ciphertext);
 		const meta: MessageEnvelope = {
 			type: 'file',
 			sender: st.username,
 			counter,
 			epoch,
-			ts: Date.now(),
+			ts,
 			filename,
 			size,
 			mime,
@@ -389,6 +462,7 @@ async function doSendFile(filePath: string): Promise<void> {
 			type: 'broadcast',
 			payload: b64enc(ciphertext),
 			meta: meta as unknown as Record<string, unknown>,
+			sig: b64enc(sig),
 		});
 		const idx = st.peers.get(st.username)?.colorIdx ?? 0;
 		appendFile({ sender: st.username, filename, size, mime, isSelf: true, senderIndex: idx });
@@ -414,8 +488,14 @@ async function doReceiveMessage(
 	from: string,
 	payloadBase64: string,
 	meta: MessageEnvelope,
+	sigBase64: string,
 ): Promise<void> {
 	const ciphertext = b64dec(payloadBase64);
+	const sig        = b64dec(sigBase64);
+	const ok = state.session.identity.verifyMessage(
+		from, meta.counter, meta.epoch ?? 0, meta.sender, meta.ts, ciphertext, sig,
+	);
+	if (!ok) throw new Error('message signature verification failed');
 	const senderIdx = colorIdxFor(from, state.peers);
 
 	if (meta.type === 'message') {
@@ -473,12 +553,15 @@ function doRatchetStep(): void {
 	appendMessage({ sender: st.username, text: '[\uD83D\uDD12 keys rotated]', isSelf: true, senderIndex: 0 });
 	const bytes = new TextEncoder().encode('[\uD83D\uDD12 keys rotated]');
 	const { ciphertext, counter, epoch } = st.session.sealMessage(bytes);
+	const ts    = Date.now();
+	const sig   = st.session.identity.signMessage(counter, epoch, st.username, ts, ciphertext);
+	const claim = st.session.identity.buildClaim(st.session.ratchetEk, st.username, st.session.roomId, epoch);
 	const meta: MessageEnvelope = {
 		type: 'message',
 		sender: st.username,
 		counter,
 		epoch,
-		ts: Date.now(),
+		ts,
 	};
 	st.ws.send({
 		type: 'ratchet_step',
@@ -486,5 +569,7 @@ function doRatchetStep(): void {
 		newEk: b64enc(st.session.ratchetEk),
 		payload: b64enc(ciphertext),
 		meta: meta as unknown as Record<string, unknown>,
+		sig: b64enc(sig),
+		claim: b64enc(claim),
 	});
 }

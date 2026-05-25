@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>COVCOM — Reconnect Diagram</title>
+<title>COVCOM Reconnect Diagram</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0d1117;font-family:'Courier New',monospace;color:#c2c0b6;display:flex;flex-direction:column;align-items:center;padding:16px;min-height:100vh}
@@ -16,8 +16,8 @@ button:hover{border-color:#444;color:#c2c0b6}
 </style>
 </head>
 <body>
-<div id="title">COVCOM — session reconnect</div>
-<div id="phase">—</div>
+<div id="title">COVCOM session reconnect</div>
+<div id="phase">…</div>
 <canvas id="cv"></canvas>
 <div id="controls">
   <button id="btn-pause">pause</button>
@@ -153,7 +153,7 @@ function drawPeer(p){
 
 const PHASES=[
   // start with 3-party already in progress at epoch 1
-  {lbl:'3-party session in progress — alice epoch 1 · bob epoch 1 · charlie epoch 1',
+  {lbl:'3-party session in progress: alice epoch 1 · bob epoch 1 · charlie epoch 1',
    dur:4,nx:0,
    enter(){
     Object.values(PEERS).forEach(p=>{p.out=0;p.sL=[];p.rL={};p.sp=0;p.fl=0;p.vis=true;});
@@ -176,8 +176,8 @@ const PHASES=[
     }
    }},
 
-  // charlie disconnects — peer_left broadcast, alice and bob wipe his chains
-  {lbl:'charlie disconnects — peer_left · alice and bob wipe charlie\'s chain state',
+  // charlie disconnects: peer_left broadcast, alice and bob wipe his chains
+  {lbl:'charlie disconnects: peer_left · alice and bob wipe charlie\'s chain state',
    dur:2.2,
    enter(){
     // charlie slides off right, alice and bob spread back to 2-party positions
@@ -191,15 +191,15 @@ const PHASES=[
     },900);
    }},
 
-  // alice and bob chat — charlie's keys are gone, his past messages are gone too
-  {lbl:'alice and bob chat — charlie\'s keys wiped · past messages unrecoverable',
+  // alice and bob chat. charlie's keys are gone, his past messages are gone too
+  {lbl:'alice and bob chat: charlie\'s keys wiped · past messages unrecoverable',
    dur:5,nx:0,
    enter(){this.nx=.1;},
    update(dt){this.nx-=dt;if(this.nx<=0){this.nx=.28+Math.random()*.38;Math.random()<.5?sendMsg('alice','bob'):sendMsg('bob','alice');}}},
 
-  // charlie returns — fresh session, epoch 0, brand new keypair
-  // the name "charlie" happens to be free — but cryptographically he's a stranger
-  {lbl:'charlie returns — fresh session · epoch 0 · new keypair · no memory of before',
+  // charlie returns with a fresh session, epoch 0, brand new keypair
+  // the name "charlie" happens to be free, but cryptographically he's a stranger
+  {lbl:'charlie returns: fresh session · epoch 0 · new keypair · no memory of before',
    dur:2.2,
    enter(){
     PEERS.alice.tx=148;PEERS.bob.tx=430;
@@ -207,16 +207,16 @@ const PHASES=[
     PEERS.charlie.x=1100;PEERS.charlie.tx=712;PEERS.charlie.vis=true;
    }},
 
-  // alice and bob relay their current seeds — they're at epoch 1, charlie enters there
-  {lbl:'relay — alice and bob send current epoch seeds · charlie enters at epoch 1',
+  // alice and bob relay their current seeds. they're at epoch 1, charlie enters there
+  {lbl:'relay: alice and bob send current epoch seeds · charlie enters at epoch 1',
    dur:3.2,
    enter(){
     spawnBlob('alice','charlie','Seal(ek\nepoch‖seed)',.25,()=>{PEERS.charlie.rL.alice=[];});
     spawnBlob('bob',  'charlie','Seal(ek\nepoch‖seed)',1.0, ()=>{PEERS.charlie.rL.bob=[];});
    }},
 
-  // charlie fires welcome ratchet — same dance as before, epoch 0→1
-  {lbl:'welcome ratchet — same dance as before · charlie epoch 0→1 · ratchet_step to all',
+  // charlie fires welcome ratchet. same dance as before, epoch 0→1
+  {lbl:'welcome ratchet: same dance as before · charlie epoch 0→1 · ratchet_step to all',
    dur:2.8,
    enter(){
     triggerRatchet('charlie',.45);
@@ -225,8 +225,8 @@ const PHASES=[
     spawnBlob('charlie','bob',  'ratchet_step\nkemCt+encSeed',sd+.4, ()=>{PEERS.bob.rL.charlie=[];});
    }},
 
-  // back to 3-party — charlie is in sync, but can't read anything from before he left
-  {lbl:'3-party resumed — charlie is back · previous session messages still unrecoverable',
+  // back to 3-party. charlie is in sync, but can't read anything from before he left
+  {lbl:'3-party resumed: charlie is back · previous session messages still unrecoverable',
    dur:6,nx:0,
    enter(){this.nx=.1;},
    update(dt){
@@ -240,7 +240,7 @@ const PHASES=[
    }},
 
   // alice rotates to close out clean
-  {lbl:'alice rotates — session continues · forward secrecy holds across reconnect',
+  {lbl:'alice rotates: session continues · forward secrecy holds across reconnect',
    dur:3.8,
    enter(){
     triggerRatchet('alice',.7);

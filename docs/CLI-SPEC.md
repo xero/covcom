@@ -254,7 +254,7 @@ interface Widget {
 ```
 
 `rect` is always written at the top of `render()` before drawing anything.
-this is what makes hit testing work — after every render pass, every widget's
+this is what makes hit testing work. After every render pass, every widget's
 `rect` reflects where it currently lives on screen.
 
 ### `TextInput`
@@ -266,7 +266,7 @@ single-line. tracks value + cursor position.
   or a space if at end of string
 - backspace, left/right arrows, home/end, ctrl+a/e, ctrl+k (clear to end),
   ctrl+u (clear to start) all handled
-- enter: does not consume — propagates to view to trigger form action
+- enter: does not consume, propagates to view to trigger form action
 - paste: inserts pasted text at cursor position
 
 ### `TextArea`
@@ -316,8 +316,8 @@ class Button implements Widget {
 }
 ```
 
-disabled buttons render with `btnDisabledFg === btnDisabledBg` — label invisible,
-just a gray slab. clearly inert.
+disabled buttons render with `btnDisabledFg === btnDisabledBg`. The label is
+invisible, just a gray slab. clearly inert.
 
 ### `ScrollView`
 
@@ -340,7 +340,7 @@ type RenderedLine = {
 key behaviors:
 
 - new messages appended to `lines[]`, word-wrapped to current width
-- `autoScroll = true` by default — new messages scroll to bottom
+- `autoScroll = true` by default, so new messages scroll to bottom
 - scrolling up (keyboard or mouse wheel) disables autoScroll
 - scrolling back to bottom re-enables autoScroll
 - during render, fills each visible row with spaces at default bg (terminal inherits),
@@ -353,7 +353,7 @@ key behaviors:
   yourName: ┤ filename.ext ├
 ```
 
-actually simpler — just an inline color change mid-line:
+actually simpler, just an inline color change mid-line:
 
 ```
   yourName:  filename.ext
@@ -504,7 +504,7 @@ copy success:
 
 copy failure:
   [Failed to find a clipboard manager]
-  bg=calloutBg, fg=calloutFg    (same color — content communicates state)
+  bg=calloutBg, fg=calloutFg    (same color, content communicates state)
 
 download success (path wraps continuously, no truncation):
   [file downloaded to:          ]
@@ -514,8 +514,8 @@ download success (path wraps continuously, no truncation):
 ```
 
 the callout is rendered as filled rows of width `contentW`. each row is padded
-with spaces to fill the full width. path lines wrap purely by character count —
-no ellipsis, no truncation. tmux users can select the path directly.
+with spaces to fill the full width. path lines wrap purely by character count,
+with no ellipsis and no truncation. tmux users can select the path directly.
 
 **download behavior:**
 - writes `<inviteFilename()>.room` to `process.cwd()`

@@ -1,11 +1,12 @@
 import {
-	KDFChain, KyberSuite, MlKem768, Seal, XChaCha20Cipher,
+	KDFChain, MlKemSuite, MlKem768, Seal, XChaCha20Cipher,
 	ratchetInit, kemRatchetEncap,
 	SkippedKeyStore, RatchetKeypair,
 } from 'leviathan-crypto';
 import { wipe } from 'leviathan-crypto';
 import type { ResolveHandle } from 'leviathan-crypto';
 import type { KeyPair } from './types.js';
+import { SessionIdentity } from './identity.js';
 
 const EPOCH_KEEP_WINDOW = 2;
 
@@ -43,6 +44,8 @@ export class Session {
 	}>>;
 
 	private _roomCtx:  Uint8Array | undefined;
+	private _roomId:   string;
+	private _identity: SessionIdentity;
 	private _disposed: boolean;
 
 	constructor(keypair: KeyPair, roomId?: string) {
@@ -51,6 +54,7 @@ export class Session {
 		this._kp              = new RatchetKeypair(new MlKem768());
 		this._chainSeed        = crypto.getRandomValues(new Uint8Array(32));
 		this._currentEpochSeed = this._chainSeed.slice();
+		this._roomId           = roomId ?? '';
 		this._roomCtx          = roomId ? new TextEncoder().encode(roomId) : undefined;
 		const initResult       = ratchetInit(this._chainSeed, this._roomCtx);
 		this._myChain          = new KDFChain(initResult.sendChainKey);
@@ -65,6 +69,7 @@ export class Session {
 		this._pendingRatchetPn   = 0;
 		this._senderState        = new Map();
 		this._oldSenderState  = new Map();
+		this._identity        = SessionIdentity.create();
 		this._disposed        = false;
 	}
 
@@ -86,9 +91,15 @@ export class Session {
 	get counter(): number        {
 		return this._myChain.n;
 	}
+	get identity(): SessionIdentity {
+		return this._identity;
+	}
+	get roomId(): string         {
+		return this._roomId;
+	}
 
 	wrapChainSeedFor(peerEk: Uint8Array, peerUsername: string): Uint8Array {
-		const suite  = KyberSuite(new MlKem768(), XChaCha20Cipher);
+		const suite  = MlKemSuite(new MlKem768(), XChaCha20Cipher);
 		const plain  = new Uint8Array(36);
 		new DataView(plain.buffer).setUint32(0, this._myEpoch, true); // 4B LE epoch
 		plain.set(this._currentEpochSeed, 4);                         // 32B seed
@@ -105,7 +116,7 @@ export class Session {
 	}
 
 	unwrapChainSeed(senderUsername: string, blob: Uint8Array): void {
-		const suite  = KyberSuite(new MlKem768(), XChaCha20Cipher);
+		const suite  = MlKemSuite(new MlKem768(), XChaCha20Cipher);
 		const plain  = Seal.decrypt(suite, this._dk, blob);  // 36 bytes
 		const epoch  = new DataView(plain.buffer, plain.byteOffset).getUint32(0, true);
 		const seed   = plain.slice(4);                        // 32 bytes
@@ -126,7 +137,7 @@ export class Session {
 		});
 		wipe(init.sendChainKey);
 		wipe(init.recvChainKey);
-		wipe(plain);  // wipe full 36 bytes — includes epoch prefix bytes
+		wipe(plain);  // wipe full 36 bytes, includes epoch prefix bytes
 		wipe(seed);   // wipe the slice allocation too
 	}
 
@@ -183,7 +194,7 @@ export class Session {
 		if (epoch > state.epoch)
 			throw new Error('message is from a future epoch, ratchet step not yet received');
 
-		// epoch < state.epoch — look in old state
+		// epoch < state.epoch, look in old state
 		const old = this._oldSenderState.get(sender)?.get(epoch);
 		if (!old) {
 			if (epoch < state.epoch - EPOCH_KEEP_WINDOW)
@@ -210,7 +221,7 @@ export class Session {
 			this._pendingRatchetPn   = this._myChain.n;
 		}
 
-		// per-peer KEM encap — wraps the shared seed
+		// per-peer KEM encap; wraps the shared seed
 		const result  = kemRatchetEncap(new MlKem768(), rk, peerRatchetEk, this._roomCtx);
 		const encSeed = Seal.encrypt(XChaCha20Cipher, result.sendChainKey, this._pendingRatchetSeed);
 		wipe(result.sendChainKey);
@@ -292,7 +303,7 @@ export class Session {
 
 		wipe(result.sendChainKey);
 
-		// rotate keypair — dk consumed by decap; new ek must be broadcast via ek_update
+		// rotate keypair; dk consumed by decap, new ek must be broadcast via ek_update
 		this._kp.dispose();
 		this._kp = new RatchetKeypair(new MlKem768());
 	}
@@ -324,6 +335,7 @@ export class Session {
 		if (ek) {
 			wipe(ek); this._peerRatchetEks.delete(username);
 		}
+		this._identity.removePeer(username);
 	}
 
 	dispose(): void {
@@ -361,5 +373,7 @@ export class Session {
 				store.wipeAll();
 			}
 		this._oldSenderState.clear();
+
+		this._identity.dispose();
 	}
 }

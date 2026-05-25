@@ -1,5 +1,5 @@
 /**
- * cipher-suites.ts — XChaCha20Cipher with blob URL pool worker.
+ * XChaCha20Cipher with blob URL pool worker.
  *
  * Bun cannot resolve new URL('./pool-worker.js', import.meta.url) at runtime.
  * Override createPoolWorker() to spawn from a pre-bundled blob URL instead.

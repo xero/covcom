@@ -55,7 +55,7 @@ export function startServer(config: ServerConfig = {}) {
 			if (url.pathname === '/health_check')
 				return new Response('OK', { status: 200, headers: { 'Access-Control-Allow-Origin': '*' } });
 			if (url.pathname === '/ws') {
-				const data: ConnData = { roomId: null, username: null, ek: null, ratchetEk: null };
+				const data: ConnData = { roomId: null, username: null, ek: null, ratchetEk: null, claim: null };
 				if (server.upgrade(req, { data })) return undefined;
 				return new Response('Upgrade failed', { status: 500 });
 			}

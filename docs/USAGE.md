@@ -87,8 +87,8 @@ The image is published to two registries on every release:
 
 Two tags are published per release:
 
-- `X.Y.Z` — the pinned semantic version. Use this in production.
-- `latest` — moves with each release. A new release will silently upgrade you on the next pull.
+- `X.Y.Z` is the pinned semantic version. Use this in production.
+- `latest` moves with each release. A new release will silently upgrade you on the next pull.
 
 If a vulnerability is disclosed, the affected `X.Y.Z` tag is hard-deprecated
 via the [tombstone process](../docker-tag-tombstone.md): pulling it then
@@ -333,6 +333,7 @@ CLI probes for `pbcopy`, `xclip`, `xsel`, and `wl-copy` in that order.
 | `Tab` / `Shift+Tab` | Cycle focus                           |
 | `Enter`             | Send message / confirm                |
 | `Ctrl+R`            | Rotate encryption keys (ratchet step) |
+| `Ctrl+V`            | Toggle session fingerprint row        |
 | `Ctrl+C`            | Quit and wipe session                 |
 
 Files attach via the `+` button. Type or paste a path and use `Tab` for
@@ -346,8 +347,8 @@ filenames get a numeric suffix.
 **Create a room:**
 
 1. Enter a server address and a username, then select **Create Room**.
-2. The lobby screen shows an armored invite block. Copy or download it and
-   share it via any channel.
+2. The lobby screen shows an armored invite block, a QR code of the same
+   bytes, and copy/download buttons. Share it via any channel.
 3. The screen waits until a peer joins.
 
 **Join a room:**

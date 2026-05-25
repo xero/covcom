@@ -36,8 +36,8 @@ only in the client process and is wiped on disconnect.
 **S** is the relay server. S is a potentially dishonest principal with
 constrained capabilities. S routes messages, tracks room membership, and
 holds session public keys. S sees only ciphertext. The protocol is designed
-so that S's dishonesty cannot violate confidentiality — only availability
-and metadata.
+so that S's dishonesty cannot violate confidentiality. Only availability
+and metadata are affected.
 
 **D** is the delivery network between clients and S: the transport layer,
 ISPs, and any infrastructure carrying packets. D is fully controlled by the
@@ -66,7 +66,7 @@ a ciphertext or forge a valid authentication tag without the key. The
 192-bit nonce space makes accidental nonce reuse negligible regardless of
 message volume.
 
-**Seal+KyberSuite IND-CCA2.** The KEM-based public-key encryption scheme
+**Seal+MlKemSuite IND-CCA2.** The KEM-based public-key encryption scheme
 used for chain seed distribution is IND-CCA2 secure under the ML-KEM-768
 assumption.
 
@@ -80,7 +80,7 @@ makes this precise.
 
 **S is assumed to provide liveness.** S will eventually deliver messages to
 their intended recipients. Without this assumption there is no protocol to
-analyze — a server that drops all messages trivially prevents communication
+analyze. A server that drops all messages trivially prevents communication
 but learns nothing cryptographically interesting. Availability attacks are
 outside the scope of this threat model.
 
@@ -111,7 +111,7 @@ encryption is not implemented; this is a known limitation documented in
 
 Three adversary tiers cover the range of realistic attack scenarios.
 
-### A₀ — passive network adversary
+### A₀, the passive network adversary
 
 A₀ observes all traffic between clients and S. A₀ cannot modify messages
 in transit.
@@ -125,7 +125,7 @@ attempts decryption after acquiring a cryptographically relevant quantum
 computer. ML-KEM-768 is standardized for post-quantum resistance and
 defeats this attack ([§8.11][S811]).
 
-### A₁ — active network adversary
+### A₁, the active network adversary
 
 A₁ has full Dolev-Yao control of the network. A₁ can intercept, inject,
 replay, reorder, and drop any message. A₁ controls D entirely and may
@@ -146,17 +146,36 @@ Against A₁, the protocol provides:
   returns a `ResolveHandle`; the receiver settles via `commit()` only after
   the ciphertext authenticates, and via `rollback()` if Poly1305 rejects.
   A₁ injecting a forged ciphertext at a counter for which a key is cached
-  no longer consumes that key — the rollback returns it to the store, so
+  no longer consumes that key. The rollback returns it to the store, so
   the legitimate message at the same counter still decrypts when it
   arrives. A₁ retains the generic ability to drop packets, but cannot
   leverage forgery-then-consumption to deny delivery of specific
   authenticated messages.
+- **Metadata integrity.** Every `identify`, `ratchet_step`, and
+  `ek_update` carries an Ed25519ph identity claim signed under the
+  session signing key. A₁ swapping a peer's ratchet ek or substituting a
+  different session signing key mid-session fails the chain-continuity
+  check, because the next legitimate claim from that peer references the
+  prior payload's BLAKE3 hash. The protocol does not defend against
+  first-contact substitution; see the non-goals section.
+- **Per-message provenance.** Every `broadcast` carries a detached
+  Ed25519ph signature over `(counter, epoch, sender, ts, ciphertext)`
+  verified before decryption. A₁ injecting a forged ciphertext fails
+  signature check before any AEAD work runs, and cannot reattribute a
+  legitimate ciphertext to a different `sender` without breaking the
+  signature.
+- **Split-view detection.** Each client builds a SHA-256 Merkle log of
+  the structural events it observes from every other sender. Two
+  participants comparing their session fingerprints out-of-band detect a
+  server that has fed them divergent orderings or participant sets. The
+  fingerprint is an 8-color row plus a 16-character hex string, both
+  derived deterministically from the session signing public key.
 
 A₁ can mount a denial-of-service by dropping messages or disrupting the
 join handshake. This is an availability attack, not a confidentiality or
 integrity failure.
 
-### A₂ — state compromise adversary
+### A₂, the state compromise adversary
 
 A₂ has A₁ capabilities plus the ability to expose the internal state of one
 or more participants at a point in time. State exposure means A₂ obtains
@@ -166,13 +185,13 @@ obtain keys that have already been wiped.
 
 Two sub-cases:
 
-**A₂ᶠ — forward compromise.** A₂ obtains a participant's state at time T.
+**A₂ᶠ, forward compromise.** A₂ obtains a participant's state at time T.
 Forward secrecy guarantees that A₂ cannot recover keys for any message sent
 before T. The `KDFChain` wipes each chain key before storing the next. Each
 message key is wiped immediately after use. Nothing in the current state
 allows reconstruction of past keys.
 
-**A₂ᵖ — persistent compromise.** A₂ maintains continuous access to a
+**A₂ᵖ, persistent compromise.** A₂ maintains continuous access to a
 participant's state across multiple epochs. Post-compromise security
 guarantees that at each KEM ratchet step, fresh randomness from
 `kemRatchetEncap` is mixed into the root key via `KDF_SCKA_RK`. A₂ cannot
@@ -180,7 +199,7 @@ predict or reproduce this randomness without breaking ML-KEM-768. After a
 ratchet step completes, A₂ loses the ability to decrypt subsequent messages
 even if they retained the pre-ratchet state.
 
-Vanilla Sender Keys provides no PCS — compromise persists until a member
+Vanilla Sender Keys provides no PCS. Compromise persists until a member
 is removed and re-added ([Balbás et al., §V-C-3][BALB23]). The KEM ratchet
 closes this gap. Three events guarantee a PCS boundary: join, manual
 rotate, and auto-ratchet every 25 messages.
@@ -206,7 +225,7 @@ current compromise window.
 
 **Message authentication.** Poly1305 ensures that every accepted message
 was encrypted by a principal holding the current chain key for that sender.
-A₁ cannot forge a valid ciphertext. This is symmetric authentication — it
+A₁ cannot forge a valid ciphertext. This is symmetric authentication, so it
 does not provide cryptographic deniability (see non-goals).
 
 **Forward secrecy.** A₂ᶠ cannot recover keys for messages sent before the
@@ -237,8 +256,8 @@ connected to the server but cannot link sessions to a persistent identity.
 
 The following are explicitly outside the scope of this threat model.
 
-**Endpoint security.** If A compromises the client device — through malware,
-physical access, or operating system exploitation — all session key material
+**Endpoint security.** If A compromises the client device through malware,
+physical access, or operating system exploitation, all session key material
 is accessible. The protocol cannot protect against an adversary with
 direct access to the process memory or filesystem of a participant.
 
@@ -253,10 +272,15 @@ given ciphertext was produced by someone holding that key. This is weaker
 than the deniability provided by Signal's use of X3DH, where the key
 material is structured to allow transcript forgery.
 
-**Global transcript consistency.** The server could selectively deliver
-messages to different participants, causing divergent views of the
-conversation. COVCOM does not implement consistency checks across
-participants.
+**First-contact identity substitution.** A malicious server can swap the
+very first `identify` claim a fresh joiner sees for a given peer. The
+joiner has no prior session signing key for that peer to compare
+against, so the substitute key verifies its own claim. Every later claim
+must chain off this forged baseline, so mid-session substitution still
+fails, but the initial impression is the attacker's choice. The session
+fingerprint exists for out-of-band comparison; in-band defense at first
+contact is impossible without prior identity material, which COVCOM
+explicitly does not retain.
 
 **Multi-session correlation by endpoints.** A participant who rejoins a room
 with a new session will use a different keypair and username. The protocol

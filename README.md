@@ -323,6 +323,7 @@ CLI probes for `pbcopy`, `xclip`, `xsel`, and `wl-copy` in that order.
 | `Tab` / `Shift+Tab` | Cycle focus                           |
 | `Enter`             | Send message / confirm                |
 | `Ctrl+R`            | Rotate encryption keys (ratchet step) |
+| `Ctrl+V`            | Toggle session fingerprint row        |
 | `Ctrl+C`            | Quit and wipe session                 |
 
 Files attach via the `+` button. Type or paste a path and use `Tab` for
@@ -336,8 +337,8 @@ filenames get a numeric suffix.
 **Create a room:**
 
 1. Enter a server address and a username, then select **Create Room**.
-2. The lobby screen shows an armored invite block. Copy or download it and
-   share it via any channel.
+2. The lobby screen shows an armored invite block, a QR code of the same
+   bytes, and copy/download buttons. Share it via any channel.
 3. The screen waits until a peer joins.
 
 **Join a room:**
@@ -362,12 +363,12 @@ Deeper references for users, auditors, contributors, and the curious.
 
 | Document                                                                  | Purpose                                                              |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [USAGE](USAGE.md)                                                         | Client and server applications development and runtime help          |
-| [PROTOCOL](PROTOCOL.md)                                                   | Cipher, chains, ratchet, group model, session lifecycle, server role |
-| [CRYPTOGRAPHY](CRYPTOGRAPHY.md)                                           | Primitives, KDF chains, wire format, invite encoding                 |
-| [THREAT-MODEL](THREAT-MODEL.md)                                           | Principals, adversary tiers, guarantees, non-goals                   |
-| [CLI-SPEC](CLI-SPEC.md)                                                   | CLI architecture, rendering, input, widgets, views, & color system   |
-| [SECURITY-POLICY](SECURITY-POLICY.md)                                     | Supported versions, disclosure policy, cryptographic foundation      |
+| [USAGE](./docs/USAGE.md)                                                  | Client and server applications development and runtime help          |
+| [PROTOCOL](./docs/PROTOCOL.md)                                            | Cipher, chains, ratchet, group model, session lifecycle, server role |
+| [CRYPTOGRAPHY](./docs/CRYPTOGRAPHY.md)                                    | Primitives, KDF chains, wire format, invite encoding                 |
+| [THREAT-MODEL](./docs/THREAT-MODEL.md)                                    | Principals, adversary tiers, guarantees, non-goals                   |
+| [CLI-SPEC](./docs/CLI-SPEC.md)                                            | CLI architecture, rendering, input, widgets, views, & color system   |
+| [SECURITY-POLICY](./SECURITY.md)                                          | Supported versions, disclosure policy, cryptographic foundation      |
 | [PROTOCOL-DIAGRAM](https://xero.github.io/covcom/protocol_diagram.html)   | Animated visualization of a 3-party session and epochs               |
 | [RECONNECT-DIAGRAM](https://xero.github.io/covcom/reconnect_diagram.html) | Animated visualization of peers left / join ceremonies               |
 

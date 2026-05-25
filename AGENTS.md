@@ -1,4 +1,4 @@
-# Agent Instructions — COVCOM
+# COVCOM Agent Instructions
 
 This file is the contract for all AI-assisted development on this repository.
 Read it in full before starting any work.
@@ -20,10 +20,10 @@ Read `./docs/PROTOCOL.md` before starting any implementation work. It defines
 the crypto protocol, the session lifecycle, and the group messaging model in
 narrative form. Byte-level wire format and invite encoding live in
 `./docs/CRYPTOGRAPHY.md`. If something in your task file conflicts with
-either, the doc wins — flag the conflict rather than resolving it silently.
+either, the doc wins; flag the conflict rather than resolving it silently.
 
-For implementation specifics — method signatures, return shapes, error
-conditions — the leviathan-crypto TypeScript type declarations are the ground
+For implementation specifics like method signatures, return shapes, and error
+conditions, the leviathan-crypto TypeScript type declarations are the ground
 truth, not the protocol doc. If the two conflict, flag it.
 
 ---
@@ -50,7 +50,7 @@ Always run `bun i` first. Every session, no exceptions.
 Use these shorthands from the repository root:
 
 ```sh
-bun i                  # install all workspaces — always run first
+bun i                  # install all workspaces. always run first
 bun dev:server         # run server in development mode
 bun dev:web            # run web client dev server (Vite)
 bun start:server       # build server
@@ -60,7 +60,7 @@ bun build:cli:all      # compile CLI binaries for all target platforms
 bun test               # run all tests across all packages
 bun test:server        # server tests only
 bun test:lib           # shared lib tests only
-bun fix                # eslint autofix — run before marking any task done
+bun fix                # eslint autofix. run before marking any task done
 bun build:docker       # build Docker image
 bun run:docker         # run container locally for integration testing
 ```
@@ -99,8 +99,8 @@ says one thing and either doc says another, the doc wins. Flag the conflict;
 do not resolve it silently.
 
 The one exception: `./docs/PROTOCOL.md` does not define cryptographic values.
-Anything involving the leviathan-crypto API — method signatures, init
-requirements, return shapes, error conditions — comes from the library's
+Anything involving the leviathan-crypto API (method signatures, init
+requirements, return shapes, error conditions) comes from the library's
 TypeScript type declarations. If `./docs/PROTOCOL.md` describes a
 leviathan-crypto API call that does not match the actual library, the library
 wins and the discrepancy must be flagged.
@@ -149,7 +149,7 @@ that contain actual crypto output belong only in test files.
 Do not run `git commit`, `git push`, or any command that writes to git history.
 The repository owner GPG-signs all commits manually after reviewing diffs. Your
 job is to make the changes; the commit is not yours to make. This applies
-without exception — do not commit even if the task file says the work is
+without exception. Do not commit even if the task file says the work is
 complete.
 
 ---
@@ -191,15 +191,19 @@ first.
 - `handleCreate` does NOT add the creator's WebSocket to `room.conns`. The
   creator joins via a normal `join` message after receiving `room_created`.
 
-**`doCreate` and `doJoin` share `doConnect`**
+**Create and join entry points converge on a single post-`joined` path**
 
-`doCreate` and `doJoin` are entry points only. Both converge on `doConnect`,
-which owns all post-`joined` protocol: identify, handshake, lobby/ready
-transitions, message handlers, and the close handler. Do not duplicate
-post-`joined` logic between `doCreate` and `doJoin`.
+Both clients route room creation and room joining through one shared
+post-`joined` handler. In the CLI (`cli/src/state.ts`) the entry points
+are `doCreate` and `doJoin`, and they converge on `doConnect`. In the web
+client (`web/src/session.ts`) the entry points are `CovcomSession.create`
+and `CovcomSession.join`, and they converge on `_onJoined`. The shared
+handler owns identify, handshake, lobby/ready transitions, message
+handlers, and the close handler. Do not duplicate post-`joined` logic
+across the two entry points.
 
-The welcome ratchet (`doRatchetStep`) fires inside `doConnect` only, after all
-expected chain seeds are received. It does not fire anywhere else.
+The welcome ratchet fires inside this shared handler only, after all
+expected chain seeds have been received. It does not fire anywhere else.
 
 **Shared crypto layer (`lib/`)**
 
@@ -211,7 +215,7 @@ expected chain seeds are received. It does not fire anywhere else.
   to touch `KDFChain` or `Seal` directly.
 - WASM modules are loaded once at session start. `cli/src/init.ts` calls
   `init()` on both the lib and CLI leviathan-crypto module instances (Bun
-  does not deduplicate `file:` workspace dependencies — two instances exist
+  does not deduplicate `file:` workspace dependencies, so two instances exist
   with separate WASM state). `web/` does not call `init()` directly; the lib's
   own `initCrypto` handles it in browser contexts.
 
@@ -230,12 +234,14 @@ expected chain seeds are received. It does not fire anywhere else.
 
 - The TUI is a custom zero-dependency implementation. No neo-neo-blessed, no
   terminal-kit, no blessed, no external TUI library of any kind. Read
-  `./docs/cli_design.md` before touching any file under `cli/src/tui/`.
+  `./docs/CLI-SPEC.md` before touching any file under `cli/src/tui/`.
 - `cli/src/tui/` contains:
   - infrastructure: `screen.ts`, `keys.ts`, `focus.ts`, `widgets.ts`
   - rendering implementation: `views.ts`
   - per-screen façades that re-export from `views.ts`: `landing.ts`,
     `waiting.ts`, `join.ts`, `chat.ts`
+  - generated asset: `banner.ts` (rebuilt by `build.ts`; do not edit by
+    hand)
 
   Do not add files outside this structure without flagging it.
 - The public interface between `cli/src/state.ts` and the TUI is fixed.
@@ -272,6 +278,14 @@ expected chain seeds are received. It does not fire anywhere else.
   inspecting `payload` fields.
 - Error reason values: `room_full`, `not_found`, `forbidden`, `username_taken`.
   Do not introduce new error reasons without flagging it.
+
+**Wire versioning is locked to leviathan-crypto.** All v3 ctx strings carry
+a `-v3` suffix (`covcom-identity-claim-v3`, `covcom-message-sig-v3`,
+`covcom-log-checkpoint-v3`) so they track the leviathan-crypto release
+this code targets. When leviathan-crypto bumps to a new major version,
+covcom's ctx strings bump in lockstep in the same PR. Do not introduce a
+v3 ctx string when targeting v4, or vice versa. If you need to evolve a
+ctx string without bumping the library, raise an issue.
 
 ---
 
@@ -322,7 +336,7 @@ Two failed attempts at the same problem is the limit. On the third attempt you
 are guessing. Create `ISSUE.md` in the repository root:
 
 ```markdown
-# Issue — [short title]
+# Issue: [short title]
 
 ## Status
 Blocked. Implementation work stopped at [file / function / test].
@@ -331,7 +345,7 @@ Blocked. Implementation work stopped at [file / function / test].
 [The specific task or step that hit the blocker]
 
 ## What I tried
-[Each attempt, in order, with the result of each. Be specific — include
+[Each attempt, in order, with the result of each. Be specific: include
 error messages, wrong output, and what you expected instead.]
 
 ## Where I am stuck
@@ -358,7 +372,7 @@ far more valuable than a completed task built on a guess.
   time and are the ground truth.
 - **WebSocket message not arriving**: verify the server's relay/broadcast
   logic against `server/src/types.ts`. Check that `type` field casing matches
-  exactly — the server routes on `type` string equality.
+  exactly. The server routes on `type` string equality.
 - **Crypto operation throwing**: verify that `init()` was called with all
   required WASM modules before the failing call. Most leviathan-crypto errors
   at runtime are init-order problems.

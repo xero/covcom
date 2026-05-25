@@ -47,7 +47,7 @@ The active primitive set:
 | XChaCha20-Poly1305 | Message and file encryption |
 | ML-KEM-768 (FIPS 203) | Post-quantum key encapsulation |
 | HKDF-SHA-256 | Key derivation throughout |
-| Seal+KyberSuite | Chain seed distribution |
+| Seal+MlKemSuite | Chain seed distribution |
 
 The protocol implements the Sparse Post-Quantum Ratchet from the
 [Signal Double Ratchet spec](https://signal.org/docs/specifications/doubleratchet/)
@@ -59,11 +59,11 @@ The protocol implements the Sparse Post-Quantum Ratchet from the
 
 **The protocol provides:**
 - Message confidentiality against passive and active network adversaries
-- Forward secrecy — past messages are unrecoverable from current state
+- Forward secrecy, so past messages are unrecoverable from current state
 - Post-compromise security at every KEM ratchet boundary
 - Harvest-now-decrypt-later resistance via ML-KEM-768
 - Enumeration resistance via a 2^128 room secret space
-- Session anonymity — no persistent identity keys visible to the server
+- Session anonymity, with no persistent identity keys visible to the server
 
 **The protocol does not protect against:**
 - Endpoint compromise (malware, physical device access)
@@ -72,7 +72,7 @@ The protocol implements the Sparse Post-Quantum Ratchet from the
 - Cryptographic deniability
 - Multi-session correlation by out-of-band means
 
-See the full Dolev-Yao style adversary analysis in [THREAT-MODEL.md](./THREAT-MODEL.md).
+See the full Dolev-Yao style adversary analysis in [THREAT-MODEL.md](./docs/THREAT-MODEL.md).
 
 ---
 
@@ -114,7 +114,7 @@ If you prefer to contact the maintainer directly:
 - Vulnerabilities in the COVCOM wire protocol or session handshake
 - Cryptographic weaknesses in the ratchet implementation or key derivation
 - Vulnerabilities in leviathan-crypto primitives or the WASM layer
-- Protocol design flaws — if the design itself is unsound, that counts
+- Protocol design flaws (an unsound design itself counts)
 - Dependency vulnerabilities that affect COVCOM's security properties
 - Invite format weaknesses (enumeration, forgery, replay)
 

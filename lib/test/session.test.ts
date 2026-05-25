@@ -33,7 +33,7 @@ function makeParty(n: number, roomId?: string): Session[] {
 	return sessions;
 }
 
-describe('session — N=2 handshake and messaging', () => {
+describe('session: N=2 handshake and messaging', () => {
 	test('1. basic seal/open round-trip', () => {
 		const [sA, sB] = makeParty(2);
 		const plain = enc.encode('hello world');
@@ -69,7 +69,7 @@ describe('session — N=2 handshake and messaging', () => {
 	});
 });
 
-describe('session — out-of-order delivery', () => {
+describe('session: out-of-order delivery', () => {
 	test('4. in-order delivery, MKSKIPPED empty after all', () => {
 		const [sA, sB] = makeParty(2);
 		const msgs = [1, 2, 3].map(i => sA.sealMessage(enc.encode(`msg${i}`)));
@@ -84,7 +84,7 @@ describe('session — out-of-order delivery', () => {
 		sB.dispose();
 	});
 
-	test('5. single gap — MKSKIPPED holds correct keys', () => {
+	test('5. single gap: MKSKIPPED holds correct keys', () => {
 		const [sA, sB] = makeParty(2);
 		const { ciphertext: ct1 } = sA.sealMessage(enc.encode('one'));
 		const { ciphertext: ct2 } = sA.sealMessage(enc.encode('two'));
@@ -100,7 +100,7 @@ describe('session — out-of-order delivery', () => {
 		expect(store._store.has(1)).toBe(true);
 		expect(store._store.has(2)).toBe(true);
 
-		// Receive 1, then 2 — both from MKSKIPPED
+		// Receive 1, then 2; both from MKSKIPPED
 		expect(dec.decode(sB.openMessage('p0', 0, 1, ct1))).toBe('one');
 		expect(dec.decode(sB.openMessage('p0', 0, 2, ct2))).toBe('two');
 		expect(store.size).toBe(0);
@@ -135,7 +135,7 @@ describe('session — out-of-order delivery', () => {
 		sB.dispose();
 	});
 
-	test('7. ceiling enforcement — skip > maxSkipPerResolve throws; accumulated skips fit cache', () => {
+	test('7. ceiling enforcement: skip > maxSkipPerResolve throws; accumulated skips fit cache', () => {
 		const [sA, sB] = makeParty(2);
 
 		// SkippedKeyStore throws when a single resolve's skip window exceeds
@@ -149,7 +149,7 @@ describe('session — out-of-order delivery', () => {
 		// Accumulated skip across two resolves, each within the per-resolve cap.
 		// First skip (0→30): window=29 ≤ 50, stores 1-29 (29 entries).
 		// Second skip (30→50): window=19 ≤ 50, stores 31-49 (19 more).
-		// Total stored = 48 ≤ maxCacheSize=100 — no eviction; both succeed.
+		// Total stored = 48 ≤ maxCacheSize=100. No eviction; both succeed.
 		const [sA2, sB2] = makeParty(2);
 		const sealed50 = Array.from({ length: 50 }, (_, i) =>
 			sA2.sealMessage(enc.encode(`m${i + 1}`)),
@@ -177,7 +177,7 @@ describe('session — out-of-order delivery', () => {
 		const { ciphertext: ct3, counter: c3 } = sA.sealMessage(enc.encode('three'));
 		sB.openMessage('p0', 0, c3, ct3);
 
-		// Dispose B; create a fresh session — no chains established
+		// Dispose B; create a fresh session, no chains established
 		sB.dispose();
 		const kpB2 = generateKeypair();
 		const sB2 = new Session(kpB2);
@@ -188,8 +188,8 @@ describe('session — out-of-order delivery', () => {
 	});
 });
 
-describe('session — N=5', () => {
-	test('9. five-party handshake — participant 0 broadcasts', () => {
+describe('session: N=5', () => {
+	test('9. five-party handshake: participant 0 broadcasts', () => {
 		const sessions = makeParty(5);
 		const { ciphertext, counter } = sessions[0].sealMessage(enc.encode('hello all'));
 		for (let i = 1; i < 5; i++) {
@@ -198,7 +198,7 @@ describe('session — N=5', () => {
 		for (const s of sessions) s.dispose();
 	});
 
-	test('10. five-party independent chains — all 20 decryptions succeed', () => {
+	test('10. five-party independent chains: all 20 decryptions succeed', () => {
 		const sessions = makeParty(5);
 		// Each participant seals one message
 		const sealed = sessions.map((s, i) => ({
@@ -217,7 +217,7 @@ describe('session — N=5', () => {
 	});
 });
 
-describe('session — teardown', () => {
+describe('session: teardown', () => {
 	test('11. dispose wipes key material', () => {
 		const [sA, sB] = makeParty(2);
 		// Confirm functional
@@ -243,12 +243,12 @@ describe('session — teardown', () => {
 
 		s.dispose();
 
-		// wipe() zeroes the buffer in place — seedRef still points to it
+		// wipe() zeroes the buffer in place; seedRef still points to it
 		expect(seedRef.every(b => b === 0)).toBe(true);
 	});
 });
 
-describe('session — sealFileKey', () => {
+describe('session: sealFileKey', () => {
 	test('21. sealFileKey steps chain and shares counter with sealMessage', () => {
 		const [sA] = makeParty(2);
 		const { msgKey, counter: c1 } = sA.sealFileKey();
@@ -261,7 +261,7 @@ describe('session — sealFileKey', () => {
 	});
 });
 
-describe('session — ratchet step', () => {
+describe('session: ratchet step', () => {
 	test('13. ratchet step: initiator advances to epoch 1, receiver stays at epoch 0', () => {
 		const [sA, sB] = makeParty(2);
 
@@ -297,14 +297,14 @@ describe('session — ratchet step', () => {
 		sA.commitRatchetStep();
 		sB.receiveRatchetStep('p0', kemCt, encSeed, pn);
 
-		// Now open the epoch-0 message — must succeed from old state
+		// Now open the epoch-0 message; must succeed from old state
 		expect(dec.decode(sB.openMessage('p0', 0, c0, ct0))).toBe('pre-ratchet');
 
 		sA.dispose();
 		sB.dispose();
 	});
 
-	test('15. N=3 all pairs step — initiator at epoch 1, receiver stays at epoch 0', () => {
+	test('15. N=3 all pairs step: initiator at epoch 1, receiver stays at epoch 0', () => {
 		// Test each pair independently: 3 pairs × 2 directions = 6 combinations.
 		// After the step, si is at epoch 1; sj stays at epoch 0 (has not ratcheted).
 		for (let p = 0; p < 3; p++) {
@@ -326,7 +326,7 @@ describe('session — ratchet step', () => {
 		}
 	});
 
-	test('17. N=3 ratchet step: shared seed — B and C both decrypt', () => {
+	test('17. N=3 ratchet step: shared seed, B and C both decrypt', () => {
 		const [sA, sB, sC] = makeParty(3);
 
 		// A performs step toward B and C, then commits
@@ -349,7 +349,7 @@ describe('session — ratchet step', () => {
 		expect(dec.decode(sB.openMessage('p0', 1, counter, ciphertext))).toBe('epoch1 to all');
 		expect(dec.decode(sC.openMessage('p0', 1, counter, ciphertext))).toBe('epoch1 to all');
 
-		// B and C stay at epoch 0 — they have not ratcheted
+		// B and C stay at epoch 0; they have not ratcheted
 		const { ciphertext: ct2, counter: c2, epoch: e2 } = sB.sealMessage(enc.encode('epoch0 from B'));
 		expect(e2).toBe(0);
 		expect(dec.decode(sA.openMessage('p1', 0, c2, ct2))).toBe('epoch0 from B');
@@ -425,7 +425,7 @@ describe('session — ratchet step', () => {
 			sA.updatePeerRatchetEk('p1', sB.ratchetEk);
 		}
 
-		// too old error — epoch 0 has been pruned
+		// too old error, epoch 0 has been pruned
 		expect(() => sB.openMessage('p0', 0, counter, ciphertext))
 			.toThrow('too old');
 
@@ -477,7 +477,7 @@ function advanceEpoch(
 	}
 }
 
-describe('session — late-join epoch sync', () => {
+describe('session: late-join epoch sync', () => {
 	test('22. join at epoch N baseline', () => {
 		const [sA, sB] = makeParty(2);
 		advanceEpoch(sA, 'p0', sB, 'p1', 2);
@@ -633,7 +633,7 @@ describe('room context chain separation', () => {
 	});
 });
 
-describe('session — removePeer', () => {
+describe('session: removePeer', () => {
 	test('28. removePeer clears all five maps', () => {
 		const sessions = makeParty(3);
 		sessions[0].removePeer('p1');
@@ -663,7 +663,7 @@ describe('session — removePeer', () => {
 	});
 });
 
-describe('session — epoch and counter getters', () => {
+describe('session: epoch and counter getters', () => {
 	test('30. epoch getter tracks ratchet steps', () => {
 		const [sA, sB] = makeParty(2);
 		expect(sA.epoch).toBe(0);
@@ -706,7 +706,7 @@ describe('session — epoch and counter getters', () => {
 	});
 });
 
-describe('SkippedKeyStore — config validation', () => {
+describe('SkippedKeyStore: config validation', () => {
 	test('32. maxSkipPerResolve > maxCacheSize throws RangeError', () => {
 		expect(() => new SkippedKeyStore({ maxCacheSize: 10, maxSkipPerResolve: 20 }))
 			.toThrow(RangeError);
@@ -717,14 +717,14 @@ describe('SkippedKeyStore — config validation', () => {
 	});
 });
 
-describe('SkippedKeyStore — ResolveHandle', () => {
+describe('SkippedKeyStore: ResolveHandle', () => {
 	function makeChainAndStore(): { chain: KDFChain, store: SkippedKeyStore } {
 		const chainKey = new Uint8Array(32);
 		for (let i = 0; i < 32; i++) chainKey[i] = i + 1;
 		return { chain: new KDFChain(chainKey), store: new SkippedKeyStore() };
 	}
 
-	test('34. commit() wipes the key — h.key access after commit throws', () => {
+	test('34. commit() wipes the key: h.key access after commit throws', () => {
 		const { chain, store } = makeChainAndStore();
 		const h = store.resolve(chain, 1);
 		const k = h.key;
@@ -735,7 +735,7 @@ describe('SkippedKeyStore — ResolveHandle', () => {
 		chain.dispose();
 	});
 
-	test('35. rollback() returns the key — same counter resolves to identical bytes', () => {
+	test('35. rollback() returns the key: same counter resolves to identical bytes', () => {
 		const { chain, store } = makeChainAndStore();
 		// skip-ahead to 2 stores key for counter 1
 		const h2 = store.resolve(chain, 2);

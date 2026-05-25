@@ -66,7 +66,7 @@ export default defineConfig([
 	{
 		files: ['**/test/**/*.ts'],
 		rules: {
-			// Non-null assertions are acceptable in tests — shapes are known
+			// Non-null assertions are acceptable in tests, shapes are known
 			'@typescript-eslint/no-non-null-assertion': 'off',
 		},
 	},

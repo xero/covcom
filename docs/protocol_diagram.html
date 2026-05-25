@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>COVCOM — Ratchet Protocol Diagram</title>
+<title>COVCOM Ratchet Protocol Diagram</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0d1117;font-family:'Courier New',monospace;color:#c2c0b6;display:flex;flex-direction:column;align-items:center;padding:16px;min-height:100vh}
@@ -17,7 +17,7 @@ button:hover{border-color:#444;color:#c2c0b6}
 </head>
 <body>
 <div id="title">COVCOM protocol diagram</div>
-<div id="phase">—</div>
+<div id="phase">…</div>
 <canvas id="cv"></canvas>
 <div id="controls">
   <button id="btn-pause">pause</button>
@@ -153,7 +153,7 @@ function drawPeer(p){
 }
 
 const PHASES=[
-  {lbl:'establishing session — alice ↔ bob',dur:1.5,
+  {lbl:'establishing session: alice ↔ bob',dur:1.5,
    enter(){
     Object.values(PEERS).forEach(p=>{p.epoch=0;p.out=0;p.sL=[];p.rL={};p.sp=0;p.fl=0;});
     PEERS.alice.vis=true;PEERS.alice.x=210;PEERS.alice.tx=210;
@@ -161,35 +161,35 @@ const PHASES=[
     PEERS.charlie.vis=false;PEERS.charlie.x=1100;PEERS.charlie.tx=1100;
     PEERS.alice.rL.bob=[];PEERS.bob.rL.alice=[];blobs=[];sparks=[];
    }},
-  {lbl:'exchanging messages — KDFChain.step() · unique key per message · key wiped after use',
+  {lbl:'exchanging messages: KDFChain.step() · unique key per message · key wiped after use',
    dur:7,nx:0,
    enter(){this.nx=.1;},
    update(dt){this.nx-=dt;if(this.nx<=0){this.nx=.3+Math.random()*.42;Math.random()<.5?sendMsg('alice','bob'):sendMsg('bob','alice');}}},
-  {lbl:'auto-ratchet — ML-KEM encap · KDF_SCKA_RK · epoch 0→1 · all chain state wiped',dur:3.2,
+  {lbl:'auto-ratchet: ML-KEM encap · KDF_SCKA_RK · epoch 0→1 · all chain state wiped',dur:3.2,
    enter(){triggerRatchet('alice');triggerRatchet('bob',.6);setTimeout(()=>{PEERS.alice.rL.bob=[];PEERS.bob.rL.alice=[];},1700);}},
-  {lbl:'epoch 1 — past ciphertext unrecoverable · PCS at every KEM ratchet boundary',
+  {lbl:'epoch 1: past ciphertext unrecoverable · PCS at every KEM ratchet boundary',
    dur:5,nx:0,
    enter(){this.nx=.1;},
    update(dt){this.nx-=dt;if(this.nx<=0){this.nx=.28+Math.random()*.35;Math.random()<.5?sendMsg('alice','bob'):sendMsg('bob','alice');}}},
-  {lbl:'charlie requests to join — server broadcasts peer_joined to alice and bob',dur:2.0,
+  {lbl:'charlie requests to join: server broadcasts peer_joined to alice and bob',dur:2.0,
    enter(){
     PEERS.alice.tx=148;PEERS.bob.tx=430;
     PEERS.charlie.vis=true;PEERS.charlie.x=1100;PEERS.charlie.tx=712;
     PEERS.charlie.epoch=0;PEERS.charlie.out=0;PEERS.charlie.sL=[];PEERS.charlie.rL={};
    }},
-  {lbl:'relay — Seal(charlieEk, epoch‖seed) — charlie receives alice and bob\'s chain seeds',dur:3.2,
+  {lbl:'relay: Seal(charlieEk, epoch‖seed) · charlie receives alice and bob\'s chain seeds',dur:3.2,
    enter(){
     spawnBlob('alice','charlie','Seal(ek\nepoch‖seed)',.25,()=>{PEERS.charlie.rL.alice=[];});
     spawnBlob('bob',  'charlie','Seal(ek\nepoch‖seed)',1.0, ()=>{PEERS.charlie.rL.bob=[];});
    }},
-  {lbl:'welcome ratchet — charlie fires KEM encap · epoch 0→1 · ratchet_step sent to all',dur:2.8,
+  {lbl:'welcome ratchet: charlie fires KEM encap · epoch 0→1 · ratchet_step sent to all',dur:2.8,
    enter(){
     triggerRatchet('charlie',.45);
     const sd=0.65;
     spawnBlob('charlie','alice','ratchet_step\nkemCt+encSeed',sd,    ()=>{PEERS.alice.rL.charlie=[];});
     spawnBlob('charlie','bob',  'ratchet_step\nkemCt+encSeed',sd+.4, ()=>{PEERS.bob.rL.charlie=[];});
    }},
-  {lbl:'3-party session — Sender Keys · per-sender KDFChain · O(N) state · ML-KEM-768 + XChaCha20',
+  {lbl:'3-party session: Sender Keys · per-sender KDFChain · O(N) state · ML-KEM-768 + XChaCha20',
    dur:7,nx:0,
    enter(){this.nx=.1;},
    update(dt){
@@ -201,7 +201,7 @@ const PHASES=[
      others.forEach(to=>{if(!PEERS[to].rL[from])PEERS[to].rL[from]=[];PEERS[to].rL[from].unshift({age:0});if(PEERS[to].rL[from].length>9)PEERS[to].rL[from].pop();});
     }
    }},
-  {lbl:'alice rotates — performRatchetStep per peer · commitRatchetStep · epoch 1→2',dur:4.0,
+  {lbl:'alice rotates: performRatchetStep per peer · commitRatchetStep · epoch 1→2',dur:4.0,
    enter(){
     triggerRatchet('alice',.7);
     setTimeout(()=>{PEERS.alice.rL.bob=[];PEERS.alice.rL.charlie=[];},1400);

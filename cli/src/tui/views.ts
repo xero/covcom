@@ -1,13 +1,62 @@
 import { join, resolve } from 'path';
 import { readdirSync } from 'fs';
 import { parseArmoredInvite, inviteFilename } from '@covcom/lib';
-import type { InvitePayload } from '@covcom/lib';
+import type { InvitePayload, FingerprintSurface } from '@covcom/lib';
 import { Screen, loadTheme, colorFg, colorBg, ansi } from './screen.js';
 import { parseInput, InputEvent } from './keys.js';
 import { FocusRing } from './focus.js';
 import { TextInput, TextArea, Button, ScrollView, Widget } from './widgets.js';
 import { readConfig } from '../config.js';
 import { resolveUniqueFilename } from '../util.js';
+import { BANNER } from './banner.js';
+
+// ─── banner ──────────────────────────────────────────────────────────────────
+
+const BANNER_LINES = BANNER.split('\n').filter(l => l.length > 0);
+const BANNER_W     = 56;  // visible cell width of the banner
+const BANNER_H     = BANNER_LINES.length;
+const BANNER_TOP   = 2;   // row offset from top of screen
+
+// render the verify row at the given y. Renders the local user's color row
+// followed by the hex fallback and a hint. Truncates if the terminal is too
+// narrow.
+function renderVerifyRow(
+	scr:  Screen,
+	y:    number,
+	bg:   import('./screen.js').ColorValue,
+	data: { local: FingerprintSurface; peers: { username: string; fingerprint: FingerprintSurface }[] },
+): void {
+	scr.fillRect(1, y, scr.w, 1, bg);
+	const { local } = data;
+	let x = 2;
+	for (const hex of local.swatches) {
+		if (x + 2 > scr.w) return;
+		scr.fillRect(x, y, 2, 1, { type: 'hex', value: hex });
+		x += 2;
+	}
+	x += 1;
+	if (x + local.hex.length > scr.w) return;
+	scr.moveTo(x, y);
+	scr.write(colorBg(bg) + colorFg({ type: 'ansi16', n: 15 }) + ' ' + local.hex + ansi.reset);
+	x += local.hex.length + 1;
+	const hint = '  ctrl-v hides';
+	if (x + hint.length > scr.w) return;
+	scr.moveTo(x, y);
+	scr.write(colorBg(bg) + colorFg({ type: 'ansi16', n: 8 }) + hint + ansi.reset);
+}
+
+// draw the banner if there's room; skips silently when terminal is too small.
+// formY is the first row of the form below it. The banner only renders if it
+// won't collide.
+function drawBanner(scr: Screen, formY: number): void {
+	if (scr.w < BANNER_W + 4) return;
+	if (formY < BANNER_TOP + BANNER_H + 1) return;
+	const ox = Math.floor((scr.w - BANNER_W) / 2);
+	for (let i = 0; i < BANNER_LINES.length; i++) {
+		scr.moveTo(ox, BANNER_TOP + i);
+		scr.write(BANNER_LINES[i] + ansi.reset);
+	}
+}
 
 // ─── module-level state for appendMessage / appendFile ───────────────────────
 
@@ -141,6 +190,7 @@ export function renderLanding(
 		const oy = Math.max(1, Math.floor((scr.h - 14) / 2));
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
+		drawBanner(scr, oy);
 
 		scr.moveTo(ox, oy);   scr.write(colorFg(theme.fg) + 'Server DNS:' + ansi.reset);
 		serverInput.render(scr, { x: ox, y: oy + 1, w: cw, h: 1 }, ring.isFocused('server'), theme);
@@ -405,6 +455,7 @@ export function renderJoin(
 		const oy = Math.max(1, Math.floor((scr.h - 20) / 2));
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
+		drawBanner(scr, oy);
 
 		scr.moveTo(ox, oy);     scr.write(colorFg(theme.fg) + 'Path to .room file:' + ansi.reset);
 		pathInput.render(scr,   { x: ox, y: oy + 1, w: cw,  h: 1 }, ring.isFocused('path'),    theme);
@@ -487,11 +538,12 @@ interface PeerInfo {
 export function renderChat(
 	scr: Screen,
 	opts: {
-		username: string
-		peers:    Map<string, PeerInfo>
-		onSend:   (text: string) => void
-		onFile:   (filePath: string) => Promise<void>
-		onRotate: () => void
+		username:        string
+		peers:           Map<string, PeerInfo>
+		onSend:          (text: string) => void
+		onFile:          (filePath: string) => Promise<void>
+		onRotate:        () => void
+		getFingerprints: () => { local: FingerprintSurface; peers: { username: string; fingerprint: FingerprintSurface }[] }
 	},
 ): void {
 	_chatScreen = scr;
@@ -560,13 +612,21 @@ export function renderChat(
 		pathInput.cursor = tabCycled.length;
 	}
 
+	let verifyVisible = false;
+
 	function render() {
 		scr.hideCursor();
-		const msgH = scr.h - 3;
-		const sepY = scr.h - 2;
-		const barY = scr.h - 1;
+		const verifyH = verifyVisible ? 1 : 0;
+		const msgH    = scr.h - 3 - verifyH;
+		const verifyY = scr.h - 3;
+		const sepY    = scr.h - 2;
+		const barY    = scr.h - 1;
 
 		scrollView.render(scr, { x: 1, y: 1, w: scr.w, h: msgH }, ring.isFocused('msgArea'), theme);
+
+		if (verifyVisible) {
+			renderVerifyRow(scr, verifyY, theme.barBg, opts.getFingerprints());
+		}
 
 		// separator
 		scr.fillRect(1, sepY, scr.w, 1, theme.barBg);
@@ -629,6 +689,10 @@ export function renderChat(
 			// normal chat mode
 			if (key.ctrl && key.name === 'r') {
 				opts.onRotate(); return;
+			}
+			if (key.ctrl && key.name === 'v') {
+				verifyVisible = !verifyVisible;
+				scr.markDirty(); return;
 			}
 			if (key.name === 'tab' && !key.shift) {
 				ring.next(); scr.markDirty(); return;
@@ -695,7 +759,7 @@ export function appendMessage(msg: {
 	senderIndex: number
 }): void {
 	if (!_scrollView || !_chatScreen) {
-		// not in chat — route system messages (server errors, etc.) to active view
+		// not in chat; route system messages (server errors, etc.) to active view
 		if (msg.sender === 'system' && _errorDisplay) _errorDisplay(msg.text);
 		return;
 	}

@@ -69,13 +69,13 @@ export function parseInput(buf: Buffer): InputEvent {
 
 	const byte = buf[0];
 
-	// ctrl+letter: bytes 0x01–0x1a (skip 0x08=bs, 0x09=tab, 0x0a=lf, 0x0d=cr already handled)
+	// ctrl+letter: bytes 0x01-0x1a (skip 0x08=bs, 0x09=tab, 0x0a=lf, 0x0d=cr already handled)
 	if (byte >= 0x01 && byte <= 0x1a) {
 		const ch = String.fromCharCode(byte + 0x60);
 		return k(ch, { ctrl: true, ch });
 	}
 
-	// printable UTF-8 — single char is a keypress, multi-char is unbracketd paste
+	// printable UTF-8. Single char is a keypress, multi-char is unbracketd paste.
 	const text = buf.toString('utf8');
 	if (text.length > 0 && (text.codePointAt(0) ?? 0) >= 0x20) {
 		if (text.length > 1) return { kind: 'paste', text };

@@ -39,7 +39,7 @@ jobs:
           cd ..
       - name: sync docs to wiki
         run: |
-          # copy only markdown files — html diagrams don't render in github wikis
+          # copy only markdown files; html diagrams don't render in github wikis
           cp repo/docs/*.md wiki/
           # bring in the security policy as a standalone wiki page
           cp repo/SECURITY.md wiki/SECURITY-POLICY.md

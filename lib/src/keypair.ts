@@ -1,4 +1,4 @@
-import { MlKem768 } from 'leviathan-crypto/kyber';
+import { MlKem768 } from 'leviathan-crypto/mlkem';
 import type { KeyPair } from './types.js';
 
 export function generateKeypair(): KeyPair {

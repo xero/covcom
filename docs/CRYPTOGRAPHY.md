@@ -35,9 +35,9 @@ All primitives are provided by [leviathan-crypto][LC].
 | Primitive | Parameters | Use |
 |---|---|---|
 | [XChaCha20-Poly1305][LC-CHACHA] | 256-bit key, 192-bit nonce | Message and file AEAD |
-| [ML-KEM-768][LC-KYBER] | FIPS 203, security level 3 | KEM ratchet, chain seed distribution |
+| [ML-KEM-768][LC-MLKEM] | FIPS 203, security level 3 | KEM ratchet, chain seed distribution |
 | [HKDF-SHA-256][LC-SHA2] | RFC 5869 | All key derivation |
-| [Seal+KyberSuite][LC-AEAD] | ML-KEM-768 + XChaCha20-Poly1305 | Chain seed relay blobs |
+| [Seal+MlKemSuite][LC-AEAD] | ML-KEM-768 + XChaCha20-Poly1305 | Chain seed relay blobs |
 | [SealStreamPool][LC-AEAD] | XChaCha20-Poly1305, 65536-byte chunks | File attachments |
 | [Fortuna CSPRNG][LC-FORTUNA] | 32 entropy pools | Room secret generation |
 
@@ -51,7 +51,7 @@ through leviathan-crypto's TypeScript/WASM layer.
 Three HKDF-SHA-256 functions drive the ratchet. Info strings include the
 room ID as a context suffix for domain separation across rooms.
 
-### KDF_SCKA_INIT — session initialization
+### KDF_SCKA_INIT (session initialization)
 
 Maps to `ratchetInit(sk, context?)` ([§5.4][S54]).
 
@@ -66,7 +66,7 @@ output: rootKey (32) || sendCK (32) || recvCK (32)
 Both parties call this with the same seed and independently derive identical
 chain keys. No further communication is needed to synchronize.
 
-### KDF_SCKA_CK — per-message chain step
+### KDF_SCKA_CK (per-message chain step)
 
 Maps to `KDFChain.step()` ([§2.2][S22]).
 
@@ -82,7 +82,7 @@ The counter is a monotonically increasing uint64 encoded big-endian. The old
 chain key is wiped before the new one is stored. `msgKey` is wiped after use.
 Calling `step()` after `dispose()` throws.
 
-### KDF_SCKA_RK — KEM epoch ratchet
+### KDF_SCKA_RK (KEM epoch ratchet)
 
 Maps to `kemRatchetEncap` / `kemRatchetDecap` ([§7.2][S72]).
 
@@ -153,7 +153,7 @@ wipes the key in a `try/finally` block.
 
 ## ratchet step
 
-`performRatchetStep(peerUsername)` — called once per peer in a batch:
+`performRatchetStep(peerUsername)` is called once per peer in a batch:
 
 1. `kemRatchetEncap(MlKem768, _encapRoots[peer], _peerRatchetEks[peer], _roomCtx)`
    → `{ nextRootKey, sendCK, recvCK, kemCt }`
@@ -190,9 +190,11 @@ gives O(N) state for N-party sessions.
 `RatchetKeypair.decap()` wipes `dk` in a `try/finally` block immediately after
 use (F-02 fix). Each keypair decapsulates exactly once.
 
-Auto-ratchet fires in `doSendMessage` and `doSendFile` when
-`session.counter >= AUTO_RATCHET_INTERVAL` (25) and `peers.size > 0`.
-It does not fire inside `sealMessage` (would cause infinite recursion).
+Auto-ratchet fires on the client's send path (web client
+`CovcomSession.sendMessage`/`sendFile`, CLI `doSendMessage`/`doSendFile`)
+when `session.counter >= AUTO_RATCHET_INTERVAL` (25) and there is at
+least one peer in the room. It does not fire inside `sealMessage` because
+that would recurse.
 
 ---
 
@@ -201,12 +203,12 @@ It does not fire inside `sealMessage` (would cause infinite recursion).
 Relay blob plaintext: `epoch[4 LE] || seed[32]` = 36 bytes.
 
 `wrapChainSeedFor(peerEk, username)`:
-- `Seal.encrypt(KyberSuite, peerEk, epoch[4LE] || _currentEpochSeed)`
+- `Seal.encrypt(MlKemSuite, peerEk, epoch[4LE] || _currentEpochSeed)`
 - Wipes old map entry before overwrite
 - Sends as `relay` wire message to peer
 
 `unwrapChainSeed(senderUsername, blob)`:
-- `Seal.decrypt(KyberSuite, _dk, blob)` → 36-byte plain
+- `Seal.decrypt(MlKemSuite, _dk, blob)` → 36-byte plain
 - Reads `epoch` from bytes 0-3 (little-endian uint32)
 - `ratchetInit(seed, _roomCtx)` → root key, sendCK, recvCK
 - Sets `_senderState[sender]` at decoded epoch (not hardcoded 0)
@@ -225,11 +227,11 @@ in `server/src/types.ts`.
 |---|---|---|
 | `create` | `adminToken?` | Create a room |
 | `join` | `roomId`, `roomSecret` | Join a room |
-| `identify` | `username`, `ek`, `ratchetEk` | Announce identity after join |
+| `identify` | `username`, `ek`, `ratchetEk`, `claim` | Announce identity after join with signed claim |
 | `relay` | `to`, `payload` | Send chain seed to a peer (base64) |
-| `broadcast` | `payload`, `meta` | Send encrypted message to all peers |
-| `ratchet_step` | `payloads{}`, `newEk`, `payload`, `meta` | Fan-out ratchet step |
-| `ek_update` | `ek` | Broadcast new encapsulation key post-ratchet |
+| `broadcast` | `payload`, `meta`, `sig` | Send encrypted message with detached signature |
+| `ratchet_step` | `payloads{}`, `newEk`, `payload`, `meta`, `sig`, `claim` | Fan-out ratchet step with continuation claim |
+| `ek_update` | `ek`, `claim` | Broadcast new encapsulation key post-ratchet |
 | `rekey` | `ek`, `ratchetEk` | Update keys in lobby without peer_joined |
 
 **Outbound (server → client)**
@@ -237,14 +239,14 @@ in `server/src/types.ts`.
 | Type | Key fields | Description |
 |---|---|---|
 | `room_created` | `roomId`, `roomSecret` | Server confirmation of room creation |
-| `joined` | `members[]` | Room joined; member list with current public keys |
-| `peer_joined` | `username`, `ek`, `ratchetEk` | New peer announced to room |
+| `joined` | `members[]` | Room joined; member list with public keys and claims |
+| `peer_joined` | `username`, `ek`, `ratchetEk`, `claim` | New peer announced with signed identity claim |
 | `peer_left` | `username` | Peer disconnected |
 | `relay` | `from`, `payload` | Forwarded chain seed blob |
-| `broadcast` | `from`, `payload`, `meta` | Forwarded encrypted message |
-| `ratchet_step_fwd` | `from`, `kemCt`, `encSeed`, `pn`, `newEk`, `payload`, `meta` | Per-peer ratchet step delivery |
-| `ek_update_fwd` | `from`, `ek` | Forwarded ek update |
-| `rekeyed` | — | Server acknowledgement of `rekey` |
+| `broadcast` | `from`, `payload`, `meta`, `sig` | Forwarded encrypted message with signature |
+| `ratchet_step_fwd` | `from`, `kemCt`, `encSeed`, `pn`, `newEk`, `payload`, `meta`, `sig`, `claim` | Per-peer ratchet step delivery |
+| `ek_update_fwd` | `from`, `ek`, `claim` | Forwarded ek update with continuation claim |
+| `rekeyed` | n/a | Server acknowledgement of `rekey` |
 | `error` | `reason` | `room_full` \| `not_found` \| `forbidden` \| `username_taken` |
 
 `ratchet_step` carries both key material and the first encrypted message of the
@@ -253,6 +255,114 @@ Receivers decrypt it after applying the ratchet step.
 
 `meta` on `broadcast` and `ratchet_step` is a `MessageEnvelope`:
 `{ epoch: number, counter: number, ... }`.
+
+The `claim` and `sig` fields are base64-encoded outputs from
+leviathan-crypto v3's `Sign` API. `claim` is an attached envelope; `sig`
+is a detached signature. The server forwards both opaquely without
+inspection.
+
+---
+
+## identity claims
+
+Identity claims are signed with `Ed25519PreHashSuite` (formatEnum `0x11`,
+suite `ctxDomain` `ed25519-prehash-envelope-v3`) per
+leviathan-crypto v3. The covcom layer carries a user ctx of
+`covcom-identity-claim-v3`. The wire envelope is the standard
+attached form documented in the leviathan-crypto signing docs:
+
+```
+offset           length  field
+0                1       suite_byte (0x11)
+1                1       ctx_len    (24)
+2                24      user_ctx   ("covcom-identity-claim-v3")
+26               4       payload_len (u32 BE)
+30               N       payload (binary, layout below)
+30 + N           64      Ed25519ph signature
+```
+
+**Claim payload binary layout (variable length).**
+
+```
+offset                  length  field
+0                       32      sessionPk      (Ed25519 session signing pk)
+32                      2       senderKeyLen   (u16 BE, length of senderKeyPub)
+34                      K       senderKeyPub   (raw current ML-KEM-768 ratchet ek, 1184 bytes)
+34 + K                  1       usernameLen    (uint8, 1-255)
+35 + K                  L       username       (UTF-8, len = usernameLen)
+35 + K + L              16      sessionId      (UTF-8 of roomId, truncated or right-padded with 0x00)
+51 + K + L              4       epoch          (u32 BE)
+55 + K + L              4       sequenceNum    (u32 BE, per-sender monotonic)
+59 + K + L              8       issuedAt       (u64 BE, milliseconds since unix epoch)
+67 + K + L              32      prevLogRoot    (BLAKE3 of prior claim payload, or 32 zeros for first)
+```
+
+Total payload size is `99 + K + L` bytes, around `99 + 1184 + 8 = 1291`
+bytes for an ML-KEM-768 ratchet ek and an 8-character username. The full
+signed envelope adds 94 bytes of framing for a typical total around 1385
+bytes. The variable-length senderKeyPub field carries the raw ratchet ek
+so receivers can compare against the value they see in `peer_joined` or
+`ek_update_fwd` directly.
+
+**Per-message signatures** are detached signatures over the byte string
+
+```
+counter(u32 BE) || epoch(u32 BE) || senderLen(u8) || sender(UTF-8) || ts(u64 BE) || ciphertext
+```
+
+signed under the ctx `covcom-message-sig-v3`. The signature is exactly
+64 bytes raw, base64-encoded for transport in the wire `sig` field.
+
+**Chain continuity.** A receiver maintains per-other-sender state of
+`{ sessionPk, lastSeq, lastPayloadHash, sha256Tree }`. On receiving a
+claim from a known peer, the receiver asserts:
+
+- `payload.sessionPk` equals the stored peer `sessionPk`
+- `payload.sequenceNum == lastSeq + 1`
+- `payload.prevLogRoot == BLAKE3.hash(prior payload bytes)`
+
+then appends the new payload to the per-sender SHA-256 Merkle tree and
+updates the per-peer state. The very first claim from a peer
+self-attests: the receiver extracts the session pk from the payload to
+verify the signature, then records the pk as the canonical identity for
+that sender along with the claim's sequence number as the continuity
+baseline. The first claim is trust-on-first-sight and may carry any
+sequence number, because a late joiner cannot have witnessed the peer's
+earlier claims. Continuity is enforced forward from the observed
+baseline, not back to sequence zero.
+
+---
+
+## fingerprint derivation
+
+Both the per-user ambient badge and the out-of-band verification color
+row derive from `BLAKE3.hash(sessionPk, 16)`. The 16-byte digest splits
+into eight 16-bit chunks (big-endian). Each chunk maps to a sRGB hex
+color through this pipeline:
+
+1. Split the chunk into a high 8-bit hue index and a low 8-bit lightness
+   index.
+2. Hue radians: `h = (hueBits / 256) * 2π`.
+3. Lightness: `L = 0.30 + (lightBits / 255) * 0.55` (range 0.30 to 0.85).
+4. Fixed chroma: `C = 0.15`.
+5. OKLab components: `a = C*cos(h)`, `b = C*sin(h)`.
+6. OKLab to linear sRGB via the standard matrix (Björn Ottosson, "A
+   perceptual color space for image processing", 2020).
+7. Linear sRGB to sRGB via the IEC 61966-2-1 gamma function.
+8. Clamp each channel to `[0, 1]`, multiply by 255, round, render as
+   `#rrggbb`.
+
+The OKLCh remap keeps adjacent bit values visually distinct on commodity
+displays. Raw RGB565 to sRGB nearest-neighbor mapping would produce
+imperceptible color steps in some hue regions, which would defeat the
+purpose.
+
+The ambient badge color uses only the first 16 bits of the digest. The
+verification row uses all 128 bits across eight swatches, giving a
+128-bit second-preimage budget against fingerprint forgery. A 16-byte
+hex fallback (the first 8 bytes of the same digest, lowercase) is always
+available for accessibility (color-blindness, screen calibration drift,
+cross-device verification by phone).
 
 ---
 
@@ -299,7 +409,7 @@ different armor headers or binary layouts are rejected; no migration path.
 | `recvCK` from `kemRatchetDecap` | After `Seal.decrypt(encSeed)` |
 | `kemSS` in `kemRatchetEncap/Decap` | Inside leviathan-crypto, before return |
 | 36-byte relay plain buffer | After `unwrapChainSeed` extracts seed |
-| File `msgKey` | `try/finally` in `doSendFile` / `doReceiveMessage` |
+| File `msgKey` | `try/finally` in the client's send and receive paths |
 | Full session | On WebSocket close, tab unload, SIGTERM |
 
 `wipe()` zeroes the buffer in-place. Wiped buffers are not reused.
@@ -309,7 +419,7 @@ different armor headers or binary layouts are rejected; no migration path.
 [LC]:          https://github.com/xero/leviathan-crypto
 [LC-AEAD]:     https://github.com/xero/leviathan-crypto/wiki/aead
 [LC-CHACHA]:   https://github.com/xero/leviathan-crypto/wiki/chacha20
-[LC-KYBER]:    https://github.com/xero/leviathan-crypto/wiki/kyber
+[LC-MLKEM]:    https://github.com/xero/leviathan-crypto/wiki/mlkem
 [LC-SHA2]:     https://github.com/xero/leviathan-crypto/wiki/sha2
 [LC-FORTUNA]:  https://github.com/xero/leviathan-crypto/wiki/fortuna
 [RFC5869]:     https://datatracker.ietf.org/doc/html/rfc5869

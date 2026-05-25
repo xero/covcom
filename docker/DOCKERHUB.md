@@ -37,8 +37,8 @@ A vulnerability in either project triggers a coordinated release of both.
 
 ### Tags
 
-- `X.Y.Z` — specific release (recommended for production)
-    - `latest` — most recent release
+- `X.Y.Z` is a specific release (recommended for production)
+    - `latest` is the most recent release
 
 <!-- DEPRECATED-START -->
 ### Deprecated Versions

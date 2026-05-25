@@ -7,7 +7,7 @@
 		"test": "bun test"
 	},
 	"dependencies": {
-		"leviathan-crypto": "^2.1.0"
+		"leviathan-crypto": "file:../../leviathan-crypto/leviathan-crypto-2.1.0.tgz"
 	},
 	"devDependencies": {
 		"@types/bun": "latest"

@@ -1,5 +1,5 @@
 {
-	"//": "Custom zero-dependency TUI — no native bindings required.",
+	"//": "Custom zero-dependency TUI, no native bindings required.",
 	"name": "@covcom/cli",
 	"private": true,
 	"type": "module",
@@ -15,7 +15,7 @@
 	},
 	"dependencies": {
 		"@covcom/lib": "workspace:*",
-		"leviathan-crypto": "^2.1.0"
+		"leviathan-crypto": "file:../../leviathan-crypto/leviathan-crypto-2.1.0.tgz"
 	},
 	"devDependencies": {
 		"@types/node": "^25.6.0",
