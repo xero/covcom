@@ -255,7 +255,8 @@ expected chain seeds have been received. It does not fire anywhere else.
   change these signatures or relocate exports without flagging it as a
   deviation.
 - Config is stored at `~/.config/covcom/config.json`. Fields: `server`,
-  `username`, `copyCmd`, `theme`, `systemMessages`. No key material.
+  `username`, `copyCmd`, `theme`, `showSystem`, `sidebar`, `icons`. No key
+  material.
 - The CLI accepts `covcom join <path>` as a positional argument. It also
   accepts pasted armored text at the interactive join prompt.
 

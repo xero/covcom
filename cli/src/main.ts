@@ -4,6 +4,8 @@ import { initCrypto } from './init.js';
 import { mount } from './state.js';
 import { doCleanup } from './lifecycle.js';
 
+process.title = 'covcom';
+
 // Parse CLI args: covcom join /path/to/invite.room
 const args    = process.argv.slice(2);
 const joinArg = args[0] === 'join' ? args[1] : undefined;

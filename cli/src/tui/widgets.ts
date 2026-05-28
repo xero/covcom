@@ -1,6 +1,9 @@
+import type { FingerprintSurface } from '@covcom/lib';
 import { formatBytes } from '../util.js';
 import { Screen, Theme, ColorValue, colorFg, colorBg, ansi } from './screen.js';
 import type { Key } from './keys.js';
+import { getEvents, subscribeEvents, type EventLogEntry } from '../eventLog.js';
+import { SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_STEP } from '../config.js';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
@@ -39,6 +42,46 @@ export function wordWrap(text: string, width: number): string[] {
 	}
 	if (cur) lines.push(cur);
 	return lines.length ? lines : [''];
+}
+
+// ─── drawModal ───────────────────────────────────────────────────────────────
+
+export interface ModalOpts {
+	title:   string
+	body:    string
+	accent?: ColorValue
+}
+
+export function drawModal(scr: Screen, theme: Theme, opts: ModalOpts): void {
+	const border  = opts.accent ?? theme.modalBorder;
+	const titleFg = opts.accent ?? theme.modalTitle;
+
+	const maxInner = Math.max(8, scr.w - 12);
+	const targetInner = Math.min(maxInner, Math.max(24, opts.title.length));
+	const rawLines: string[] = [];
+	for (const seg of opts.body.split('\n')) {
+		for (const line of wordWrap(seg, targetInner)) rawLines.push(line);
+	}
+	const longest = rawLines.reduce((m, l) => Math.max(m, l.length), 0);
+	const innerW  = Math.min(maxInner, Math.max(opts.title.length, longest, 24));
+
+	const boxW = innerW + 4;
+	const boxH = rawLines.length + 5;
+	const ox   = Math.max(1, Math.floor((scr.w - boxW) / 2));
+	const oy   = Math.max(1, Math.floor((scr.h - boxH) / 2));
+
+	scr.fillRect(ox, oy, boxW, boxH, border);
+	scr.fillRect(ox + 1, oy + 1, boxW - 2, boxH - 2, theme.modalBg);
+
+	const bg = colorBg(theme.modalBg);
+	scr.moveTo(ox + 2, oy + 2);
+	scr.write(bg + ansi.bold + colorFg(titleFg) + opts.title + ansi.reset);
+
+	const fg = colorFg(theme.modalFg);
+	for (let i = 0; i < rawLines.length; i++) {
+		scr.moveTo(ox + 2, oy + 3 + i);
+		scr.write(bg + fg + rawLines[i] + ansi.reset);
+	}
 }
 
 // ─── TextInput ────────────────────────────────────────────────────────────────
@@ -330,11 +373,21 @@ export class Button implements Widget {
 
 type StoredMsg =
 	| { isFile: false; sender: string; text: string; isSelf: boolean; senderIndex: number }
-	| { isFile: true; sender: string; filename: string; size: number; mime: string; isSelf: boolean; senderIndex: number; saved?: string }
+	| {
+		isFile: true
+		sender: string
+		filename: string
+		size: number
+		mime: string
+		isSelf: boolean
+		senderIndex: number
+		saved?: string
+		download?: () => Promise<string>
+	}
 
 interface RenderedLine {
 	screenY:     number
-	attachment?: { filename: string; chipX1: number; chipX2: number; saved?: string }
+	attachment?: { filename: string; chipX1: number; chipX2: number; saved?: string; msgIdx: number }
 }
 
 export class ScrollView implements Widget {
@@ -346,6 +399,7 @@ export class ScrollView implements Widget {
 	private autoScroll     = true;
 	private totalLines     = 0;
 	private renderedLines: RenderedLine[] = [];
+	private selectedMsgIdx: number | null = null;
 
 	constructor(id: string) {
 		this.id = id;
@@ -355,15 +409,63 @@ export class ScrollView implements Widget {
 		this.msgs.push({ isFile: false, ...msg });
 	}
 
-	addFile(msg: { sender: string; filename: string; size: number; mime: string; isSelf: boolean; senderIndex: number; saved?: string }) {
+	addFile(msg: {
+		sender: string
+		filename: string
+		size: number
+		mime: string
+		isSelf: boolean
+		senderIndex: number
+		saved?: string
+		download?: () => Promise<string>
+	}) {
 		this.msgs.push({ isFile: true, ...msg });
 	}
 
-	private computeLines(lineW: number, theme: Theme) {
+	markSaved(msgIdx: number, savedPath: string) {
+		const m = this.msgs[msgIdx];
+		if (m?.isFile) m.saved = savedPath;
+	}
+
+	private attachmentMsgIndices(): number[] {
+		const out: number[] = [];
+		for (let i = 0; i < this.msgs.length; i++) {
+			const m = this.msgs[i];
+			if (m.isFile && m.download) out.push(i);
+		}
+		return out;
+	}
+
+	hasAttachments(): boolean {
+		for (const m of this.msgs) if (m.isFile && m.download) return true;
+		return false;
+	}
+
+	selectLatest() {
+		const idxs = this.attachmentMsgIndices();
+		this.selectedMsgIdx = idxs.length ? idxs[idxs.length - 1] : null;
+	}
+
+	getSelectedIdx(): number | null {
+		return this.selectedMsgIdx;
+	}
+
+	triggerSelectedDownload(): void {
+		if (this.selectedMsgIdx === null) return;
+		const idx = this.selectedMsgIdx;
+		const m = this.msgs[idx];
+		if (!m?.isFile || !m.download) return;
+		m.download()
+			.then(saved => this.markSaved(idx, saved))
+			.catch(() => { /* state.ts surfaces the error to the user */ });
+	}
+
+	private computeLines(lineW: number, theme: Theme, highlightMsgIdx: number | null) {
 		interface ComputedLine { text: string; attachment?: RenderedLine['attachment'] }
 		const result: ComputedLine[] = [];
 
-		for (const msg of this.msgs) {
+		for (let mi = 0; mi < this.msgs.length; mi++) {
+			const msg       = this.msgs[mi];
 			const isSystem  = msg.senderIndex === 7;
 			const nameFg    = msg.isSelf  ? colorFg(theme.yourName)
 			                : isSystem    ? colorFg(theme.disabled)
@@ -391,33 +493,56 @@ export class ScrollView implements Widget {
 					// ensure at least one line
 				}
 			} else {
-				const chip    = ` ${msg.filename} `;
-				const chipX1  = prefixLen;        // relative to line start
-				const chipX2  = chipX1 + chip.length - 1;
-				const size    = formatBytes(msg.size);
-				const line    = nameFg + msg.sender + ansi.reset + ':'
-				              + colorBg(theme.attachBg) + colorFg(theme.attachFg) + chip + ansi.reset
-				              + colorFg(theme.disabled) + ` (${size})` + ansi.reset;
+				const chip       = ` ${msg.filename} `;
+				const chipX1     = prefixLen;        // relative to line start
+				const chipX2     = chipX1 + chip.length - 1;
+				const size       = formatBytes(msg.size);
+				const selected   = mi === highlightMsgIdx;
+				const chipBg     = selected ? theme.attachSelectedBg : theme.attachBg;
+				const chipFg     = selected ? theme.attachSelectedFg : theme.attachFg;
+				const line       = nameFg + msg.sender + ansi.reset + ':'
+				                 + colorBg(chipBg) + colorFg(chipFg) + chip + ansi.reset
+				                 + colorFg(theme.disabled) + ` (${size})` + ansi.reset;
 				result.push({
 					text: line,
-					attachment: { filename: msg.filename, chipX1, chipX2, saved: msg.saved },
+					attachment: { filename: msg.filename, chipX1, chipX2, saved: msg.saved, msgIdx: mi },
 				});
 			}
 		}
 		return result;
 	}
 
-	render(scr: Screen, rect: Rect, _focused: boolean, theme: Theme) {
+	render(scr: Screen, rect: Rect, focused: boolean, theme: Theme) {
 		this.rect         = rect;
 		this.renderedLines = [];
 
 		const lineW   = rect.w - 1;  // reserve right col for scroll indicator
-		const allLines = this.computeLines(lineW, theme);
+		const highlight = focused ? this.selectedMsgIdx : null;
+		const allLines = this.computeLines(lineW, theme, highlight);
 		this.totalLines   = allLines.length;
 
 		if (this.autoScroll)
 			this.scrollTop = Math.max(0, this.totalLines - rect.h);
 		this.scrollTop = Math.max(0, Math.min(this.scrollTop, Math.max(0, this.totalLines - rect.h)));
+
+		// Keep the selected attachment visible while focus is in the list.
+		if (focused && this.selectedMsgIdx !== null) {
+			let selLine = -1;
+			for (let i = 0; i < allLines.length; i++) {
+				if (allLines[i].attachment?.msgIdx === this.selectedMsgIdx) {
+					selLine = i; break;
+				}
+			}
+			if (selLine >= 0) {
+				if (selLine < this.scrollTop) {
+					this.scrollTop  = selLine;
+					this.autoScroll = false;
+				} else if (selLine >= this.scrollTop + rect.h) {
+					this.scrollTop  = selLine - rect.h + 1;
+					this.autoScroll = (this.scrollTop >= Math.max(0, this.totalLines - rect.h));
+				}
+			}
+		}
 
 		scr.fillRect(rect.x, rect.y, rect.w, rect.h, theme.bg);
 
@@ -466,7 +591,40 @@ export class ScrollView implements Widget {
 		if (this.scrollTop >= max) this.autoScroll = true;
 	}
 
+	enableAutoScroll() {
+		this.autoScroll = true;
+	}
+
+	private moveSelection(dir: -1 | 1) {
+		const idxs = this.attachmentMsgIndices();
+		if (!idxs.length) return;
+		if (this.selectedMsgIdx === null) {
+			this.selectedMsgIdx = dir === -1 ? idxs[idxs.length - 1] : idxs[0];
+			return;
+		}
+		const cur = idxs.indexOf(this.selectedMsgIdx);
+		if (cur === -1) {
+			this.selectedMsgIdx = idxs[idxs.length - 1];
+			return;
+		}
+		const next = Math.max(0, Math.min(idxs.length - 1, cur + dir));
+		this.selectedMsgIdx = idxs[next];
+	}
+
 	onKey(key: Key): boolean {
+		const hasAttach = this.hasAttachments();
+
+		if (hasAttach && key.name === 'enter') {
+			this.triggerSelectedDownload();
+			return true;
+		}
+		if (hasAttach && key.name === 'up') {
+			this.moveSelection(-1); return true;
+		}
+		if (hasAttach && key.name === 'down') {
+			this.moveSelection(+1); return true;
+		}
+
 		if (key.name === 'up')       {
 			this.scrollUp(1);  return true;
 		}
@@ -480,5 +638,409 @@ export class ScrollView implements Widget {
 			this.scrollDown(10); return true;
 		}
 		return false;
+	}
+}
+
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+//
+// Two-mode side pane: event-log mirrors the web sidebar's event feed; verify
+// renders the local + peer fingerprints (8 truecolor swatches + 16-char hex).
+// `mode` of null means hidden — the chat view should not allocate a column.
+
+export type SidebarMode = 'event-log' | 'verify' | null;
+
+type GetFingerprints = () => {
+	local: FingerprintSurface
+	peers: { username: string; fingerprint: FingerprintSurface }[]
+}
+
+interface RenderedLogRow {
+	screenY: number
+	entryId: number
+	isHeader: boolean
+}
+
+const KIND_LABEL_W = 9;
+const TIME_W       = 8;
+
+const KIND_ERROR   = new Set(['error', 'fatal', 'message-fail', 'claim-reject', 'decrypt-fail', 'send-fail']);
+const KIND_MEMBER  = new Set(['join', 'rejoin', 'part', 'peer_joined', 'peer_left']);
+const KIND_RATCHET = new Set(['ratchet', 'ratchet-step', 'ratchet-step-fwd', 'ratchet_step', 'ratchet_step_fwd']);
+
+function kindColor(kind: string, theme: Theme): ColorValue {
+	if (KIND_ERROR.has(kind))   return theme.evtKindError;
+	if (KIND_MEMBER.has(kind))  return theme.evtKindMember;
+	if (KIND_RATCHET.has(kind)) return theme.evtKindRatchet;
+	return theme.evtKindDefault;
+}
+
+function fmtTime(ts: number): string {
+	const d  = new Date(ts);
+	const hh = String(d.getHours()).padStart(2, '0');
+	const mm = String(d.getMinutes()).padStart(2, '0');
+	const ss = String(d.getSeconds()).padStart(2, '0');
+	return `${hh}:${mm}:${ss}`;
+}
+
+function stripHtml(s: string): string {
+	return s
+		.replace(/<[^>]+>/g, '')
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/&quot;/g, '"')
+		.replace(/&amp;/g, '&');
+}
+
+function dirGlyph(d: EventLogEntry['direction']): string {
+	if (d === 'in')  return '←';
+	if (d === 'out') return '→';
+	return '·';
+}
+
+function truncate(s: string, w: number): string {
+	if (w <= 0) return '';
+	if (s.length <= w) return s;
+	if (w <= 1) return s.slice(0, w);
+	return s.slice(0, w - 1) + '…';
+}
+
+export class Sidebar implements Widget {
+	id   = 'sidebar';
+	rect: Rect = { x: 0, y: 0, w: 0, h: 0 };
+
+	mode:  SidebarMode = null;
+	width: number;
+
+	private scrollTop      = 0;
+	private autoScroll     = true;
+	private selectedId:    number | null = null;
+	private expanded       = new Set<number>();
+	private rendered:      RenderedLogRow[] = [];
+	private totalLines     = 0;
+	private getFingerprints: GetFingerprints;
+	private username:        string;
+
+	private _unsubscribe:    (() => void) | null = null;
+	private _onChange:       (() => void) | null = null;
+
+	constructor(width: number, getFingerprints: GetFingerprints, username: string) {
+		this.width           = width;
+		this.getFingerprints = getFingerprints;
+		this.username        = username;
+	}
+
+	setMode(m: SidebarMode): void {
+		this.mode = m;
+		if (m === 'event-log') {
+			// Snap back to live tail when the user re-opens the log.
+			this.autoScroll = true;
+		}
+	}
+
+	isOpen(): boolean {
+		return this.mode !== null;
+	}
+
+	setWidth(w: number): number {
+		this.width = Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, Math.round(w)));
+		return this.width;
+	}
+
+	// Subscribe to event-log pushes. `onChange` should mark the screen dirty
+	// and re-render. Returned dispose tears down the subscription.
+	attach(onChange: () => void): () => void {
+		this._onChange    = onChange;
+		this._unsubscribe = subscribeEvents(() => {
+			if (this._onChange) this._onChange();
+		});
+		return () => this.dispose();
+	}
+
+	dispose(): void {
+		if (this._unsubscribe) {
+			this._unsubscribe(); this._unsubscribe = null;
+		}
+		this._onChange = null;
+	}
+
+	render(scr: Screen, rect: Rect, focused: boolean, theme: Theme): void {
+		this.rect = rect;
+		if (rect.w <= 0 || rect.h <= 0) return;
+
+		scr.fillRect(rect.x, rect.y, rect.w, rect.h, theme.bg);
+		this._renderTabs(scr, rect, theme);
+
+		const bodyY = rect.y + 1;
+		const bodyH = rect.h - 1;
+		if (bodyH <= 0) return;
+
+		const bodyRect = { x: rect.x, y: bodyY, w: rect.w, h: bodyH };
+		if (this.mode === 'event-log') this._renderEventLog(scr, bodyRect, focused, theme);
+		else if (this.mode === 'verify') this._renderVerify(scr, bodyRect, theme);
+	}
+
+	private _renderTabs(scr: Screen, rect: Rect, theme: Theme): void {
+		scr.fillRect(rect.x, rect.y, rect.w, 1, theme.barBg);
+		const tabs: { label: string; active: boolean }[] = [
+			{ label: ' events ', active: this.mode === 'event-log' },
+			{ label: ' verify ', active: this.mode === 'verify'    },
+		];
+		let x = rect.x;
+		for (const t of tabs) {
+			if (x >= rect.x + rect.w) break;
+			const w = Math.min(t.label.length, rect.x + rect.w - x);
+			const bg: ColorValue = t.active ? theme.btnFocusBg : theme.btnBg;
+			const fg: ColorValue = t.active ? theme.btnFocusFg : theme.btnFg;
+			scr.fillRect(x, rect.y, w, 1, bg);
+			scr.moveTo(x, rect.y);
+			scr.write(colorBg(bg) + colorFg(fg) + t.label.slice(0, w) + ansi.reset);
+			x += w + 1;
+		}
+	}
+
+	private _computeEventLines(rect: Rect, theme: Theme): { text: string; entryId: number; isHeader: boolean }[] {
+		const events = getEvents();
+		const lines: { text: string; entryId: number; isHeader: boolean }[] = [];
+		const w      = rect.w;
+		const msgFg  = colorFg(theme.evtMsg);
+		const keyFg  = colorFg(theme.evtKey);
+		const valFg  = colorFg(theme.evtVal);
+
+		for (const e of events) {
+			const time   = fmtTime(e.ts);
+			const dir    = dirGlyph(e.direction);
+			const kind   = truncate(e.kind, KIND_LABEL_W);
+			const sumRoom = Math.max(0, w - (TIME_W + 1 + 1 + 1 + KIND_LABEL_W + 1));
+			const sum    = truncate(stripHtml(e.summary), sumRoom);
+
+			const m = /^([^\s:]+):\s+(.*)$/.exec(sum);
+			let sumSeg: string;
+			if (m) {
+				const userFg = m[1] === this.username ? colorFg(theme.evtSelf) : colorFg(theme.evtPeer);
+				sumSeg = userFg + m[1] + ansi.reset + msgFg + ': ' + m[2] + ansi.reset;
+			} else {
+				sumSeg = msgFg + sum + ansi.reset;
+			}
+
+			const text   = colorFg(theme.evtTime) + time + ansi.reset + ' '
+			             + colorFg(theme.evtArrow) + dir + ansi.reset + ' '
+			             + colorFg(kindColor(e.kind, theme)) + kind.padEnd(KIND_LABEL_W) + ansi.reset + ' '
+			             + sumSeg;
+			lines.push({ text, entryId: e.id, isHeader: true });
+
+			if (this.expanded.has(e.id)) {
+				for (const [k, v] of Object.entries(e.details)) {
+					const val   = typeof v === 'string' ? v : JSON.stringify(v);
+					const head  = `  ${k}: `;
+					const room  = Math.max(0, w - head.length);
+					const vTrim = truncate(val, room);
+					const line  = keyFg + `  ${k}:` + ansi.reset + ' ' + valFg + vTrim + ansi.reset;
+					lines.push({ text: line, entryId: e.id, isHeader: false });
+				}
+			}
+		}
+		return lines;
+	}
+
+	private _renderEventLog(scr: Screen, rect: Rect, focused: boolean, theme: Theme): void {
+		const lines = this._computeEventLines(rect, theme);
+		this.totalLines = lines.length;
+
+		if (this.autoScroll) this.scrollTop = Math.max(0, this.totalLines - rect.h);
+		this.scrollTop = Math.max(0, Math.min(this.scrollTop, Math.max(0, this.totalLines - rect.h)));
+
+		this.rendered = [];
+		const visEnd  = Math.min(this.scrollTop + rect.h, this.totalLines);
+		for (let i = this.scrollTop; i < visEnd; i++) {
+			const li      = lines[i];
+			const screenY = rect.y + (i - this.scrollTop);
+			const selected = focused && li.entryId === this.selectedId && li.isHeader;
+			if (selected) {
+				scr.fillRect(rect.x, screenY, rect.w, 1, theme.btnFocusBg);
+				scr.moveTo(rect.x, screenY);
+				// Render line text on the selected bg; foreground sequences inside li.text
+				// will override per-segment, but we paint a base inverted bg first.
+				scr.write(colorBg(theme.btnFocusBg) + li.text);
+			} else {
+				scr.moveTo(rect.x, screenY);
+				scr.write(li.text);
+			}
+			this.rendered.push({ screenY, entryId: li.entryId, isHeader: li.isHeader });
+		}
+
+		if (this.totalLines > rect.h) {
+			const maxTop = this.totalLines - rect.h;
+			const pos    = maxTop > 0 ? Math.floor(this.scrollTop / maxTop * (rect.h - 1)) : 0;
+			scr.moveTo(rect.x + rect.w - 1, rect.y + pos);
+			scr.write(colorFg(theme.disabled) + '█' + ansi.reset);
+		}
+
+		if (focused && this.selectedId === null) {
+			// On first focus, snap selection to the last visible header.
+			for (let i = this.rendered.length - 1; i >= 0; i--) {
+				if (this.rendered[i].isHeader) {
+					this.selectedId = this.rendered[i].entryId;
+					break;
+				}
+			}
+		}
+	}
+
+	private _renderVerify(scr: Screen, rect: Rect, theme: Theme): void {
+		const fps = this.getFingerprints();
+		let y     = rect.y;
+		const writeLine = (text: string) => {
+			if (y >= rect.y + rect.h) return;
+			scr.moveTo(rect.x, y);
+			scr.write(text);
+			y++;
+		};
+		const writeSwatches = (swatches: string[]) => {
+			if (y >= rect.y + rect.h) return;
+			const cell = 2;
+			const fit  = Math.min(swatches.length, Math.floor((rect.w - 2) / cell));
+			let x = rect.x + 2;
+			for (let i = 0; i < fit; i++) {
+				scr.fillRect(x, y, cell, 1, { type: 'hex', value: swatches[i] });
+				x += cell;
+			}
+			y++;
+		};
+
+		writeLine(colorFg(theme.fg) + ansi.bold + ' You' + ansi.reset);
+		writeSwatches(fps.local.swatches);
+		writeLine(colorFg(theme.disabled) + '  ' + truncate(fps.local.hex, rect.w - 2) + ansi.reset);
+		y++; // blank line
+
+		if (fps.peers.length === 0) {
+			writeLine(colorFg(theme.disabled) + '  (no peers yet)' + ansi.reset);
+			return;
+		}
+
+		for (const p of fps.peers) {
+			if (y >= rect.y + rect.h) break;
+			writeLine(colorFg(theme.peerName) + ansi.bold + ' ' + truncate(p.username, rect.w - 1) + ansi.reset);
+			writeSwatches(p.fingerprint.swatches);
+			writeLine(colorFg(theme.disabled) + '  ' + truncate(p.fingerprint.hex, rect.w - 2) + ansi.reset);
+			y++;
+		}
+	}
+
+	onKey(key: Key): boolean {
+		if (this.mode !== 'event-log') {
+			// Verify panel is read-only; consume nothing.
+			return false;
+		}
+		if (key.name === 'up')       {
+			this._move(-1); return true;
+		}
+		if (key.name === 'down')     {
+			this._move(+1); return true;
+		}
+		if (key.name === 'pageup')   {
+			this._scrollPage(-1); return true;
+		}
+		if (key.name === 'pagedown') {
+			this._scrollPage(+1); return true;
+		}
+		if (key.name === 'home')     {
+			this.scrollTop = 0; this.autoScroll = false;
+			const events = getEvents();
+			this.selectedId = events.length > 0 ? events[0].id : null;
+			return true;
+		}
+		if (key.name === 'end')      {
+			this.autoScroll = true;
+			const events = getEvents();
+			this.selectedId = events.length > 0 ? events[events.length - 1].id : null;
+			return true;
+		}
+		if (key.name === 'enter')    {
+			this._toggleExpanded(); return true;
+		}
+		return false;
+	}
+
+	private _move(dir: -1 | 1): void {
+		const events = getEvents();
+		if (events.length === 0) {
+			this.selectedId = null; return;
+		}
+		const ids = events.map(e => e.id);
+		if (this.selectedId === null) {
+			this.selectedId = dir > 0 ? ids[0] : ids[ids.length - 1];
+		} else {
+			const i = ids.indexOf(this.selectedId);
+			if (i < 0)             this.selectedId = ids[ids.length - 1];
+			else if (dir > 0)      this.selectedId = ids[Math.min(i + 1, ids.length - 1)];
+			else                   this.selectedId = ids[Math.max(i - 1, 0)];
+		}
+		// Disable autoScroll while user is navigating; the render will keep selection in view.
+		this.autoScroll = false;
+		this._ensureSelectionVisible();
+	}
+
+	private _ensureSelectionVisible(): void {
+		// Recompute on next render; advance scrollTop one step if selection is off-screen.
+		// Cheap approximation: scroll one line in the appropriate direction.
+		const onScreen = this.rendered.some(r => r.entryId === this.selectedId && r.isHeader);
+		if (onScreen) return;
+		// Scroll a page in the direction of the selection.
+		this._scrollPage(this.scrollTop === 0 ? +1 : -1);
+	}
+
+	private _scrollPage(dir: -1 | 1): void {
+		const h = Math.max(1, this.rect.h - 1);
+		if (dir > 0) {
+			this.scrollTop = Math.min(this.scrollTop + Math.max(1, h - 1), Math.max(0, this.totalLines - h));
+			if (this.scrollTop >= Math.max(0, this.totalLines - h)) this.autoScroll = true;
+		} else {
+			this.scrollTop = Math.max(0, this.scrollTop - Math.max(1, h - 1));
+			this.autoScroll = false;
+		}
+	}
+
+	private _toggleExpanded(): void {
+		if (this.selectedId === null) return;
+		if (this.expanded.has(this.selectedId)) this.expanded.delete(this.selectedId);
+		else this.expanded.add(this.selectedId);
+		this._scrollSelectedEntryIntoView();
+	}
+
+	// After expand/collapse, scroll down if the selected entry's last detail
+	// line sits below the viewport. The selection cursor stays on the header,
+	// so without this the bottom-most entry's details have no anchor the user
+	// can navigate to.
+	private _scrollSelectedEntryIntoView(): void {
+		if (this.selectedId === null) return;
+		const events = getEvents();
+		const h      = Math.max(1, this.rect.h - 1);
+		let total    = 0;
+		let lastLine = -1;
+		for (const e of events) {
+			total += 1;
+			if (this.expanded.has(e.id)) total += Object.keys(e.details).length;
+			if (e.id === this.selectedId) lastLine = total - 1;
+		}
+		if (lastLine < 0) return;
+		if (lastLine >= this.scrollTop + h) {
+			const max      = Math.max(0, total - h);
+			this.scrollTop = Math.min(lastLine - h + 1, max);
+			if (this.scrollTop >= max) this.autoScroll = true;
+		}
+	}
+
+	stepWidth(direction: -1 | 1): number {
+		return this.setWidth(this.width + direction * SIDEBAR_WIDTH_STEP);
+	}
+
+	// Mouse-wheel routing: scroll the event log line-by-line. No-op on verify.
+	scrollByLines(delta: number): void {
+		if (this.mode !== 'event-log') return;
+		const h = Math.max(1, this.rect.h - 1);
+		const max = Math.max(0, this.totalLines - h);
+		this.scrollTop = Math.max(0, Math.min(this.scrollTop + delta, max));
+		if (delta < 0)        this.autoScroll = false;
+		if (this.scrollTop >= max) this.autoScroll = true;
 	}
 }

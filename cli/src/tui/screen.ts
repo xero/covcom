@@ -21,12 +21,29 @@ export interface Theme {
 	yourMsg:       ColorValue
 	peerName:      ColorValue
 	peerMsg:       ColorValue
-	attachBg:      ColorValue
-	attachFg:      ColorValue
+	attachBg:         ColorValue
+	attachFg:         ColorValue
+	attachSelectedBg: ColorValue
+	attachSelectedFg: ColorValue
 	calloutBg:     ColorValue
 	calloutFg:     ColorValue
+	modalBg:       ColorValue
+	modalFg:       ColorValue
+	modalBorder:   ColorValue
+	modalTitle:    ColorValue
 	disabled:      ColorValue
 	error:         ColorValue
+	evtTime:        ColorValue
+	evtArrow:       ColorValue
+	evtMsg:         ColorValue
+	evtKey:         ColorValue
+	evtVal:         ColorValue
+	evtSelf:        ColorValue
+	evtPeer:        ColorValue
+	evtKindDefault: ColorValue
+	evtKindError:   ColorValue
+	evtKindMember:  ColorValue
+	evtKindRatchet: ColorValue
 }
 
 export const defaultTheme: Theme = {
@@ -47,11 +64,28 @@ export const defaultTheme: Theme = {
 	peerName: { type: 'ansi16', n: 10 },
 	peerMsg: { type: 'ansi16', n: 15 },
 	attachBg: { type: 'ansi16', n: 6  },
-	attachFg: { type: 'ansi16', n: 15 },
+	attachFg: { type: 'ansi16', n: 0  },
+	attachSelectedBg: { type: 'ansi16', n: 2  },
+	attachSelectedFg: { type: 'ansi16', n: 0  },
 	calloutBg: { type: 'ansi16', n: 3  },
 	calloutFg: { type: 'ansi16', n: 0  },
+	modalBg: { type: 'ansi16', n: 0  },
+	modalFg: { type: 'ansi16', n: 15 },
+	modalBorder: { type: 'ansi16', n: 6  },
+	modalTitle: { type: 'ansi16', n: 14 },
 	disabled: { type: 'ansi16', n: 8  },
 	error: { type: 'ansi16', n: 9  },
+	evtTime: { type: 'ansi16', n: 8  },
+	evtArrow: { type: 'ansi16', n: 15 },
+	evtMsg: { type: 'ansi16', n: 15 },
+	evtKey: { type: 'ansi16', n: 8  },
+	evtVal: { type: 'ansi16', n: 15 },
+	evtSelf: { type: 'ansi16', n: 5  },
+	evtPeer: { type: 'ansi16', n: 6  },
+	evtKindDefault: { type: 'ansi16', n: 4 },
+	evtKindError: { type: 'ansi16', n: 1   },
+	evtKindMember: { type: 'ansi16', n: 2  },
+	evtKindRatchet: { type: 'ansi16', n: 3 },
 };
 
 function parseHex(hex: string): [number, number, number] {

@@ -301,7 +301,7 @@ interactively.
   "server": "chat.example.com",
   "username": "xero",
   "copyCmd": "xsel -b",
-  "systemMessages": true,
+  "showSystem": true,
   "theme": {
     "btnFocusBg": { "type": "256", "n": 33 },
     "yourName":   { "type": "hex", "value": "#ff8800" }
@@ -323,8 +323,13 @@ CLI probes for `pbcopy`, `xclip`, `xsel`, and `wl-copy` in that order.
 | `Tab` / `Shift+Tab` | Cycle focus                           |
 | `Enter`             | Send message / confirm                |
 | `Ctrl+R`            | Rotate encryption keys (ratchet step) |
-| `Ctrl+V`            | Toggle session fingerprint row        |
+| `Ctrl+E`            | Toggle event-log sidebar              |
+| `Ctrl+V`            | Toggle fingerprint-verify sidebar     |
 | `Ctrl+C`            | Quit and wipe session                 |
+
+When the sidebar has focus, `↑/↓` move selection in the event log, `PgUp/PgDn`
+page through, `Enter` expands the selected entry's details, and `+`/`-` step
+the sidebar width by 5%. `Esc` closes the sidebar.
 
 Files attach via the `+` button. Type or paste a path and use `Tab` for
 completion. Received files save to the current working directory; existing
