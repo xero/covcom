@@ -17,7 +17,7 @@ RUN bun i --ignore-scripts
 COPY lib/ ./lib/
 COPY web/ ./web/
 
-# Build web clinet
+# Build web client (single-file: one inlined index.html, strict-CSP friendly)
 RUN bun run --cwd web build
 
 # ── Stage 2: final image ───────────────────────────────────────────────────

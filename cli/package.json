@@ -4,6 +4,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
+		"test": "bun test",
 		"bundle": "bun build.ts",
 		"dev": "bun build.ts && bun run src/main.ts",
 		"build": "bun build.ts --compile",

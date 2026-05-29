@@ -1,4 +1,5 @@
 import { el } from '../util.js';
+import { renderRich } from '../rich.js';
 import { getState, subscribe } from '../store.js';
 import type { EventLogEntry } from '../store.js';
 import { sidebarBody } from './sidebar.js';
@@ -27,7 +28,7 @@ function buildRow(entry: EventLogEntry): HTMLElement {
 	const dir  = el('span', 'event-log-dir',  entry.direction);
 	const kind = el('span', 'event-log-kind', entry.kind);
 	const text = el('span', 'event-log-text');
-	text.innerHTML = entry.summary;
+	renderRich(text, entry.summary);
 	summary.append(time, dir, kind, text);
 
 	const details = document.createElement('table');

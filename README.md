@@ -240,7 +240,9 @@ Open `http://localhost:5173`.
 bun build:web
 ```
 
-Output goes to `web/dist/`. Serve it from any static file host.
+Produces a single self-contained HTML file in `web/dist/` — the entire
+bundle inlined, strict-CSP friendly. Serve it from any static file host
+with no build step, or let `bun build:docker` bake it into the image.
 
 **Preview the production build:**
 
@@ -250,16 +252,6 @@ bun run --cwd web preview
 
 Serves the contents of `web/dist/` locally for smoke-testing the bundled
 output.
-
-**Container build (single-file inline bundle):**
-
-```sh
-bun build:web:container
-```
-
-Produces a single self-contained HTML file for embedding in the Docker
-image or hosting from any static host without a build step. Run before
-`bun build:docker` if you want the latest web client baked into the image.
 
 ---
 
@@ -396,21 +388,34 @@ Deeper references for users, auditors, contributors, and the curious.
 
 ## Development
 
-**Run all tests:**
+**Run all unit tests:**
 
 ```sh
 bun test
 ```
 
-This runs `test:server`, `test:lib`, and the `test:cli` stub in sequence.
-The `web/` workspace has no unit tests (browser app).
+This runs `test:server`, `test:lib`, `test:web`, and the `test:cli` stub in
+sequence (all via `bun test`). The `cli/` TUI has no unit tests.
 
 **Run tests for a single package:**
 
 ```sh
 bun test:server     # server WebSocket broker
 bun test:lib        # shared crypto session layer
+bun test:web        # web client (store, session, bridge, views) via happy-dom
 ```
+
+**Run the end-to-end test (Playwright):**
+
+```sh
+bunx playwright install chromium   # one time
+bun test:e2e
+```
+
+`test:e2e` auto-starts the Bun broker and the Vite dev server, then drives two
+browser contexts through a real two-party encrypted chat (create → invite →
+join → exchange messages → verify fingerprints). It is not part of `bun test`
+because it needs running servers and a browser.
 
 **Lint and autofix:**
 

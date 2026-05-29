@@ -1,5 +1,6 @@
 import type { CovcomSession } from './session.js';
 import { dispatch, getState } from './store.js';
+import { b } from './rich.js';
 
 // Raw `fatal.reason` codes (server's ErrorMsg union + the session's local
 // failure codes) mapped to user-facing strings. UI concern, not protocol;
@@ -28,11 +29,11 @@ export function wireBridge(session: CovcomSession): () => void {
 
 	offs.push(session.on('peer-joined', ({ username, fingerprint }) => {
 		dispatch({ type: 'PEER_ADDED', username, fingerprint });
-		dispatch({ type: 'SYSTEM_APPENDED', text: `<b>${username}</b> joined` });
+		dispatch({ type: 'SYSTEM_APPENDED', text: [b(username), ' joined'] });
 		dispatch({ type: 'EVENT_LOGGED', entry: {
 			direction: 'local',
 			kind: 'join',
-			summary: `<b>${username}</b> joined`,
+			summary: [b(username), ' joined'],
 			details: { username, fpHex: fingerprint.hex },
 		} });
 	}));
@@ -46,31 +47,31 @@ export function wireBridge(session: CovcomSession): () => void {
 		if (fpChanged) {
 			dispatch({
 				type: 'SYSTEM_APPENDED',
-				text: `<b>${username}</b> reconnected: verify their fingerprint`,
+				text: [b(username), ' reconnected: verify their fingerprint'],
 				className: 'rejoin fp-changed',
 			});
 		} else {
 			dispatch({
 				type: 'SYSTEM_APPENDED',
-				text: `<b>${username}</b> reconnected`,
+				text: [b(username), ' reconnected'],
 				className: 'rejoin',
 			});
 		}
 		dispatch({ type: 'EVENT_LOGGED', entry: {
 			direction: 'local',
 			kind: 'rejoin',
-			summary: `<b>${username}</b> reconnected${fpChanged ? ' (fp changed)' : ''}`,
+			summary: [b(username), fpChanged ? ' reconnected (fp changed)' : ' reconnected'],
 			details: { username, fpHex: fingerprint.hex, fpChanged },
 		} });
 	}));
 
 	offs.push(session.on('peer-left', ({ username }) => {
 		dispatch({ type: 'PEER_REMOVED', username });
-		dispatch({ type: 'SYSTEM_APPENDED', text: `<b>${username}</b> left` });
+		dispatch({ type: 'SYSTEM_APPENDED', text: [b(username), ' left'] });
 		dispatch({ type: 'EVENT_LOGGED', entry: {
 			direction: 'local',
 			kind: 'part',
-			summary: `<b>${username}</b> left`,
+			summary: [b(username), ' left'],
 			details: { username },
 		} });
 	}));

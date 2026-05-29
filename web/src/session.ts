@@ -11,6 +11,7 @@ import { Emitter } from './emitter.js';
 import { redact, summarizeInbound, summarizeOutbound } from './wireSummary.js';
 import type { InboundMsg, OutboundMsg } from './wireTypes.js';
 import type { Room } from './store.js';
+import type { RichText } from './rich.js';
 
 export interface SessionEvents {
 	'phase':                     { phase: 'joining' | 'waiting' | 'ready'; room: Room; username: string };
@@ -21,7 +22,7 @@ export interface SessionEvents {
 	'message':                   { from: string; text: string; isSelf: boolean; epoch: number; counter: number; ts: number };
 	'file':                      { from: string; filename: string; mime: string; size: number; bytes: Uint8Array; isSelf: boolean; ts: number };
 	'ratchet':                   { from: string; isSelf: boolean; ts: number };
-	'wire':                      { direction: 'in' | 'out'; kind: string; summary: string; details: Record<string, unknown> };
+	'wire':                      { direction: 'in' | 'out'; kind: string; summary: RichText; details: Record<string, unknown> };
 	'log':                       { kind: string; summary: string; details?: Record<string, unknown> };
 	'info':                      { kind: string; text: string; details?: Record<string, unknown> };
 	'fatal':                     { reason: string; prefill?: { username?: string } };
@@ -49,12 +50,6 @@ function wsUrl(server: string): string {
 	const host  = server.split(':')[0];
 	const local = host === 'localhost' || host.startsWith('127.');
 	return `${local ? 'ws' : 'wss'}://${server}/ws`;
-}
-
-function httpUrl(server: string): string {
-	const host  = server.split(':')[0];
-	const local = host === 'localhost' || host.startsWith('127.');
-	return `${local ? 'http' : 'https'}://${server}`;
 }
 
 function errMsg(err: unknown): string {
@@ -354,7 +349,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		}, this._reconnectDelay);
 	}
 
-	private async _attemptReconnect(): Promise<void> {
+	private _attemptReconnect(): void {
 		this._reconnectTimer = null;
 		if (!this._room) return;
 		const dns = this._room.dns ?? this._server;
@@ -363,19 +358,13 @@ export class CovcomSession extends Emitter<SessionEvents> {
 			summary: `reconnect attempt (delay=${this._reconnectDelay}ms)`,
 			details: { delay: this._reconnectDelay, dns },
 		});
-		try {
-			const res = await fetch(`${httpUrl(dns)}/health_check`);
-			if (res.ok) {
-				this.emit('log', { kind: 'reconnect', summary: 'health_check ok', details: { dns } });
-				this._reconnectDelay = RECONNECT_INITIAL_MS;
-				this._isReconnect    = true;
-				this._settled        = false;
-				this._openWs(dns, () => this._sendJoin());
-				return;
-			}
-		} catch { /* server not reachable yet */ }
+		// The WebSocket open is the reachability probe. Grow backoff now; if the
+		// socket fails to (re)establish, _onWsClose reschedules with this delay.
+		// A successful join resets it (see _onJoined / connection-restored).
 		this._reconnectDelay = Math.min(this._reconnectDelay * 2, RECONNECT_MAX_MS);
-		this._scheduleReconnect();
+		this._isReconnect    = true;
+		this._settled        = false;
+		this._openWs(dns, () => this._sendJoin());
 	}
 
 	// ── internals: protocol handlers ────────────────────────────────────────
@@ -454,6 +443,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 			const downMs = at - this._connectionLostAt;
 			this.emit('connection-restored', { at, downMs });
 			this._connectionLostAt = 0;
+			this._reconnectDelay   = RECONNECT_INITIAL_MS;
 		}
 	}
 

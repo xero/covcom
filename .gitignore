@@ -6,6 +6,9 @@ dist/
 src/ts/embedded/
 src/ts/ct-wasm.ts
 test/e2e/results/
+web/test/e2e/results/
+playwright-report/
+.last-run.json
 *.tsbuildinfo
 tests/results/
 test-results/

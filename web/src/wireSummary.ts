@@ -1,8 +1,10 @@
 import type { InboundMsg, OutboundMsg } from './wireTypes.js';
+import { b, code } from './rich.js';
+import type { RichText } from './rich.js';
 
-// Lifted verbatim from eventLog.ts (summarize + the redact/escape/flatten
-// helpers they depend on). No behaviour changes; the originals stay in place
-// until the old code path is removed.
+// Lifted verbatim from eventLog.ts (summarize + the redact/flatten helpers they
+// depend on). Summaries are RichText token arrays — user-controlled fields are
+// carried as tokens (b()/code()) and rendered via textContent, never as HTML.
 
 export function redact(b64: string | undefined | null): string {
 	if (!b64) return '∅';
@@ -12,18 +14,10 @@ export function redact(b64: string | undefined | null): string {
 	return `${len}B "${head}…"`;
 }
 
-function escapeHtml(s: string): string {
-	return s
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;');
-}
-
-export function summarizeInbound(msg: InboundMsg): { summary: string; details: Record<string, string | number | boolean> } {
+export function summarizeInbound(msg: InboundMsg): { summary: RichText; details: Record<string, string | number | boolean> } {
 	switch (msg.type) {
 	case 'room_created':
-		return { summary: `room created <code>${escapeHtml(msg.roomId)}</code>`,
+		return { summary: ['room created ', code(msg.roomId)],
 			details: { roomId: msg.roomId, roomSecret: redact(msg.roomSecret) } };
 	case 'joined':
 		return { summary: `joined room (${msg.members.length} existing member${msg.members.length === 1 ? '' : 's'})`,
@@ -34,17 +28,17 @@ export function summarizeInbound(msg: InboundMsg): { summary: string; details: R
 				memberClaims: msg.members.map(m => redact(m.claim)).join(' | ') || '∅',
 			} };
 	case 'peer_joined':
-		return { summary: `<b>${escapeHtml(msg.username)}</b> joined`,
+		return { summary: [b(msg.username), ' joined'],
 			details: { username: msg.username, ek: redact(msg.ek), ratchetEk: redact(msg.ratchetEk), claim: redact(msg.claim) } };
 	case 'peer_left':
-		return { summary: `<b>${escapeHtml(msg.username)}</b> left`,
+		return { summary: [b(msg.username), ' left'],
 			details: { username: msg.username } };
 	case 'relay':
-		return { summary: `relay <b>${escapeHtml(msg.from)}</b> → self`,
+		return { summary: ['relay ', b(msg.from), ' → self'],
 			details: { from: msg.from, payload: redact(msg.payload) } };
 	case 'broadcast': {
 		const meta = msg.meta as Record<string, unknown>;
-		return { summary: `<b>${escapeHtml(msg.from)}</b> broadcast (${escapeHtml(String(meta?.type ?? 'msg'))})`,
+		return { summary: [b(msg.from), ` broadcast (${String(meta?.type ?? 'msg')})`],
 			details: {
 				from: msg.from,
 				payload: redact(msg.payload),
@@ -53,7 +47,7 @@ export function summarizeInbound(msg: InboundMsg): { summary: string; details: R
 			} };
 	}
 	case 'ratchet_step_fwd':
-		return { summary: `<b>${escapeHtml(msg.from)}</b> ratchet step`,
+		return { summary: [b(msg.from), ' ratchet step'],
 			details: {
 				from: msg.from,
 				pn: msg.pn,
@@ -66,35 +60,35 @@ export function summarizeInbound(msg: InboundMsg): { summary: string; details: R
 				...flattenMeta(msg.meta as Record<string, unknown>),
 			} };
 	case 'ek_update_fwd':
-		return { summary: `<b>${escapeHtml(msg.from)}</b> ek update`,
+		return { summary: [b(msg.from), ' ek update'],
 			details: { from: msg.from, ek: redact(msg.ek), claim: redact(msg.claim) } };
 	case 'rekeyed':
 		return { summary: 'server confirmed rekey', details: {} };
 	case 'error':
-		return { summary: `server error: ${escapeHtml(msg.reason)}`, details: { reason: msg.reason } };
+		return { summary: `server error: ${msg.reason}`, details: { reason: msg.reason } };
 	default: {
 		const t = (msg as { type: string }).type;
-		return { summary: `unknown inbound: ${escapeHtml(t)}`, details: { type: t } };
+		return { summary: `unknown inbound: ${t}`, details: { type: t } };
 	}
 	}
 }
 
-export function summarizeOutbound(msg: OutboundMsg): { summary: string; details: Record<string, string | number | boolean> } {
+export function summarizeOutbound(msg: OutboundMsg): { summary: RichText; details: Record<string, string | number | boolean> } {
 	switch (msg.type) {
 	case 'create':
 		return { summary: 'create room', details: { adminToken: msg.adminToken ? '✓' : '∅' } };
 	case 'join':
-		return { summary: `join <code>${escapeHtml(msg.roomId)}</code>`,
+		return { summary: ['join ', code(msg.roomId)],
 			details: { roomId: msg.roomId, roomSecret: redact(msg.roomSecret) } };
 	case 'identify':
-		return { summary: `identify as <b>${escapeHtml(msg.username)}</b>`,
+		return { summary: ['identify as ', b(msg.username)],
 			details: { username: msg.username, ek: redact(msg.ek), ratchetEk: redact(msg.ratchetEk), claim: redact(msg.claim) } };
 	case 'relay':
-		return { summary: `relay self → <b>${escapeHtml(msg.to)}</b>`,
+		return { summary: ['relay self → ', b(msg.to)],
 			details: { to: msg.to, payload: redact(msg.payload) } };
 	case 'broadcast': {
 		const meta = msg.meta as Record<string, unknown>;
-		return { summary: `broadcast (${escapeHtml(String(meta?.type ?? 'msg'))})`,
+		return { summary: `broadcast (${String(meta?.type ?? 'msg')})`,
 			details: { payload: redact(msg.payload), sig: redact(msg.sig), ...flattenMeta(meta) } };
 	}
 	case 'ratchet_step': {
@@ -117,7 +111,7 @@ export function summarizeOutbound(msg: OutboundMsg): { summary: string; details:
 			details: { ek: redact(msg.ek), ratchetEk: redact(msg.ratchetEk), claim: redact(msg.claim) } };
 	default: {
 		const t = (msg as { type: string }).type;
-		return { summary: `unknown outbound: ${escapeHtml(t)}`, details: { type: t } };
+		return { summary: `unknown outbound: ${t}`, details: { type: t } };
 	}
 	}
 }

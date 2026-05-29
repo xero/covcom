@@ -8,6 +8,7 @@ import type { CovcomSession } from '../session.js';
 import { getState, subscribe } from '../store.js';
 import type { ChatItem, PeerView, Room } from '../store.js';
 import { el, clear, formatBytes, senderColor } from '../util.js';
+import { renderRich } from '../rich.js';
 import { ICON_COG, ICON_SEND, ICON_ATTACH } from '../icons.js';
 import { mountSidebar } from './sidebar.js';
 import { mountEventLog } from './event-log.js';
@@ -78,8 +79,7 @@ function renderSystem(item: ChatItem & { kind: 'system' }): HTMLLIElement {
 	const li = document.createElement('li');
 	li.className = `msg system${item.className ? ' ' + item.className : ''}`;
 	const text = el('span', 'msg-text');
-	// Bridge dispatches inline HTML (bolded usernames); preserve markup here.
-	text.innerHTML = item.text;
+	renderRich(text, item.text);
 	li.appendChild(text);
 	return li;
 }

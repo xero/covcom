@@ -1,4 +1,5 @@
 import type { FingerprintSurface } from '@covcom/lib';
+import type { RichText } from './rich.js';
 
 export type Screen =
 	| { name: 'landing'; error?: string; prefill?: { username?: string } }
@@ -20,14 +21,14 @@ export interface PeerView {
 export type ChatItem =
 	| { kind: 'message'; from: string; text: string; isSelf: boolean; ts: number }
 	| { kind: 'file'; from: string; filename: string; mime: string; size: number; bytes: Uint8Array; isSelf: boolean; ts: number }
-	| { kind: 'system'; text: string; className?: string; ts: number }
+	| { kind: 'system'; text: RichText; className?: string; ts: number }
 	| { kind: 'ratchet'; from: string; isSelf: boolean; ts: number };
 
 export interface EventLogEntry {
 	id:        number;
 	direction: 'in' | 'out' | 'local';
 	kind:      string;
-	summary:   string;
+	summary:   RichText;
 	details:   Record<string, unknown>;
 	ts:        number;
 }
@@ -56,7 +57,7 @@ export type Action =
 	| { type: 'LOCAL_FINGERPRINT'; fingerprint: FingerprintSurface }
 	| { type: 'MESSAGE_APPENDED'; item: ChatItem & { kind: 'message' } }
 	| { type: 'FILE_APPENDED'; item: ChatItem & { kind: 'file' } }
-	| { type: 'SYSTEM_APPENDED'; text: string; className?: string }
+	| { type: 'SYSTEM_APPENDED'; text: RichText; className?: string }
 	| { type: 'RATCHET_APPENDED'; from: string; isSelf: boolean }
 	| { type: 'EVENT_LOGGED'; entry: Omit<EventLogEntry, 'id' | 'ts'> & { ts?: number } }
 	| { type: 'SIDEBAR_TOGGLE'; section: 'event-log' | 'verify' }

@@ -250,7 +250,9 @@ Open `http://localhost:5173`.
 bun build:web
 ```
 
-Output goes to `web/dist/`. Serve it from any static file host.
+Produces a single self-contained HTML file in `web/dist/` — the entire
+bundle inlined, strict-CSP friendly. Serve it from any static file host
+with no build step, or let `bun build:docker` bake it into the image.
 
 **Preview the production build:**
 
@@ -260,16 +262,6 @@ bun run --cwd web preview
 
 Serves the contents of `web/dist/` locally for smoke-testing the bundled
 output.
-
-**Container build (single-file inline bundle):**
-
-```sh
-bun build:web:container
-```
-
-Produces a single self-contained HTML file for embedding in the Docker
-image or hosting from any static host without a build step. Run before
-`bun build:docker` if you want the latest web client baked into the image.
 
 ---
 
