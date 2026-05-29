@@ -48,6 +48,9 @@ The active primitive set:
 | ML-KEM-768 (FIPS 203) | Post-quantum key encapsulation |
 | HKDF-SHA-256 | Key derivation throughout |
 | Seal+MlKemSuite | Chain seed distribution |
+| Ed25519PreHashSuite | Identity-claim and per-message signing |
+| BLAKE3 | Identity-log chain hash and fingerprint derivation |
+| SHA-256 Merkle | Per-sender transcript log |
 
 The protocol implements the Sparse Post-Quantum Ratchet from the
 [Signal Double Ratchet spec](https://signal.org/docs/specifications/doubleratchet/)
@@ -64,6 +67,11 @@ The protocol implements the Sparse Post-Quantum Ratchet from the
 - Harvest-now-decrypt-later resistance via ML-KEM-768
 - Enumeration resistance via a 2^128 room secret space
 - Session anonymity, with no persistent identity keys visible to the server
+- Per-message provenance: every broadcast carries a detached Ed25519
+  signature over `counter || epoch || sender || ts || ciphertext`,
+  verified before AEAD
+- Split-view detection: each peer's identity claims form a BLAKE3-chained
+  log surfaced as an 8-colour fingerprint for out-of-band comparison
 
 **The protocol does not protect against:**
 - Endpoint compromise (malware, physical device access)

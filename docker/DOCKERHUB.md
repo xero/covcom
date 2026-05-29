@@ -6,14 +6,14 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
-
-  Covert  communications  for private group conversations.
-  Invite,  talk,  close the client, and the chat vanishes.
-  End-to-end  encrypted  with  post-quantum  cryptography,
-  both manual and epoch-based ratchet events add layers of
-  forward  secrecy, ensuring messages remain private today
-  and unreadable to the computational power of tomorrow.
+  Covert communications for private group conversations.
+  Invite, talk, close the client, and the chat vanishes.
+  Every message is encrypted with XChaCha20 and signed
+  with Ed25519. A BLAKE3 fingerprint on each key allows
+  peers to verify one another. SPQR's manual and epoch
+  ratchets add forward secrecy, while post-quantum
+  ML-KEM-768 encapsulation keeps recorded communications
+  unreadable and secure against future cryptanalysis.
 ```
 
 ## https://xero.github.io/covcom/
@@ -23,6 +23,10 @@ XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
 - **Code:** https://github.com/xero/covcom
 - **Docs:** https://github.com/xero/covcom/wiki
 
+> **Crypto stack:** XChaCha20-Poly1305 AEAD, ML-KEM-768 post-quantum KEM ratchet,
+HKDF-SHA-256 chain derivation, Ed25519 message + identity-claim signatures, and
+a BLAKE3-chained identity fingerprint for out-of-band verification.
+
 ---
 
 ## Version Support
@@ -31,21 +35,24 @@ COVCOM follows a rolling support policy. When a security fix ships, the
 previous version is deprecated immediately. Only the current release is
 supported. Deprecated versions receive no patches, so upgrade promptly.
 
-COVCOM releases in tandem with it's cryptographic library
+COVCOM releases in tandem with its cryptographic library
 [leviathan-crypto](https://github.com/xero/leviathan-crypto/).
 A vulnerability in either project triggers a coordinated release of both.
 
-### Tags
+### Supported Version
 
-- `X.Y.Z` is a specific release (recommended for production)
-    - `latest` is the most recent release
+| Tag     | Alias    |
+|---------|----------|
+| `3.0.0` | `latest` |
 
 <!-- DEPRECATED-START -->
 ### Deprecated Versions
 
-| Tag | Reason | Replacement |
-|-----|--------|-------------|
-| `0.0.1` | public beta | `1.0.0` |
+| Tag     | Reason |
+|---------|--------|
+| `2.0.0` | unreleased |
+| `1.0.0` | XChaCha20 seal wasn't key-committing, thus vulnerabile to salamander style partitioning-oracle attacks |
+| `0.0.1` | public beta |
 <!-- DEPRECATED-END -->
 
 ---

@@ -4,7 +4,7 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
+XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-party
 ```
 
 # COVCOM Cryptography Reference
@@ -39,6 +39,9 @@ All primitives are provided by [leviathan-crypto][LC].
 | [HKDF-SHA-256][LC-SHA2] | RFC 5869 | All key derivation |
 | [Seal+MlKemSuite][LC-AEAD] | ML-KEM-768 + XChaCha20-Poly1305 | Chain seed relay blobs |
 | [SealStreamPool][LC-AEAD] | XChaCha20-Poly1305, 65536-byte chunks | File attachments |
+| [Ed25519PreHashSuite][LC-SIGN] | formatEnum `0x11`, ctxDomain `ed25519-prehash-envelope-v3` | Identity-claim and per-message signing |
+| [BLAKE3][LC-BLAKE3] | 32-byte payload-chain digest, 16-byte fingerprint digest | Identity-log chain hash, fingerprint derivation |
+| [Sha256Tree][LC-MERKLE] | SHA-256 binary Merkle | Per-sender transcript log of claim payloads |
 | [Fortuna CSPRNG][LC-FORTUNA] | 32 entropy pools | Room secret generation |
 
 No third-party cryptographic dependencies. No WebCrypto. All operations run
@@ -421,6 +424,9 @@ different armor headers or binary layouts are rejected; no migration path.
 [LC-CHACHA]:   https://github.com/xero/leviathan-crypto/wiki/chacha20
 [LC-MLKEM]:    https://github.com/xero/leviathan-crypto/wiki/mlkem
 [LC-SHA2]:     https://github.com/xero/leviathan-crypto/wiki/sha2
+[LC-SIGN]:     https://github.com/xero/leviathan-crypto/wiki/sign
+[LC-BLAKE3]:   https://github.com/xero/leviathan-crypto/wiki/blake3
+[LC-MERKLE]:   https://github.com/xero/leviathan-crypto/wiki/merkle
 [LC-FORTUNA]:  https://github.com/xero/leviathan-crypto/wiki/fortuna
 [RFC5869]:     https://datatracker.ietf.org/doc/html/rfc5869
 [RFC8439]:     https://datatracker.ietf.org/doc/html/rfc8439

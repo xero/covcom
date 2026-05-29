@@ -4,7 +4,7 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
+XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-party
 ```
 
 # COVCOM Threat Model
@@ -69,6 +69,17 @@ message volume.
 **Seal+MlKemSuite IND-CCA2.** The KEM-based public-key encryption scheme
 used for chain seed distribution is IND-CCA2 secure under the ML-KEM-768
 assumption.
+
+**Ed25519 EUF-CMA** ([RFC8032][RFC8032]). The session signing scheme is
+existentially unforgeable under adaptive chosen-message attack. A cannot
+produce a valid signature under any participant's session signing key
+without that secret key.
+
+**BLAKE3 collision and second-preimage resistance.** The identity-log
+chain hash and the fingerprint surface both rely on BLAKE3 being
+collision-resistant for 32-byte outputs (claim payload chain) and
+second-preimage-resistant for 16-byte outputs (fingerprint, 128-bit
+budget).
 
 ---
 
@@ -295,6 +306,7 @@ cryptographic attack and is outside this model.
 
 [FIPS203]:  https://csrc.nist.gov/pubs/fips/203/final
 [RFC5869]:  https://datatracker.ietf.org/doc/html/rfc5869
+[RFC8032]:  https://datatracker.ietf.org/doc/html/rfc8032
 [RFC8439]:  https://datatracker.ietf.org/doc/html/rfc8439
 [BALB23]:   https://arxiv.org/pdf/2301.07045
 [JOH18]:    https://www.researchgate.net/publication/326550093_The_Snowden_Phone_A_Comparative_Survey_of_Secure_Instant_Messaging_Mobile_Applications_authors_version

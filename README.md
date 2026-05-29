@@ -6,14 +6,14 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
-
-  Covert  communications  for private group conversations.
-  Invite,  talk,  close the client, and the chat vanishes.
-  End-to-end  encrypted  with  post-quantum  cryptography,
-  both manual and epoch-based ratchet events add layers of
-  forward  secrecy, ensuring messages remain private today
-  and unreadable to the computational power of tomorrow.
+  Covert communications for private group conversations.
+  Invite, talk, close the client, and the chat vanishes.
+  Every message is encrypted with XChaCha20 and signed
+  with Ed25519. A BLAKE3 fingerprint on each key allows
+  peers to verify one another. SPQR's manual and epoch
+  ratchets add forward secrecy, while post-quantum
+  ML-KEM-768 encapsulation keeps recorded communications
+  unreadable and secure against future cryptanalysis.
 ```
 
 ## https://xero.github.io/covcom/
@@ -61,6 +61,18 @@ rotates immediately after use.
 
 The group uses a Sender Keys model: one send chain per participant, not one
 per pair. O(N) state regardless of room size.
+
+Every session also mints a fresh Ed25519 signing keypair on construction.
+Identity claims and every broadcast are signed under it. Each peer's
+claims form a BLAKE3-chained log: every claim binds the previous payload's
+hash, so the server cannot reorder, drop, or substitute a structural event
+mid-session without breaking the chain. The session signing public key
+derives a fingerprint surface (`BLAKE3(sessionPk, 16)` → eight OKLCh
+swatches + 16-char hex) for out-of-band verification. Both clients expose
+a sidebar with two panels: **Verify** lists your fingerprint and every
+peer's side-by-side; **Event Log** captures every inbound/outbound
+WebSocket frame and every crypto action with redacted payloads and
+expandable detail rows.
 
 This implements the [Sparse Post-Quantum Ratchet](https://signal.org/docs/specifications/doubleratchet/#the-sparse-post-quantum-ratchet) from Signal's Double Ratchet spec (§5, Revision 4). For more detail, see [PROTOCOL.md](./docs/PROTOCOL.md).
 

@@ -4,7 +4,7 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
+XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-party
 ```
 
 # COVCOM Protocol Spec
@@ -404,10 +404,10 @@ second-preimage budget. The first two bytes form a single OKLCh color
 rendered as the user's ambient badge. The web client tints the
 fingerprint button in the header with the ambient color; clicking it
 opens a Verify sidebar panel that lists the swatch row and hex for you
-and every peer side by side. The CLI toggles a swatch row above the input
-with `Ctrl-V`. Users compare their colors with peers out-of-band. A
-mismatch means one of you is looking at a different session than the
-other thinks.
+and every peer side by side. The CLI opens an equivalent Verify pane in
+its sidebar with `Ctrl+V`. Users compare their colors with peers
+out-of-band. A mismatch means one of you is looking at a different
+session than the other thinks.
 
 **What this layer does not defend against.** The server cannot inject a
 forged `peer_joined` for an existing peer mid-session, because every
@@ -418,10 +418,9 @@ fingerprint comparison is the only mitigation against first-contact
 substitution, which is why the color row exists.
 
 **Versioning.** The v3 wire format is version-locked to leviathan-crypto's
-v3 release. All ctx strings carry `-v3` suffixes
-(`covcom-identity-claim-v3`, `covcom-message-sig-v3`,
-`covcom-log-checkpoint-v3`). Future breaking changes in either project
-bump both in lockstep.
+v3 signing API surface. All covcom ctx strings carry `-v3` suffixes
+(`covcom-identity-claim-v3`, `covcom-message-sig-v3`). Future breaking
+changes in either project bump both in lockstep.
 
 ---
 

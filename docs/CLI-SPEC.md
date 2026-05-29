@@ -4,7 +4,7 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
+XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-party
 ```
 
 # COVCOM CLI TUI Design Spec
@@ -636,6 +636,12 @@ tab order: chatInput → sendBtn → attachBtn → rotateBtn → msgArea → sid
 **chat input special behavior:**
 - enter → sends message (calls send action), does not Tab to next widget
 - Tab → normal focus cycle
+- a value starting with `/` is dispatched as a slash command instead of
+  being sent. recognized commands: `/exit` (`/quit`, `/q`, `/part`) quit,
+  `/ratchet` rotate keys (Ctrl+R equivalent), `/events` toggle event log
+  (Ctrl+E equivalent), `/verify` toggle verify pane (Ctrl+V equivalent),
+  `/help` (`/?`) print the list. unknown slash inputs surface a system
+  message; the text is not transmitted.
 
 **scrollView focus:**
 - when msgArea is focused, up/down/pgup/pgdn scroll the chat
@@ -659,6 +665,17 @@ tab order: chatInput → sendBtn → attachBtn → rotateBtn → msgArea → sid
 **attach click in chat:**
 - mouse click on an attachment chip → calls download handler for that attachment id
 - no focus change, no keyboard equivalent needed for this action
+
+**file download flow:**
+- the download handler decrypts the file payload, resolves a non-colliding
+  path in `process.cwd()` via `resolveUniqueFilename` (existing filenames
+  receive a `_1`, `_2`, … suffix), and writes the plaintext via
+  `Bun.write`
+- on success: a Modal renders with title `File Downloaded` and a body of
+  `<filename>\n<resolved absolute path>`. an event-log entry is appended
+  with `direction: 'in'`, `kind: 'file'`
+- on failure: a system message is appended to the chat scroll with the
+  resolved path and the error reason; no modal renders
 
 ---
 

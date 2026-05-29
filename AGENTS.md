@@ -229,6 +229,16 @@ expected chain seeds have been received. It does not fire anywhere else.
   The drop zone overlay is CSS only; no JS animation library.
 - The text input does not grow beyond its set height. It scrolls internally.
   `Shift+Enter` inserts a newline. `Enter` sends.
+- The web client is structured around a small Redux-shaped store. Protocol
+  state lives in `web/src/session.ts` (a `CovcomSession` that emits events
+  via `web/src/emitter.ts`); UI state lives in `web/src/store.ts` (screen,
+  chat, sidebar, event log); `web/src/bridge.ts` adapts session events to
+  store actions and produces event-log entries from inbound/outbound wire
+  frames. Per-view DOM mount/unmount lives in `web/src/views/` (`shell.ts`,
+  `landing.ts`, `joining.ts`, `join.ts`, `waiting.ts`, `chat.ts`,
+  `header-nav.ts`, `sidebar.ts`, `event-log.ts`, `verify.ts`). Do not
+  re-merge session and UI state, and do not bypass the bridge to write to
+  the store from session code.
 
 **CLI**
 
@@ -237,6 +247,7 @@ expected chain seeds have been received. It does not fire anywhere else.
   `./docs/CLI-SPEC.md` before touching any file under `cli/src/tui/`.
 - `cli/src/tui/` contains:
   - infrastructure: `screen.ts`, `keys.ts`, `focus.ts`, `widgets.ts`
+    (TextInput, TextArea, Button, ScrollView, Sidebar, Modal)
   - rendering implementation: `views.ts`
   - per-screen façades that re-export from `views.ts`: `landing.ts`,
     `waiting.ts`, `join.ts`, `chat.ts`
@@ -244,6 +255,11 @@ expected chain seeds have been received. It does not fire anywhere else.
     hand)
 
   Do not add files outside this structure without flagging it.
+- `cli/src/eventLog.ts` is a top-level CLI module (not under `tui/`). It
+  holds the capped ring buffer that backs the Sidebar's event-log pane;
+  its `EventLogEntry` shape mirrors `web/src/store.ts` so the two clients
+  surface the same data. Mutate it only via `logEvent` and reset on
+  session teardown.
 - The public interface between `cli/src/state.ts` and the TUI is fixed.
   `state.ts` imports through the per-screen façades:
   - `renderLanding` from `tui/landing.ts`
@@ -280,13 +296,13 @@ expected chain seeds have been received. It does not fire anywhere else.
 - Error reason values: `room_full`, `not_found`, `forbidden`, `username_taken`.
   Do not introduce new error reasons without flagging it.
 
-**Wire versioning is locked to leviathan-crypto.** All v3 ctx strings carry
-a `-v3` suffix (`covcom-identity-claim-v3`, `covcom-message-sig-v3`,
-`covcom-log-checkpoint-v3`) so they track the leviathan-crypto release
-this code targets. When leviathan-crypto bumps to a new major version,
-covcom's ctx strings bump in lockstep in the same PR. Do not introduce a
-v3 ctx string when targeting v4, or vice versa. If you need to evolve a
-ctx string without bumping the library, raise an issue.
+**Wire versioning is locked to leviathan-crypto.** All covcom ctx strings
+carry a `-v3` suffix (`covcom-identity-claim-v3`, `covcom-message-sig-v3`)
+so they track the leviathan-crypto signing API surface this code targets.
+When leviathan-crypto bumps to a new major version, covcom's ctx strings
+bump in lockstep in the same PR. Do not introduce a v3 ctx string when
+targeting v4, or vice versa. If you need to evolve a ctx string without
+bumping the library, raise an issue.
 
 ---
 

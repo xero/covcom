@@ -4,7 +4,7 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
+XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-party
 ```
 
 # COVCOM Usage Reference
@@ -48,7 +48,19 @@ rotates immediately after use.
 The group uses a Sender Keys model: one send chain per participant, not one
 per pair. O(N) state regardless of room size.
 
-This implements the [Sparse Post-Quantum Ratchet](https://signal.org/docs/specifications/doubleratchet/#the-sparse-post-quantum-ratchet) from Signal's Double Ratchet spec (§5, Revision 4). For more detail, see [PROTOCOL.md](./docs/PROTOCOL.md).
+Every session also mints a fresh Ed25519 signing keypair on construction.
+Identity claims and every broadcast are signed under it. Each peer's
+claims form a BLAKE3-chained log: every claim binds the previous payload's
+hash, so the server cannot reorder, drop, or substitute a structural event
+mid-session without breaking the chain. The session signing public key
+derives a fingerprint surface (`BLAKE3(sessionPk, 16)` → eight OKLCh
+swatches + 16-char hex) for out-of-band verification. Both clients expose
+a sidebar with two panels: **Verify** lists your fingerprint and every
+peer's side-by-side; **Event Log** captures every inbound/outbound
+WebSocket frame and every crypto action with redacted payloads and
+expandable detail rows.
+
+This implements the [Sparse Post-Quantum Ratchet](https://signal.org/docs/specifications/doubleratchet/#the-sparse-post-quantum-ratchet) from Signal's Double Ratchet spec (§5, Revision 4). For more detail, see [PROTOCOL.md](./PROTOCOL.md).
 
 Cryptographic primitives are provided by [leviathan-crypto](https://github.com/xero/leviathan-crypto).
 
@@ -91,10 +103,10 @@ Two tags are published per release:
 - `latest` moves with each release. A new release will silently upgrade you on the next pull.
 
 If a vulnerability is disclosed, the affected `X.Y.Z` tag is hard-deprecated
-via the [tombstone process](../docker-tag-tombstone.md): pulling it then
-exits nonzero with an error message pointing at the safe replacement. Pinning
-a specific version means you find out immediately. See [SECURITY.md](../SECURITY.md)
-for the full disclosure and deprecation policy.
+via a tombstone wrapper: pulling it then exits nonzero with an error message
+pointing at the safe replacement. Pinning a specific version means you find
+out immediately. See [SECURITY.md](../SECURITY.md) for the full disclosure
+and deprecation policy.
 
 **Pull and run:**
 

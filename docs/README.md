@@ -4,14 +4,14 @@
  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒▌ ▒▒  ▐▒▒▒     ▐▒▒▒  ▒▒▌  ▒▒ ▀ ▒▒
   ▀██▄ ▄█  ▀██▄ █▀    ▀█▄▀    ▀██▄ ▄█  ▀██▄ █▀  ▄██▄ ▄██▄
 
-XChaCha20 · ML-KEM-768 · SPQR · E2EE · ephemeral · N-party
-
-  Covert  communications  for private group conversations.
-  Invite,  talk,  close the client, and the chat vanishes.
-  End-to-end  encrypted  with  post-quantum  cryptography,
-  both manual and epoch-based ratchet events add layers of
-  forward  secrecy, ensuring messages remain private today
-  and unreadable to the computational power of tomorrow.
+  Covert communications for private group conversations.
+  Invite, talk, close the client, and the chat vanishes.
+  Every message is encrypted with XChaCha20 and signed
+  with Ed25519. A BLAKE3 fingerprint on each key allows
+  peers to verify one another. SPQR's manual and epoch
+  ratchets add forward secrecy, while post-quantum
+  ML-KEM-768 encapsulation keeps recorded communications
+  unreadable and secure against future cryptanalysis.
 ```
 
 | Document                                                                  | Purpose                                                              |
