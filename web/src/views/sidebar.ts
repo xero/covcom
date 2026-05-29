@@ -85,7 +85,7 @@ export function mountSidebar(view: Element, _session: CovcomSession): () => void
 	let lastSection: 'event-log' | 'verify' | null | undefined = undefined;
 	let lastPct = getState().ui.sidebarWidthPct;
 
-	const off = subscribe(() => {
+	const render = (): void => {
 		const ui = getState().ui;
 		if (ui.sidebarOpen !== lastOpen || ui.activeSection !== lastSection) {
 			aside.hidden        = !ui.sidebarOpen;
@@ -102,7 +102,12 @@ export function mountSidebar(view: Element, _session: CovcomSession): () => void
 			host.style.setProperty('--sidebar-pct', String(ui.sidebarWidthPct));
 			lastPct = ui.sidebarWidthPct;
 		}
-	});
+	};
+
+	const off = subscribe(render);
+	// Apply current state immediately so the sidebar's open/section/width DOM
+	// matches getState().ui at mount, not just after the first dispatch.
+	render();
 
 	return (): void => {
 		off();
