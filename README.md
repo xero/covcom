@@ -132,7 +132,7 @@ docker run -d \
 
 Published to [Docker Hub](https://hub.docker.com/r/xerostyle/covcom) as
 `xerostyle/covcom` and [GHCR](https://github.com/xero/covcom/pkgs/container/covcom)
-as `ghcr.io/xero/covcom`. Pin a specific version (e.g. `:1.0.0`) in production
+as `ghcr.io/xero/covcom`. Pin a specific version (e.g. `:3.0.0`) in production
 so a vulnerability disclosure does not silently upgrade you. See
 [USAGE.md](./docs/USAGE.md#docker) for tag conventions and how to extend the
 image.
@@ -382,8 +382,7 @@ Deeper references for users, auditors, contributors, and the curious.
 | [THREAT-MODEL](./docs/THREAT-MODEL.md)                                    | Principals, adversary tiers, guarantees, non-goals                   |
 | [CLI-SPEC](./docs/CLI-SPEC.md)                                            | CLI architecture, rendering, input, widgets, views, & color system   |
 | [SECURITY-POLICY](./SECURITY.md)                                          | Supported versions, disclosure policy, cryptographic foundation      |
-| [PROTOCOL-DIAGRAM](https://xero.github.io/covcom/protocol_diagram.html)   | Animated visualization of a 3-party session and epochs               |
-| [RECONNECT-DIAGRAM](https://xero.github.io/covcom/reconnect_diagram.html) | Animated visualization of peers left / join ceremonies               |
+| [DIAGRAM](https://xero.github.io/covcom/diagram.html)                     | Animated visualization of a session: establishment, epochs, and reconnect ceremonies |
 
 > [!TIP]
 > Documentation is available in the repo `./docs` folder and published to the project [wiki](https://github.com/xero/covcom/wiki).
@@ -395,30 +394,33 @@ Deeper references for users, auditors, contributors, and the curious.
 **Run all unit tests:**
 
 ```sh
-bun test
+bun run test
 ```
 
-This runs `test:server`, `test:lib`, `test:web`, and the `test:cli` stub in
-sequence (all via `bun test`). The `cli/` TUI has no unit tests.
+This runs `test:server`, `test:lib`, `test:web`, and `test:cli` in sequence
+(each via `bun run`). Note the `bun run` prefix: a bare `bun test` invokes
+Bun's built-in runner with the script name treated as a path filter, not the
+package script.
 
 **Run tests for a single package:**
 
 ```sh
-bun test:server     # server WebSocket broker
-bun test:lib        # shared crypto session layer
-bun test:web        # web client (store, session, bridge, views) via happy-dom
+bun run test:server     # server WebSocket broker
+bun run test:lib        # shared crypto session layer
+bun run test:web        # web client (store, session, bridge, views) via happy-dom
+bun run test:cli        # CLI widgets, key parsing, state machine, event log
 ```
 
 **Run the end-to-end test (Playwright):**
 
 ```sh
 bunx playwright install chromium   # one time
-bun test:e2e
+bun run test:e2e
 ```
 
 `test:e2e` auto-starts the Bun broker and the Vite dev server, then drives two
 browser contexts through a real two-party encrypted chat (create → invite →
-join → exchange messages → verify fingerprints). It is not part of `bun test`
+join → exchange messages → verify fingerprints). It is not part of `bun run test`
 because it needs running servers and a browser.
 
 **Lint and autofix:**

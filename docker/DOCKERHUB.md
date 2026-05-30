@@ -96,8 +96,7 @@ Open https://chat.example.com in a browser. Create a room, share the invite, & c
 | [THREAT-MODEL](https://github.com/xero/covcom/wiki/THREAT-MODEL)          | Principals, adversary tiers, guarantees, non-goals                   |
 | [CLI-SPEC](https://github.com/xero/covcom/wiki/CLI-SPEC)                  | CLI architecture, rendering, input, widgets, views, & color system   |
 | [SECURITY-POLICY](https://github.com/xero/covcom/wiki/SECURITY-POLICY)    | Supported versions, disclosure policy, cryptographic foundation      |
-| [PROTOCOL-DIAGRAM](https://xero.github.io/covcom/protocol_diagram.html)   | Animated visualization of a 3-party session and epochs               |
-| [RECONNECT-DIAGRAM](https://xero.github.io/covcom/reconnect_diagram.html) | Animated visualization of peers left / join ceremonies               |
+| [DIAGRAM](https://xero.github.io/covcom/diagram.html)                     | Animated visualization of a session: establishment, epochs, and reconnect ceremonies |
 
 ---
 
