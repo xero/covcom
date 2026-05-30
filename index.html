@@ -317,8 +317,7 @@
 					<section>
 						<h1>COVCOM</h1>
 						<blockquote>
-							covert communications for private group conversations. Share an invite, talk, close the tab, and it's gone. End-to-end encrypted with post-quantum cryptography, so the messages stay private today and unreadable to the computers coming tomorrow.
-						</blockquote>
+							  Covert communications for private group conversations. Invite, talk, close the client, and the chat vanishes. Every message is encrypted with XChaCha20 and signed with Ed25519. A BLAKE3 fingerprint on each key allows peers to verify one another. SPQR's manual and epoch ratchets add forward secrecy, while post-quantum ML-KEM-768 encapsulation keeps recorded communications unreadable and secure against future cryptanalysis. </blockquote>
 					</section>
 					<section>
 						<ul>
@@ -326,7 +325,13 @@
 								<em><a href="https://github.com/xero/leviathan-crypto/wiki/chacha_reference">XChaCha20</a></em>
 							</li>
 							<li>
-								<em><a href="https://github.com/xero/leviathan-crypto/wiki/kyber">ML-KEM-768</a></em>
+								<em><a href="https://github.com/xero/leviathan-crypto/wiki/mlkem">ML-KEM-768</a></em>
+							</li>
+							<li>
+								<em><a href="https://github.com/xero/leviathan-crypto/wiki/ed25519">Ed25519</a></em>
+							</li>
+							<li>
+								<em><a href="https://github.com/xero/leviathan-crypto/wiki/blake3">BLAKE3</a></em>
 							</li>
 							<li>
 								<em><a href="https://github.com/xero/leviathan-crypto/wiki/ratchet">SPQR</a></em>
@@ -353,8 +358,7 @@
 						<section>
 							<ul>
 								<li><a href="client.html">Client</a>Stand-alone single page version of the web client</li>
-								<li><a href="protocol_diagram.html">Protocol Diagram</a>Animated visualization of a full 3-party session</li>
-								<li><a href="reconnect_diagram.html">Reconnect Diagram</a>Animated visualization of peers welcome ceremony</li>
+								<li><a href="diagram.html">Protocol Diagram</a>Animated visualization of a full 3-party session</li>
 								<li><a href="https://github.com/xero/covcom">Source Code</a>Git mono-repository for the clients and server</li>
 								<li><a href="https://github.com/xero/covcom/wiki">Documentation</a>Protocol design & technical reference docs</li>
 							</ul>
