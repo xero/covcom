@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+cmd="${1:-}"
+
+command -v docker >/dev/null 2>&1 || {
+	echo "docker not found. install: https://docs.docker.com/get-docker/" >&2
+	exit 1
+}
+docker info >/dev/null 2>&1 || {
+	echo "docker daemon not running" >&2
+	exit 1
+}
+
+have_compose() { docker compose version >/dev/null 2>&1; }
+
+case "$cmd" in
+build)
+	if have_compose; then
+		docker compose -f docker/docker-compose.yml build
+	else
+		docker build -t covcom -f docker/Dockerfile .
+	fi
+	;;
+up)
+	if have_compose; then
+		docker compose -f docker/docker-compose.yml up
+	else
+		docker image inspect covcom >/dev/null 2>&1 \
+			|| docker build -t covcom -f docker/Dockerfile .
+		docker rm -f covcom >/dev/null 2>&1 || true
+		docker run -d -p 80:80 -p 443:443 \
+			-e DOMAIN="${DOMAIN:-}" \
+			-e PORT="${PORT:-3000}" \
+			-e ADMIN_TOKEN="${ADMIN_TOKEN:-}" \
+			-e MAX_ROOM_SIZE="${MAX_ROOM_SIZE:-20}" \
+			-v covcom_caddy_data:/data \
+			-v covcom_caddy_config:/config \
+			--name covcom covcom
+	fi
+	;;
+*)
+	echo "usage: run {build|up}" >&2
+	exit 2
+	;;
+esac

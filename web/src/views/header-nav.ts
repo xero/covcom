@@ -1,6 +1,7 @@
 import type { CovcomSession } from '../session.js';
 import { dispatch, getState, subscribe } from '../store.js';
 import { ICON_FP, ICON_LOG, ICON_EYE_OPEN, ICON_EYE_CLOSED } from '../icons.js';
+import { setHtml } from '../safehtml.js';
 import { chatIsMounted } from './shell.js';
 
 // Header buttons live here as one subscriber. Each button is a node in
@@ -16,7 +17,7 @@ export function mountHeaderNav(host: Element, _session: CovcomSession): () => vo
 	fpBtn.className = 'fp-badge';
 	fpBtn.title = 'Show session fingerprint for out-of-band verification';
 	fpBtn.setAttribute('aria-label', 'Show session fingerprint');
-	fpBtn.innerHTML = ICON_FP;
+	setHtml(fpBtn, ICON_FP);
 	fpBtn.addEventListener('click', () => {
 		dispatch({ type: 'SIDEBAR_TOGGLE', section: 'verify' });
 	});
@@ -26,7 +27,7 @@ export function mountHeaderNav(host: Element, _session: CovcomSession): () => vo
 	logBtn.className = 'event-log-toggle';
 	logBtn.title = 'toggle session event log';
 	logBtn.setAttribute('aria-label', 'toggle session event log');
-	logBtn.innerHTML = ICON_LOG;
+	setHtml(logBtn, ICON_LOG);
 	logBtn.addEventListener('click', () => {
 		dispatch({ type: 'SIDEBAR_TOGGLE', section: 'event-log' });
 	});
@@ -83,7 +84,7 @@ export function mountHeaderNav(host: Element, _session: CovcomSession): () => vo
 		}
 
 		if (s.ui.hideSystem !== lastHideSystem) {
-			sysBtn.innerHTML = s.ui.hideSystem ? ICON_EYE_CLOSED : ICON_EYE_OPEN;
+			setHtml(sysBtn, s.ui.hideSystem ? ICON_EYE_CLOSED : ICON_EYE_OPEN);
 			sysBtn.title     = s.ui.hideSystem ? 'show system messages' : 'hide system messages';
 			lastHideSystem   = s.ui.hideSystem;
 		}

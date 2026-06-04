@@ -16,8 +16,8 @@ const friendly: Record<string, string> = {
 	'unreachable': 'Could not reach the server - check the address and that it is running.',
 };
 
-// Subscribes to every session event and dispatches the corresponding action
-// per the table in ./TASKS/00-ARCHITECTURE.md. Returns a single unsubscribe.
+// Subscribes to every session event and dispatches the corresponding action.
+// Returns a single unsubscribe that tears down every listener.
 export function wireBridge(session: CovcomSession): () => void {
 	const offs: (() => void)[] = [];
 

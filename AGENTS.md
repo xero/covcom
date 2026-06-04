@@ -161,6 +161,10 @@ complete.
 - **Terse over verbose**: inline conditionals, short variable names, no
   unnecessary intermediates
 - **No comments that restate the code**: comments explain why, not what
+- **NEVER use emdashes or endashes**: rewrite the sentence or use
+different punctuation. Ranges use a regular hyphen.
+- **Spec citations in source**: cite the section. Example:
+`// FIPS 180-4 §4.1.2, Ch function`; use `§` as the section symbol.
 - **TypeScript throughout**: no plain `.js` files in `web/src/`, `cli/`, or
   `lib/`; the compiled web output is JS, the source is TS
 - **Run `bun fix` before marking any task done**: lint errors are not the

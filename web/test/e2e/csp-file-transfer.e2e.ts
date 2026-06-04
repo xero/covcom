@@ -5,7 +5,7 @@ import { createRoom, joinRoom, sendFile } from './helpers.ts';
 // Encrypted file transfer under the production CSP, across all three engines.
 //
 // This is the load-bearing Safari/WebKit regression test. File send/receive uses
-// SealStreamPool, whose default factory spawns a blob: worker — refused by WebKit
+// SealStreamPool, whose default factory spawns a blob: worker, refused by WebKit
 // under a strict CSP even with `worker-src blob:`. XChaCha20CipherWeb instead
 // spawns a same-origin worker (covcom-pool-worker.js) under `worker-src 'self'`.
 // If that worker can't start, alice's pool.seal rejects and bob never gets the
@@ -18,8 +18,12 @@ import { createRoom, joinRoom, sendFile } from './helpers.ts';
 // every engine emits for our meta-tag CSP (see leviathan-crypto/docs/csp.md).
 function watchCsp(page: Page, sink: string[]): void {
 	const re = /\b(refused|blocked|violates)\b/i;
-	page.on('console', (m: ConsoleMessage) => { if (re.test(m.text())) sink.push(m.text()); });
-	page.on('pageerror', (e) => { if (re.test(e.message)) sink.push(e.message); });
+	page.on('console', (m: ConsoleMessage) => {
+		if (re.test(m.text())) sink.push(m.text());
+	});
+	page.on('pageerror', (e) => {
+		if (re.test(e.message)) sink.push(e.message);
+	});
 }
 
 test('alice sends bob an encrypted file via the same-origin pool worker', async ({ browser }) => {

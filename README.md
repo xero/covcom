@@ -242,7 +242,7 @@ bun build:web
 
 Produces `web/dist/`: an inlined `index.html` plus a same-origin pool worker
 (`covcom-pool-worker.js`) used for encrypted file transfer. The policy is
-strict-CSP friendly — `worker-src 'self'` with no `blob:`, so file transfer
+strict-CSP friendly, `worker-src 'self'` with no `blob:`, so file transfer
 works in Safari/WebKit under a strict CSP (see
 [leviathan-crypto/docs/csp.md](https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md)).
 Serve the directory from any static file host with no build step, or let

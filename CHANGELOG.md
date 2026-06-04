@@ -1,0 +1,178 @@
+# Changelog
+
+## v3.0.1
+
+This release adds rich-text formatting to messages on both clients and hardens
+every path that renders peer-controlled text. Untrusted display data is now
+treated as data, never as code.
+
+### Security
+
+**No HTML-string path in the web client.** A `SafeHtml` branded type and a
+single `setHtml()` sink replace every ad-hoc `innerHTML` write. The only values
+minted as trusted HTML are the bundled SVG icons; all other DOM is built through
+`createElement` and `textContent`. A peer-controlled value can no longer become
+markup, which closes the XSS and mXSS surface.
+
+**ReDoS-immune markup parser.** The shared markup model is a hand-written linear
+scanner, not a backtracking regex. It is DOM-free and crypto-free and emits a
+token tree, so no renderer ever assembles an HTML string from untrusted input.
+
+**Bidi and zero-width spoofing defense.** Untrusted display text is stripped of
+bidirectional controls and zero-width format characters on both clients before
+rendering, and the web client isolates message and name spans with CSS
+`unicode-bidi: isolate`. This defeats Trojan-Source text reordering and
+zero-width or homoglyph display-name spoofing. ZWNJ, ZWJ, and variation
+selectors stay allowed because they are legitimate in emoji and in Persian,
+Arabic, and Indic text.
+
+**Terminal escape-injection defense in the CLI.** Peer usernames, message
+bodies, filenames, event-log keys and values, and fingerprint names now pass
+through a terminal sanitizer that strips ANSI, CSI, and OSC sequences (including
+OSC 52 clipboard writes), stray control bytes, and HTML-ish tags before the CLI
+emits its own SGR. A hostile peer can no longer move the cursor, clear the
+screen, or write the clipboard through chat content.
+
+**Server username hardening.** On `identify` the relay rejects (closes) any
+username containing C0/C1 control characters, DEL, or the bidi and zero-width
+format characters used for display-name spoofing. The server rejects rather
+than sanitizes, because the username is bound by the signed identity claim and
+silently altering it would break peer verification.
+
+### Added
+
+**Rich text in messages.** Both clients render a markdown subset in message
+bodies: bold (`*`), italic (`_`), bold and italic (`_*` or `*_`), inline code
+(`` ` ``), and fenced ` ``` ` code blocks. Formatting is display-only; the wire
+still carries your exact plaintext.
+
+**CLI code styling.** New `codeFg` and `codeBg` theme slots color inline code
+and fenced blocks, fenced blocks render with a filled background, and italic
+text now emits the italic SGR.
+
+### Changed
+
+**Web message rendering.** User messages render through the shared token model:
+fenced blocks become a `<pre>`, and paragraphs preserve their original line
+breaks.
+
+**Display-column-aware wrapping in the CLI.** Word wrap now measures display
+columns through a pragmatic wcwidth instead of counting code points, so wide
+CJK glyphs and emoji wrap and pad at their true width. A word wider than the
+pane is hard-split on code-point boundaries and never severs a surrogate pair.
+
+---
+
+## [3.0.0]
+
+The signing release. Every participant now carries a per-session Ed25519
+identity, every message carries a verifiable signature, and each client builds
+a tamper-evident log of who said what. **Breaking:** the wire protocol mandates
+signed identity claims and per-message signatures, so v3 clients and servers do
+not interoperate with earlier versions.
+
+### Added
+
+**Per-session signing identity.** `SessionIdentity` mints a fresh Ed25519
+signing key on every join and issues identity claims that bind a peer's session
+public key, sender key, username, epoch, and sequence to the session. Claims
+chain by BLAKE3 over the previous log root, so the identity log is
+tamper-evident.
+
+**Session fingerprint.** Each session derives a `FingerprintSurface` from its
+signing key: eight color swatches, a 16-character hex string, and a single
+badge color. Peers compare it out of band to confirm they share one consistent
+view of the session.
+
+**Safe rich-text model for system messages.** System messages and event-log
+summaries render from a token model rather than string concatenation, building
+DOM through `textContent` and `createElement` with no HTML-string path. This is
+the foundation the unreleased message-formatting work builds on.
+
+### Security
+
+**Per-message provenance.** Every broadcast carries a detached Ed25519ph
+signature over `counter || epoch || sender || ts || ciphertext`, verified
+before any AEAD work runs. A forged ciphertext fails the signature check first,
+and an attacker cannot reattribute a legitimate ciphertext to a different
+sender without breaking the signature.
+
+**Metadata integrity.** Every `identify`, `ratchet_step`, and `ek_update`
+carries a signed identity claim. Because each claim references the prior
+payload's BLAKE3 hash, a server that swaps a peer's ratchet key or signing key
+mid-session fails the chain-continuity check. First-contact substitution
+remains out of scope and is documented as such.
+
+**Split-view detection.** The per-sender identity log lets two participants who
+compare fingerprints out of band detect a server that has fed them divergent
+orderings or participant sets.
+
+### User interface
+
+**Fingerprint-verify view.** Both clients gain a verification panel that shows
+the session fingerprint swatches and hex for out-of-band comparison.
+
+**Event-log sidebar.** Both clients gain a togglable event log that summarizes
+wire activity (joins, ratchet steps, claims, errors) with expandable
+per-entry detail. User-controlled fields render as tokens, never as raw markup.
+
+---
+
+## [2.0.0]
+
+An internal testing build that was never released to the public. v3 superseded
+it before any public release, so there are no user-facing changes to record
+here.
+
+---
+
+## [1.0.0]
+
+The first public release. End-to-end encrypted group chat with post-quantum
+cryptography, ephemeral sessions, and two first-class clients. Share an invite,
+talk, close the tab, and the session is gone.
+
+### Added
+
+**Post-quantum encrypted group chat.** Messages and files are sealed with
+XChaCha20-Poly1305 under per-message keys. Epoch transitions use ML-KEM-768
+(FIPS 203), so recorded ciphertext stays unreadable to a future quantum
+adversary.
+
+**Sparse Post-Quantum Ratchet.** Key schedule follows the SPQR design from
+Signal's Double Ratchet spec, with HKDF-SHA-256 send chains that wipe each key
+after use. Forward secrecy protects past messages, and a KEM ratchet step
+restores security after compromise. Steps fire on join, on manual rotation, and
+automatically as the session advances.
+
+**N-party rooms.** A Sender Keys group model gives each participant one send
+chain rather than one per pair, so session state stays O(N) in room size.
+
+**Ephemeral sessions.** Each participant generates a fresh keypair on every
+join, with no account and no persistent identity. Key material lives only in
+the client process and is wiped on disconnect.
+
+**Invite-based onboarding.** Creating a room produces an armored invite block
+and a `.room` file. A 16-byte server-generated `roomSecret` embedded in the
+invite gates joins, so an uninvited party cannot enter even without an admin
+token.
+
+**Encrypted file transfer.** Files are encrypted client-side and relayed as
+opaque blobs, then saved to the working directory on receipt.
+
+**Self-hostable relay.** The Bun WebSocket server runs behind Caddy with
+automatic ACME TLS in Docker, or directly behind your own proxy. It sees only
+ciphertext and routes it. Room TTL, maximum room size, and an optional
+room-creation admin token are all environment-configurable.
+
+### Clients
+
+**Web client.** A Vite and vanilla-TypeScript browser app. Build it static for
+any file host or as a single self-contained HTML file for the Docker image.
+Invites paste in or drag and drop as a `.room` file.
+
+**CLI client.** A compiled Bun binary with a custom zero-dependency terminal
+UI. Standalone builds ship for macOS (Apple Silicon and Intel), Linux x86_64,
+and Windows x86_64. The interface is fully keyboard and mouse driven and
+themeable through `ansi16`, 256-color, or truecolor hex slots, with settings
+persisted to a config file.

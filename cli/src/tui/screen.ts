@@ -44,6 +44,8 @@ export interface Theme {
 	evtKindError:   ColorValue
 	evtKindMember:  ColorValue
 	evtKindRatchet: ColorValue
+	codeFg:         ColorValue
+	codeBg:         ColorValue
 }
 
 export const defaultTheme: Theme = {
@@ -86,6 +88,8 @@ export const defaultTheme: Theme = {
 	evtKindError: { type: 'ansi16', n: 1   },
 	evtKindMember: { type: 'ansi16', n: 2  },
 	evtKindRatchet: { type: 'ansi16', n: 3 },
+	codeFg: { type: 'ansi16', n: 15 },
+	codeBg: { type: 'ansi16', n: 8  },
 };
 
 function parseHex(hex: string): [number, number, number] {
@@ -97,6 +101,7 @@ export const ansi = {
 	reset: '\x1b[0m',
 	bold: '\x1b[1m',
 	dim: '\x1b[2m',
+	italic: '\x1b[3m',
 	fg(n: number): string {
 		return n < 8 ? `\x1b[${30 + n}m` : `\x1b[${90 + n - 8}m`;
 	},

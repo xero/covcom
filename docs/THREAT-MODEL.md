@@ -261,6 +261,21 @@ long-term identity keys visible to the server during initial key agreement
 ([Johansen et al.][JOH18]). A₀ and S can observe that an IP address
 connected to the server but cannot link sessions to a persistent identity.
 
+**Untrusted-content rendering.** A participant is an adversary-influenced
+source of display text. Usernames, message bodies, and filenames all originate
+from a peer and may be attacker-chosen. Both clients treat this text as data,
+never code. The shared markup parser is a hand-written linear scanner, immune
+to ReDoS, that produces a token tree with no HTML-string path, so the web
+client builds DOM through `textContent` and `createElement` and a peer value
+never becomes markup or triggers XSS. The CLI strips ANSI, CSI, and OSC escape
+sequences (including OSC 52 clipboard writes), stray control bytes, and
+HTML-ish tags before emitting its own SGR, so a peer cannot inject terminal
+escapes. Bidirectional and zero-width format characters are stripped from
+rendered text on both clients and rejected outright by the server in usernames,
+defeating Trojan-Source text reordering and homoglyph handle spoofing. This is
+client hardening rather than a cryptographic property, and it holds regardless
+of adversary tier.
+
 ---
 
 ## non-goals

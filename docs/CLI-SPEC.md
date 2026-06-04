@@ -339,7 +339,15 @@ type RenderedLine = {
 
 key behaviors:
 
-- new messages appended to `lines[]`, word-wrapped to current width
+- new messages appended to `lines[]`. each body is sanitized for terminal
+  escape injection (ANSI/CSI/OSC sequences, stray control bytes, and the shared
+  bidi/zero-width spoofing characters are stripped), then parsed by the shared
+  markup model and rendered to our own SGR: bold (`*`), italic (`_`),
+  bold+italic (`_*`/`*_`), inline code, and fenced ` ``` ` blocks. peer
+  usernames and filenames pass through the same sanitizer before they reach the
+  line buffer.
+- wrapping counts display columns, not code points, so CJK and wide emoji wrap
+  and pad correctly and a surrogate pair is never severed
 - `autoScroll = true` by default, so new messages scroll to bottom
 - scrolling up (keyboard or mouse wheel) disables autoScroll
 - scrolling back to bottom re-enables autoScroll
@@ -869,6 +877,8 @@ of the terminal palette.
 | `yourMsg`           | 7 (white)          | own message body.                                 |
 | `peerName`          | 10 (bright green)  | peer username prefix in the chat scroll.          |
 | `peerMsg`           | 15 (bright white)  | peer message body.                                |
+| `codeFg`            | 15 (bright white)  | inline code and fenced-block foreground.          |
+| `codeBg`            | 8 (dark gray)      | fenced-block background fill.                      |
 | `attachBg`          | 6 (cyan)           | attachment chip background.                       |
 | `attachFg`          | 0 (black)          | attachment chip foreground.                       |
 | `attachSelectedBg`  | 2 (green)          | attachment chip background when keyboard-selected. |
@@ -960,8 +970,12 @@ called with the computed cursor position of that input. no other widget shows a 
 
 ## open / deferred
 
-- **word wrap:** split on spaces, accumulate until line exceeds width, break.
-  unicode grapheme clusters punted for now.
+- **word wrap:** split on spaces, accumulate until the line exceeds the width,
+  break. width is measured in display columns via a pragmatic wcwidth, so wide
+  CJK and emoji count as two columns and combining marks as zero. a word wider
+  than the pane is hard-split on code-point boundaries, never mid-surrogate.
+  multi-code-point ZWJ grapheme clusters (e.g. family emoji) still over-count
+  their parts; terminals disagree on those anyway.
 - **tab completion UX:** implement simple cycle first (each Tab advances to next match),
   revisit bash-style longest-common-prefix later once it's usable.
 - **resize handling:** SIGWINCH → `screen.measure()` → `screen.markDirty()`.

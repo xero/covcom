@@ -17,8 +17,12 @@ interface FakeCalls {
 function fakeSession(): { session: CovcomSession; calls: FakeCalls } {
 	const calls: FakeCalls = { create: [], join: [] };
 	const session = {
-		create(opts: { server: string; username: string; adminToken?: string }) { calls.create.push(opts); return Promise.resolve(); },
-		join(invite: InvitePayload, username: string) { calls.join.push({ invite, username }); return Promise.resolve(); },
+		create(opts: { server: string; username: string; adminToken?: string }) {
+			calls.create.push(opts); return Promise.resolve();
+		},
+		join(invite: InvitePayload, username: string) {
+			calls.join.push({ invite, username }); return Promise.resolve();
+		},
 	} as unknown as CovcomSession;
 	return { session, calls };
 }

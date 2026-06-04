@@ -8,7 +8,7 @@ import { defineConfig } from '@playwright/test';
 // The app is served from its BUILT artifact, not the Vite dev server: dev-mode
 // Vite injects no CSP, so it cannot catch CSP regressions. The built index.html
 // carries the strict `<meta>` CSP (worker-src 'self'), and its same-origin pool
-// worker (covcom-pool-worker.js) sits beside it in dist/ — so the file-transfer
+// worker (covcom-pool-worker.js) sits beside it in dist/, so the file-transfer
 // test exercises the real Safari/WebKit path. `bunx serve` hosts dist/ statically
 // (no CSP header of its own, so the meta tag governs). The broker answers
 // `GET /health_check` (200) as its readiness probe; the production CSP's

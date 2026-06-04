@@ -818,6 +818,100 @@ describe('identify validation', () => {
 		a.close();
 		b.close();
 	});
+
+	test('control-char username (ESC/CSI) is rejected: no peer_joined delivered', async () => {
+		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
+
+		const b = await connect(port);
+		b.send({ type: 'join', roomId, roomSecret });
+		await b.recv(); // joined
+
+		// An escape-injection username must be dropped before broadcast, so the
+		// peer never sees a peer_joined carrying control bytes.
+		b.send({ type: 'identify', username: 'ev\x1b[2Jil', ek: EK, ratchetEk: REK, claim: CLAIM });
+		expect(await a.tryRecv()).toBeUndefined();
+
+		a.close();
+		b.close();
+	});
+
+	test('BEL/NUL control chars in username are rejected', async () => {
+		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
+
+		const b = await connect(port);
+		b.send({ type: 'join', roomId, roomSecret });
+		await b.recv(); // joined
+
+		b.send({ type: 'identify', username: 'bell\x07null\x00', ek: EK, ratchetEk: REK, claim: CLAIM });
+		expect(await a.tryRecv()).toBeUndefined();
+
+		a.close();
+		b.close();
+	});
+
+	test('benign unicode username is accepted', async () => {
+		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
+
+		const b = await connect(port);
+		b.send({ type: 'join', roomId, roomSecret });
+		await b.recv(); // joined
+
+		// The control-char rule must not reject ordinary printable Unicode.
+		b.send({ type: 'identify', username: 'naïve🙂', ek: EK, ratchetEk: REK, claim: CLAIM });
+		const msg = await a.recv();
+		expect(msg).toEqual({ type: 'peer_joined', username: 'naïve🙂', ek: EK, ratchetEk: REK, claim: CLAIM });
+
+		a.close();
+		b.close();
+	});
+
+	test('bidi-override username (RLO) is rejected', async () => {
+		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
+
+		const b = await connect(port);
+		b.send({ type: 'join', roomId, roomSecret });
+		await b.recv(); // joined
+
+		// U+202E reverses the text that follows it — a classic display-name spoof.
+		const rlo = String.fromCodePoint(0x202e);
+		b.send({ type: 'identify', username: `ev${rlo}il`, ek: EK, ratchetEk: REK, claim: CLAIM });
+		expect(await a.tryRecv()).toBeUndefined();
+
+		a.close();
+		b.close();
+	});
+
+	test('zero-width-space username is rejected', async () => {
+		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
+
+		const b = await connect(port);
+		b.send({ type: 'join', roomId, roomSecret });
+		await b.recv(); // joined
+
+		const zwsp = String.fromCodePoint(0x200b);
+		b.send({ type: 'identify', username: `al${zwsp}ice`, ek: EK, ratchetEk: REK, claim: CLAIM });
+		expect(await a.tryRecv()).toBeUndefined();
+
+		a.close();
+		b.close();
+	});
+
+	test('ZWJ in a username is accepted (legit emoji sequences, not over-rejected)', async () => {
+		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
+
+		const b = await connect(port);
+		b.send({ type: 'join', roomId, roomSecret });
+		await b.recv(); // joined
+
+		// ZWJ (U+200D) joins emoji sequences and is intentionally allowed.
+		const uname = `fam${String.fromCodePoint(0x200d)}ily`;
+		b.send({ type: 'identify', username: uname, ek: EK, ratchetEk: REK, claim: CLAIM });
+		const msg = await a.recv();
+		expect(msg).toEqual({ type: 'peer_joined', username: uname, ek: EK, ratchetEk: REK, claim: CLAIM });
+
+		a.close();
+		b.close();
+	});
 });
 
 // ── identify cleanup (Fix 7) ──────────────────────────────────────────────

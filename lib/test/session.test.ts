@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import { KDFChain, SkippedKeyStore } from 'leviathan-crypto';
 import { initCrypto } from '../src/init.js';
 import { generateKeypair } from '../src/keypair.js';
@@ -455,11 +455,6 @@ describe('session: ratchet step', () => {
 
 		sB.dispose();
 	});
-});
-
-// Cleanup: ensure no lingering sessions after each test group
-afterEach(() => {
-	// Sessions are disposed within each test; nothing to do here
 });
 
 function advanceEpoch(

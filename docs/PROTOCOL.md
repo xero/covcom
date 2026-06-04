@@ -277,6 +277,18 @@ encapsulation keys and ratchet public keys per connection, and which
 connections are in which rooms. It sees encrypted blobs. It routes them.
 That is all it does.
 
+Usernames are otherwise unconstrained in character set, with one hardening
+exception. On `identify` the server rejects (closes) any username containing
+C0/C1 control characters, DEL, or the bidirectional and zero-width format
+characters that enable display-name spoofing (LRM, RLM, the LRE/RLE/PDF/LRO/RLO
+and isolate controls, zero-width space, word joiner, and the BOM). Control
+bytes are never legitimate in a display name and would be an escape-injection
+vector in the CLI's terminal renderer; the format characters reorder text or
+build homoglyph handles. The server rejects rather than sanitizes, because the
+username is bound by the signed identity claim, and silently altering it would
+break peer verification. ZWNJ, ZWJ, and variation selectors stay allowed
+because they are legitimate in emoji and in Persian, Arabic, and Indic text.
+
 The server does not decrypt anything, store messages, or participate in key
 exchange. When it receives a `relay` message addressed to a peer, it
 forwards the ciphertext to that peer and nothing else. When it receives a

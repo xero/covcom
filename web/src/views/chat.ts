@@ -7,9 +7,11 @@ import {
 import type { CovcomSession } from '../session.js';
 import { getState, subscribe } from '../store.js';
 import type { ChatItem, PeerView, Room } from '../store.js';
+import { parseMarkup } from '@covcom/lib';
 import { el, clear, formatBytes, senderColor } from '../util.js';
-import { renderRich } from '../rich.js';
+import { renderRich, renderDoc } from '../rich.js';
 import { ICON_COG, ICON_SEND, ICON_ATTACH } from '../icons.js';
+import { setHtml } from '../safehtml.js';
 import { mountSidebar } from './sidebar.js';
 import { mountEventLog } from './event-log.js';
 import { mountVerify } from './verify.js';
@@ -50,7 +52,9 @@ function liBase(sender: string, isSelf: boolean, peers: Map<string, PeerView>, c
 
 function renderMessage(item: ChatItem & { kind: 'message' }, peers: Map<string, PeerView>): HTMLLIElement {
 	const li = liBase(item.from, item.isSelf, peers, false);
-	li.appendChild(el('span', 'msg-text', item.text));
+	const text = el('span', 'msg-text');
+	renderDoc(text, parseMarkup(item.text));
+	li.appendChild(text);
 	return li;
 }
 
@@ -115,11 +119,11 @@ function buildRegularBar(session: CovcomSession): RegularBar {
 	textarea.placeholder = 'type a message…';
 
 	const btnSend = el('button', undefined, '');
-	btnSend.innerHTML = ICON_SEND;
+	setHtml(btnSend, ICON_SEND);
 	const btnAttach = el('button', undefined, '');
-	btnAttach.innerHTML = ICON_ATTACH;
+	setHtml(btnAttach, ICON_ATTACH);
 	const btnRotate = el('button', undefined, '');
-	btnRotate.innerHTML = ICON_COG;
+	setHtml(btnRotate, ICON_COG);
 
 	const fileInput = document.createElement('input');
 	fileInput.type           = 'file';

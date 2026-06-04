@@ -33,8 +33,12 @@ interface Track {
 function track(s: CovcomSession): Track {
 	const t: Track = {
 		phases: [], joined: [], known: [], left: [], msgs: [], infos: [], ratchet: [],
-		lastRoom() { return this.phases.length ? this.phases[this.phases.length - 1].room : undefined; },
-		ready() { return this.phases.some(p => p.phase === 'ready'); },
+		lastRoom() {
+			return this.phases.length ? this.phases[this.phases.length - 1].room : undefined;
+		},
+		ready() {
+			return this.phases.some(p => p.phase === 'ready');
+		},
 	};
 	s.on('phase',       p => t.phases.push(p));
 	s.on('peer-joined', p => t.joined.push(p.username));
@@ -68,7 +72,9 @@ async function pair(): Promise<{ alice: CovcomSession; bob: CovcomSession; ta: T
 	return { alice, bob, ta, tb };
 }
 
-beforeAll(async () => { await initCrypto(); });
+beforeAll(async () => {
+	await initCrypto();
+});
 
 beforeEach(() => installMockWebSocket());
 
@@ -113,7 +119,9 @@ describe('two-party handshake', () => {
 		const bob = make();
 		track(bob);
 		let bobFp: string | undefined;
-		alice.on('peer-joined', p => { bobFp = p.fingerprint.hex; });
+		alice.on('peer-joined', p => {
+			bobFp = p.fingerprint.hex;
+		});
 		void bob.join(inviteFor(ta.lastRoom()!), 'bob');
 		await waitUntil(() => bobFp !== undefined);
 		expect(typeof bobFp).toBe('string');

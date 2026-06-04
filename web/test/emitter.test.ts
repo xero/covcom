@@ -17,7 +17,9 @@ describe('Emitter', () => {
 	test('delivers the payload to a handler', () => {
 		const e = new TestEmitter();
 		let got = null as { n: number } | null;
-		e.on('ping', (p) => { got = p; });
+		e.on('ping', (p) => {
+			got = p;
+		});
 		e.fire('ping', { n: 7 });
 		expect(got).toEqual({ n: 7 });
 	});

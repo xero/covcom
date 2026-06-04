@@ -13,6 +13,21 @@ import type {
 	RelayMsg,
 } from './types.ts';
 
+// Bidi controls + zero-width format chars that enable display-name spoofing
+// (text reordering / homoglyph handles) without being C0/C1. Mirrors
+// @covcom/lib's stripFormatChars; kept inline so the relay stays
+// dependency-free. ZWNJ/ZWJ (U+200C/D) and variation selectors are
+// intentionally allowed: legitimate in emoji and Persian/Arabic/Indic text.
+const UNSAFE_FORMAT_CP: ReadonlySet<number> = new Set([
+	0x061c,
+	0x200b,
+	0x200e, 0x200f,
+	0x202a, 0x202b, 0x202c, 0x202d, 0x202e,
+	0x2060,
+	0x2066, 0x2067, 0x2068, 0x2069,
+	0xfeff,
+]);
+
 function send(ws: ServerWebSocket<ConnData>, msg: OutboundMsg): void {
 	ws.send(JSON.stringify(msg));
 }
@@ -80,6 +95,24 @@ export function handleIdentify(
 	const uname = msg.username.trim();
 	if (!uname || uname.length > 64)           {
 		ws.close(); return;
+	}
+	// Reject (never strip) control chars: a stripped name would desync from the
+	// signed identity claim and fail peer verification. Closing matches the
+	// other reject-on-invalid checks here, so no new error reason is introduced.
+	// Deliberate hardening beyond PROTOCOL.md, which states no charset rules.
+	// eslint-disable-next-line no-control-regex -- forbidding C0/C1 + DEL is the point
+	if (/[\x00-\x1F\x7F-\x9F]/.test(uname))    {
+		ws.close(); return;
+	}
+	// Reject (never strip) bidi controls + zero-width format chars too: they
+	// enable display-name spoofing (text reordering / homoglyph handles)
+	// without being C0/C1. Same reject-don't-strip rationale as the control-char
+	// check above (keeps the handle bound to the signed claim).
+	for (const ch of uname) {
+		// All targets are BMP; charCodeAt(0) (always a number) equals the code point.
+		if (UNSAFE_FORMAT_CP.has(ch.charCodeAt(0))) {
+			ws.close(); return;
+		}
 	}
 	if (msg.ek.length !== 1580)                {
 		ws.close(); return;

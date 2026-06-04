@@ -2,9 +2,8 @@ import type { InboundMsg, OutboundMsg } from './wireTypes.js';
 import { b, code } from './rich.js';
 import type { RichText } from './rich.js';
 
-// Lifted verbatim from eventLog.ts (summarize + the redact/flatten helpers they
-// depend on). Summaries are RichText token arrays; user-controlled fields are
-// carried as tokens (b()/code()) and rendered via textContent, never as HTML.
+// Summaries are RichText token arrays; user-controlled fields are carried as
+// tokens (b()/code()) and rendered via textContent, never as HTML.
 
 export function redact(b64: string | undefined | null): string {
 	if (!b64) return '∅';

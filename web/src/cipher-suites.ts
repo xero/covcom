@@ -16,7 +16,7 @@
  * rather than at module scope: (1) it touches `document`, so deferring it keeps
  * the module import-safe in non-DOM contexts (e.g. the unit-test harness, which
  * imports the session but never spawns a worker); (2) Vite's worker plugin only
- * rewrites the `new URL(..., import.meta.url)` shape — resolving against
+ * rewrites the `new URL(..., import.meta.url)` shape; resolving against
  * document.baseURI sidesteps that rewrite, which under singlefile would otherwise
  * re-inline the worker as a blob:, the very thing we are removing.
  */

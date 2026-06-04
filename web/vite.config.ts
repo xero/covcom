@@ -1,6 +1,6 @@
-import { defineConfig, type Plugin } from 'vite'
-import { viteSingleFile } from 'vite-plugin-singlefile'
-import { createHash } from 'node:crypto'
+import { defineConfig, type Plugin } from 'vite';
+import { viteSingleFile } from 'vite-plugin-singlefile';
+import { createHash } from 'node:crypto';
 
 // Injects a strict Content-Security-Policy <meta> into the built index.html.
 // Build-only (apply: 'build') so the Vite dev server, which injects its own
@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 // so it observes the HTML *after* viteSingleFile has inlined the bundle, letting
 // it hash the inline script for a no-'unsafe-inline' script-src.
 //
-// Rationale lives in the plan; the load-bearing facts:
+// The load-bearing facts:
 //  - 'wasm-unsafe-eval' permits WebAssembly.{compile,instantiate} but not
 //    eval/new Function. The crypto runs as WASM on the main thread; the pool
 //    worker compiles on the main thread and posts the module to the worker.
@@ -27,41 +27,41 @@ function csp(): Plugin {
 		enforce: 'post',
 		generateBundle(_opts, bundle) {
 			for (const file of Object.values(bundle)) {
-				if (file.type !== 'asset' || !file.fileName.endsWith('.html')) continue
-				let html = typeof file.source === 'string'
+				if (file.type !== 'asset' || !file.fileName.endsWith('.html')) continue;
+				const html = typeof file.source === 'string'
 					? file.source
-					: Buffer.from(file.source).toString('utf8')
+					: Buffer.from(file.source).toString('utf8');
 
 				// Hash every inline <script> (no src attr); the single-file build has
 				// no external scripts, so no 'self' is needed; strictest possible.
-				const hashes: string[] = []
-				const re = /<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi
-				let m: RegExpExecArray | null
+				const hashes: string[] = [];
+				const re = /<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
+				let m: RegExpExecArray | null;
 				while ((m = re.exec(html)) !== null) {
-					const digest = createHash('sha256').update(m[1], 'utf8').digest('base64')
-					hashes.push(`'sha256-${digest}'`)
+					const digest = createHash('sha256').update(m[1], 'utf8').digest('base64');
+					hashes.push(`'sha256-${digest}'`);
 				}
-				const scriptSrc = [`'wasm-unsafe-eval'`, ...hashes].join(' ')
+				const scriptSrc = ['\'wasm-unsafe-eval\'', ...hashes].join(' ');
 
 				const policy = [
-					`default-src 'none'`,
+					'default-src \'none\'',
 					`script-src ${scriptSrc}`,
-					`style-src 'unsafe-inline'`,
-					`connect-src 'self' wss: ws://localhost:* ws://127.0.0.1:*`,
-					`worker-src 'self'`,
-					`img-src 'self' data: blob:`,
-					`font-src 'none'`,
-					`base-uri 'none'`,
-					`object-src 'none'`,
-					`form-action 'none'`,
-					`frame-ancestors 'none'`,
-				].join('; ')
+					'style-src \'unsafe-inline\'',
+					'connect-src \'self\' wss: ws://localhost:* ws://127.0.0.1:*',
+					'worker-src \'self\'',
+					'img-src \'self\' data: blob:',
+					'font-src \'none\'',
+					'base-uri \'none\'',
+					'object-src \'none\'',
+					'form-action \'none\'',
+					'frame-ancestors \'none\'',
+				].join('; ');
 
-				const meta = `<meta http-equiv="Content-Security-Policy" content="${policy}" />`
-				file.source = html.replace(/<head>/i, `<head>\n\t\t${meta}`)
+				const meta = `<meta http-equiv="Content-Security-Policy" content="${policy}" />`;
+				file.source = html.replace(/<head>/i, `<head>\n\t\t${meta}`);
 			}
 		},
-	}
+	};
 }
 
 export default defineConfig({
@@ -77,4 +77,4 @@ export default defineConfig({
 	optimizeDeps: {
 		exclude: ['leviathan-crypto'],
 	},
-})
+});

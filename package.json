@@ -24,13 +24,17 @@
 		"build:cli:all": "bun run --cwd cli build:all",
 		"test:web": "bun run --cwd web test",
 		"test:cli": "bun run --cwd cli test",
-		"test": "bun run test:server && bun run test:lib && bun run test:web && bun run test:cli",
+		"test": "bun run test:server && bun run test:lib && bun run test:web && bun run test:cli && bun run test:e2e",
 		"test:e2e": "playwright test",
-		"fix": "bunx eslint --fix 'server/src/**/*.ts' 'server/test/**/*.ts' 'lib/src/**/*.ts' 'lib/test/**/*.ts' 'web/src/**/*.ts' 'cli/src/**/*.ts' 'cli/test/**/*.ts'",
-		"build:docker": "docker compose -f docker/docker-compose.yml build",
-		"run:docker": "docker compose -f docker/docker-compose.yml up",
-		"build:docker:raw": "docker build -t covcom -f docker/Dockerfile .",
-		"run:docker:raw": "docker run -d -p 80:80 -p 443:443 -e DOMAIN=${DOMAIN} -e PORT=${PORT:-3000} -e ADMIN_TOKEN=${ADMIN_TOKEN:-} -e MAX_ROOM_SIZE=${MAX_ROOM_SIZE:-20} -v covcom_caddy_data:/data -v covcom_caddy_config:/config --name covcom covcom"
+		"fix": "bunx eslint . --fix",
+		"lint": "bunx eslint .",
+		"typecheck": "bunx tsc --noEmit -p lib/tsconfig.json && bunx tsc --noEmit -p server/tsconfig.json && bunx tsc --noEmit -p web/tsconfig.json && bunx tsc --noEmit -p web/tsconfig.tools.json && bunx tsc --noEmit -p cli/tsconfig.json",
+		"build:docker": "sh ./docker/run build",
+		"run:docker": "sh ./docker/run up",
+		"bundle:cli": "bun run --cwd cli bundle",
+		"_shorthand": "# bake=build · check=lint+typecheck+build+unit+e2e",
+		"bake": "bun build:web && bun bundle:cli && bun build:cli:all",
+		"check": "bun run lint && bun typecheck && bun bake && bun run test"
 	},
 	"devDependencies": {
 		"eslint": "^10.4.1",
@@ -38,7 +42,7 @@
 		"@playwright/test": "^1.60.0",
 		"@eslint/js": "^10.0.1",
 		"jiti": "^2.7.0",
-		"typescript-eslint": "^8.60.0"
+		"typescript-eslint": "^8.60.1"
 	},
 	"keywords": [
 		"XChaCha20",

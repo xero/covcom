@@ -72,6 +72,10 @@ The protocol implements the Sparse Post-Quantum Ratchet from the
   verified before AEAD
 - Split-view detection: each peer's identity claims form a BLAKE3-chained
   log surfaced as an 8-colour fingerprint for out-of-band comparison
+- Untrusted-content rendering: peer-controlled display text (usernames,
+  message bodies, filenames) never becomes markup in the web client or
+  terminal escapes in the CLI, defeating XSS, terminal escape injection,
+  and bidi or homoglyph display-name spoofing
 
 **The protocol does not protect against:**
 - Endpoint compromise (malware, physical device access)

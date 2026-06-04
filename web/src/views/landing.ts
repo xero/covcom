@@ -31,6 +31,7 @@ function buildMainForm(opts: MainFormOpts): HTMLElement {
 	usernameInput.type = 'text';
 	usernameInput.id   = 'username';
 	usernameInput.placeholder = 'handle';
+	usernameInput.maxLength = 64;  // matches the server-side cap in relay.ts
 	if (opts.prefillUsername) usernameInput.value = opts.prefillUsername;
 	usernameField.append(usernameLabel, usernameInput);
 

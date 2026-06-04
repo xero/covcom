@@ -31,8 +31,13 @@ export default defineConfig([
 		languageOptions: {
 			parser: tseslint.parser,
 			parserOptions: {
-				// projectService auto-discovers each file's nearest tsconfig.json
-				projectService: true,
+				// projectService auto-discovers each file's nearest tsconfig.json.
+				// The web build-glue files live in tsconfig.tools.json (not an
+				// auto-discovered name), so allow them onto the inferred default
+				// project rather than excluding them from lint.
+				projectService: {
+					allowDefaultProject: ['web/vite.config.ts', 'web/build-worker.ts'],
+				},
 				tsconfigRootDir: fileURLToPath(new URL('.', import.meta.url)),
 			},
 		},
@@ -61,6 +66,24 @@ export default defineConfig([
 			'@typescript-eslint/no-unused-vars': [
 				'error',
 				{ argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+			],
+		},
+	},
+
+	// ── Web client: no raw HTML-string DOM sinks ────────────────────────────────
+	// The web client builds DOM via el()/createElement + textContent so a
+	// user-controlled value can never become markup. The one legitimate exception
+	// (static SVG icons) goes through setHtml(el, SafeHtml) in web/src/safehtml.ts,
+	// which is the sole sanctioned sink and carries its own disable comment.
+	{
+		files: ['web/src/**/*.ts'],
+		rules: {
+			'no-restricted-properties': ['error',
+				{ property: 'innerHTML',          message: 'No raw HTML. Use setHtml(el, SafeHtml) from safehtml.ts.' },
+				{ property: 'outerHTML',          message: 'No raw HTML. Use setHtml(el, SafeHtml) from safehtml.ts.' },
+				{ property: 'insertAdjacentHTML', message: 'No raw HTML. Build DOM with el()/createElement.' },
+				{ object: 'document', property: 'write',   message: 'document.write is forbidden.' },
+				{ object: 'document', property: 'writeln', message: 'document.write is forbidden.' },
 			],
 		},
 	},

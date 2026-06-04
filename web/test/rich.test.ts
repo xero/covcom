@@ -51,7 +51,7 @@ describe('wireSummary', () => {
 
 		// Token array, not an HTML string, proving no string-concat path survives.
 		expect(Array.isArray(summary)).toBe(true);
-		const tokens = summary as Array<string | { b: string } | { code: string }>;
+		const tokens = summary as (string | { b: string } | { code: string })[];
 		const bold = tokens.find((t): t is { b: string } => typeof t === 'object' && 'b' in t);
 		expect(bold?.b).toBe(username);
 

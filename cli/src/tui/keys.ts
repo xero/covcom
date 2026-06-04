@@ -75,7 +75,7 @@ export function parseInput(buf: Buffer): InputEvent {
 		return k(ch, { ctrl: true, ch });
 	}
 
-	// printable UTF-8. Single char is a keypress, multi-char is unbracketd paste.
+	// printable UTF-8. Single char is a keypress, multi-char is unbracketed paste.
 	const text = buf.toString('utf8');
 	if (text.length > 0 && (text.codePointAt(0) ?? 0) >= 0x20) {
 		if (text.length > 1) return { kind: 'paste', text };

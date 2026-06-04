@@ -1,4 +1,5 @@
-import type { FingerprintSurface } from '@covcom/lib';
+import { parseMarkup, stripFormatChars } from '@covcom/lib';
+import type { FingerprintSurface, Span } from '@covcom/lib';
 import { formatBytes } from '../util.js';
 import { Screen, Theme, ColorValue, colorFg, colorBg, ansi } from './screen.js';
 import type { Key } from './keys.js';
@@ -17,6 +18,11 @@ export interface Widget {
 }
 
 // ─── word wrap ───────────────────────────────────────────────────────────────
+//
+// Widths are measured in display columns (see displayWidth), so a CJK/emoji run
+// wraps where it actually fills the pane rather than one column short. A word
+// wider than the pane is hard-split via charWrap, which is column-aware and never
+// severs a surrogate pair.
 
 export function wordWrap(text: string, width: number): string[] {
 	if (width <= 0) return [text];
@@ -24,24 +30,260 @@ export function wordWrap(text: string, width: number): string[] {
 	const lines: string[] = [];
 	let cur = '';
 	for (const word of words) {
-		if (word.length > width) {
-			if (cur) {
-				lines.push(cur);
-			}
-			let w = word;
-			while (w.length > width) {
-				lines.push(w.slice(0, width)); w = w.slice(width);
-			}
-			cur = w;
+		if (displayWidth(word) > width) {
+			if (cur) lines.push(cur);
+			const segs = charWrap(word, width);
+			for (let i = 0; i < segs.length - 1; i++) lines.push(segs[i]);
+			cur = segs[segs.length - 1];
 			continue;
 		}
-		const needed = cur ? cur.length + 1 + word.length : word.length;
+		const needed = cur ? displayWidth(cur) + 1 + displayWidth(word) : displayWidth(word);
 		if (needed > width) {
 			lines.push(cur); cur = word;
 		} else cur = cur ? cur + ' ' + word : word;
 	}
 	if (cur) lines.push(cur);
 	return lines.length ? lines : [''];
+}
+
+// ─── display width ─────────────────────────────────────────────────────────────
+//
+// A terminal cell is not a code point. East Asian Wide/Fullwidth glyphs and most
+// emoji occupy two columns; combining marks and the zero-width format chars we
+// deliberately keep (ZWJ, variation selectors) occupy none. Wrapping and padding
+// must count columns, not code points, or a CJK glyph or width-2 emoji in a
+// fenced block pads/wraps one column short. This is a pragmatic wcwidth: the
+// canonical wide ranges below are width 2, marks/kept-format chars are width 0,
+// everything else is width 1.
+//
+// Caveat: width is summed per code point, so a multi-code-point grapheme cluster
+// joined by ZWJ (e.g. a family emoji) over-counts its parts. Terminals disagree
+// on those anyway, and ASCII/CJK/single-emoji is the stated target.
+
+// Standard East Asian Wide + Fullwidth blocks plus the emoji/pictograph planes.
+const WIDE_RANGES: readonly (readonly [number, number])[] = [
+	[0x1100, 0x115f],    // Hangul Jamo
+	[0x2329, 0x232a],    // angle brackets
+	[0x2e80, 0x303e],    // CJK radicals … Kangxi
+	[0x3041, 0x33ff],    // Hiragana … CJK compatibility
+	[0x3400, 0x4dbf],    // CJK Extension A
+	[0x4e00, 0x9fff],    // CJK Unified Ideographs
+	[0xa000, 0xa4cf],    // Yi
+	[0xac00, 0xd7a3],    // Hangul syllables
+	[0xf900, 0xfaff],    // CJK compatibility ideographs
+	[0xfe10, 0xfe19],    // vertical forms
+	[0xfe30, 0xfe6f],    // CJK compatibility + small forms
+	[0xff00, 0xff60],    // fullwidth forms
+	[0xffe0, 0xffe6],    // fullwidth signs
+	[0x1f300, 0x1faff],  // emoji & pictographs
+	[0x20000, 0x3fffd],  // CJK Extension B+ (supplementary ideographic planes)
+];
+
+// Combining marks render zero-width over a base glyph. \p{M} covers them; no `g`
+// flag, so lastIndex never advances between tests.
+const COMBINING_RE = /\p{M}/u;
+
+function charWidth(cp: number): number {
+	// Zero-width: ZWJ and variation selectors (kept by stripFormatChars) and any
+	// combining mark. The base glyph of an emoji/accented cluster carries the width.
+	if (cp === 0x200d || (cp >= 0xfe00 && cp <= 0xfe0f)) return 0;
+	if (COMBINING_RE.test(String.fromCodePoint(cp))) return 0;
+	for (const [lo, hi] of WIDE_RANGES) if (cp >= lo && cp <= hi) return 2;
+	return 1;
+}
+
+// Visible width of a string in terminal columns.
+function displayWidth(s: string): number {
+	let w = 0;
+	for (const ch of s) w += charWidth(ch.codePointAt(0) ?? 0);
+	return w;
+}
+
+// ─── terminal sanitization ─────────────────────────────────────────────────────
+//
+// The CLI renders untrusted peer data (usernames, error reasons, message text)
+// as raw bytes to process.stdout, so the real threat is ANSI/CSI/OSC escape
+// injection (OSC 52 clipboard writes, screen clears, cursor moves), not HTML.
+// Strip full escape sequences first (while the ESC anchor is present), then stray
+// control chars, then HTML-ish tags for defensive parity, then the shared
+// bidi/zero-width format chars (display-name reordering + homoglyph spoofing).
+// Newlines (0x0A) are preserved so multi-line messages and fenced blocks survive
+// into parseMarkup; the event-log path flattens them itself since it is single-line.
+
+// Order matters: OSC (ESC ] … BEL/ST) and CSI (ESC [ …) are matched before the
+// generic two-char escape, because that class's `\-_` range covers `]` (0x5D)
+// and would otherwise shadow OSC, leaving the OSC body (e.g. an OSC 52 clipboard
+// payload) on screen.
+// eslint-disable-next-line no-control-regex -- matching ESC/BEL/ST escapes is the point
+const ANSI_RE = /\x1B(?:\][^\x07\x1B]*(?:\x07|\x1B\\)|\[[0-?]*[ -/]*[@-~]|[@-Z\\-_])/g;
+
+export function sanitizeTerminal(s: string): string {
+	const stripped = s
+		.replace(ANSI_RE, '')                           // CSI, OSC (incl. OSC 52), 2-char escapes
+		// eslint-disable-next-line no-control-regex -- stripping stray C0/C1 control bytes is the point
+		.replace(/[\x00-\x09\x0B-\x1F\x7F-\x9F]/g, '')  // stray C0/C1 + DEL, keep \n (0x0A)
+		.replace(/<[^>]*>/g, '');                       // stray HTML-ish tags (defensive parity)
+	return stripFormatChars(stripped);                  // bidi controls + zero-width spoofing chars
+}
+
+// ─── markup → ANSI ──────────────────────────────────────────────────────────────
+//
+// Message flow on the CLI is sanitizeTerminal → parseMarkup → emit our own
+// controlled SGR. The markup markers (* _ `) are ASCII and survive sanitization,
+// and we only ever wrap our own bytes in an escape position, never attacker
+// bytes. Wrapping is done on VISIBLE width first, then SGR is injected around the
+// visible runs, so column math stays correct.
+
+type Sty = 'plain' | 'b' | 'i' | 'bi' | 'code';
+interface StyledChar { ch: string; sty: Sty }
+
+function styledChars(spans: Span[]): StyledChar[] {
+	const out: StyledChar[] = [];
+	const push = (str: string, sty: Sty): void => {
+		for (const ch of str) out.push({ ch, sty });
+	};
+	for (const s of spans) {
+		if (typeof s === 'string') push(s, 'plain');
+		else if ('b' in s)         push(s.b, 'b');
+		else if ('i' in s)         push(s.i, 'i');
+		else if ('bi' in s)        push(s.bi, 'bi');
+		else                       push(s.code, 'code');
+	}
+	return out;
+}
+
+// Display-column width of a styled run; each StyledChar.ch is one code point.
+function styledWidth(cs: StyledChar[]): number {
+	let n = 0;
+	for (const c of cs) n += charWidth(c.ch.codePointAt(0) ?? 0);
+	return n;
+}
+
+// charWrap for styled runs: hard-split into column-bounded chunks, stepping over
+// whole code points (each StyledChar is one) so a wide glyph is never severed.
+function charWrapStyled(word: StyledChar[], width: number): StyledChar[][] {
+	const out: StyledChar[][] = [];
+	let cur: StyledChar[] = [];
+	let curW = 0;
+	for (const c of word) {
+		const cw = charWidth(c.ch.codePointAt(0) ?? 0);
+		if (cur.length && curW + cw > width) {
+			out.push(cur); cur = []; curW = 0;
+		}
+		cur.push(c); curW += cw;
+	}
+	if (cur.length) out.push(cur);
+	return out.length ? out : [[]];
+}
+
+// Word-wrap over styled chars, mirroring wordWrap's plain-text behavior so the
+// feel is unchanged: break on spaces, hard-split words wider than the pane.
+// Widths are display columns, not code-point counts, matching wordWrap.
+function wrapStyled(chars: StyledChar[], width: number): StyledChar[][] {
+	if (width <= 0) return [chars];
+	const words: StyledChar[][] = [];
+	let w: StyledChar[] = [];
+	for (const c of chars) {
+		if (c.ch === ' ') {
+			words.push(w); w = [];
+		} else w.push(c);
+	}
+	words.push(w);
+
+	const SP: StyledChar = { ch: ' ', sty: 'plain' };
+	const lines: StyledChar[][] = [];
+	let cur: StyledChar[] = [];
+	for (const word of words) {
+		if (styledWidth(word) > width) {
+			if (cur.length) lines.push(cur);
+			const segs = charWrapStyled(word, width);
+			for (let i = 0; i < segs.length - 1; i++) lines.push(segs[i]);
+			cur = segs[segs.length - 1];
+			continue;
+		}
+		const needed = cur.length ? styledWidth(cur) + 1 + styledWidth(word) : styledWidth(word);
+		if (needed > width) {
+			lines.push(cur); cur = word.slice();
+		} else {
+			cur = cur.length ? [...cur, SP, ...word] : word.slice();
+		}
+	}
+	if (cur.length) lines.push(cur);
+	return lines.length ? lines : [[]];
+}
+
+function styleOpen(sty: Sty, baseFg: string, theme: Theme): string {
+	switch (sty) {
+	case 'b':    return baseFg + ansi.bold;
+	case 'i':    return baseFg + ansi.italic;
+	case 'bi':   return baseFg + ansi.bold + ansi.italic;
+	case 'code': return colorBg(theme.codeBg) + colorFg(theme.codeFg);
+	default:     return baseFg;
+	}
+}
+
+// Coalesce consecutive same-style chars into runs; each run is wrapped in its
+// SGR opener and a reset, matching the "wrap each run, then ansi.reset" pattern.
+function renderStyledLine(chars: StyledChar[], baseFg: string, theme: Theme): string {
+	let out = '';
+	let i = 0;
+	while (i < chars.length) {
+		const sty = chars[i].sty;
+		let text = '';
+		while (i < chars.length && chars[i].sty === sty) {
+			text += chars[i].ch; i++;
+		}
+		out += styleOpen(sty, baseFg, theme) + text + ansi.reset;
+	}
+	return out;
+}
+
+// Hard character wrap for fenced blocks: never collapse spacing, never clip.
+// Lines wider than the pane wrap at the column boundary onto continuation lines.
+// Width is counted in display columns (a CJK glyph / wide emoji is 2), and the
+// scan steps over whole code points, so an astral char at the boundary is never
+// severed into a lone surrogate. A single code point wider than the pane still
+// gets its own line rather than being dropped.
+function charWrap(s: string, width: number): string[] {
+	if (width <= 0) return [s];
+	if (s.length === 0) return [''];
+	const out: string[] = [];
+	let cur  = '';
+	let curW = 0;
+	for (const ch of s) {
+		const cw = charWidth(ch.codePointAt(0) ?? 0);
+		if (cur !== '' && curW + cw > width) {
+			out.push(cur); cur = ''; curW = 0;
+		}
+		cur += ch; curW += cw;
+	}
+	if (cur !== '') out.push(cur);
+	return out.length ? out : [''];
+}
+
+// Render a message body to visible-width lines (without the sender prefix).
+// `pre` blocks get a solid code bg/fg fill padded to the wrap width; `p` blocks
+// word-wrap with per-run SGR. Returns at least one line.
+export function messageToLines(text: string, width: number, baseFg: string, theme: Theme): string[] {
+	const doc = parseMarkup(sanitizeTerminal(text));
+	const out: string[] = [];
+	for (const block of doc) {
+		if ('pre' in block) {
+			const codeSeq = colorBg(theme.codeBg) + colorFg(theme.codeFg);
+			for (const raw of block.pre.split('\n')) {
+				for (const seg of charWrap(raw, width)) {
+					// Pad to the wrap width in display columns (charWrap yields ≤ width).
+					const pad = ' '.repeat(Math.max(0, width - displayWidth(seg)));
+					out.push(codeSeq + seg + pad + ansi.reset);
+				}
+			}
+		} else {
+			for (const lineChars of wrapStyled(styledChars(block.p), width)) {
+				out.push(renderStyledLine(lineChars, baseFg, theme));
+			}
+		}
+	}
+	return out.length ? out : [''];
 }
 
 // ─── drawModal ───────────────────────────────────────────────────────────────
@@ -406,7 +648,11 @@ export class ScrollView implements Widget {
 	}
 
 	addMessage(msg: { sender: string; text: string; isSelf: boolean; senderIndex: number }) {
-		this.msgs.push({ isFile: false, ...msg });
+		// The sender is a peer-controlled username rendered raw into the terminal
+		// (with SGR) by computeLines; sanitize it here so its visible length also
+		// drives prefix/indent math correctly. Message body text is sanitized
+		// separately in messageToLines.
+		this.msgs.push({ isFile: false, ...msg, sender: sanitizeTerminal(msg.sender) });
 	}
 
 	addFile(msg: {
@@ -419,7 +665,10 @@ export class ScrollView implements Widget {
 		saved?: string
 		download?: () => Promise<string>
 	}) {
-		this.msgs.push({ isFile: true, ...msg });
+		// Both the sender and the filename are peer-controlled and rendered raw
+		// into the attachment line; sanitize so the chip width / hit-test math
+		// (chipX2 = chipX1 + chip.length - 1) is computed on the visible string.
+		this.msgs.push({ isFile: true, ...msg, sender: sanitizeTerminal(msg.sender), filename: sanitizeTerminal(msg.filename) });
 	}
 
 	markSaved(msgIdx: number, savedPath: string) {
@@ -477,20 +726,14 @@ export class ScrollView implements Widget {
 			const prefixLen = prefix.length;
 
 			if (!msg.isFile) {
-				const textLines = msg.text.split('\n');
-				for (let ti = 0; ti < textLines.length; ti++) {
-					const wrapped = wordWrap(textLines[ti], Math.max(lineW - prefixLen, 10));
-					const head    = ti === 0;
-					for (let wi = 0; wi < wrapped.length; wi++) {
-						if (head && wi === 0) {
-							result.push({ text: nameFg + msg.sender + ansi.reset + ': ' + textFg + wrapped[wi] + ansi.reset });
-						} else {
-							result.push({ text: ' '.repeat(prefixLen) + textFg + wrapped[wi] + ansi.reset });
-						}
+				const contentW = Math.max(lineW - prefixLen, 10);
+				const lines    = messageToLines(msg.text, contentW, textFg, theme);
+				for (let li = 0; li < lines.length; li++) {
+					if (li === 0) {
+						result.push({ text: nameFg + msg.sender + ansi.reset + ': ' + lines[0] });
+					} else {
+						result.push({ text: ' '.repeat(prefixLen) + lines[li] });
 					}
-				}
-				if (result.length === 0 || (result[result.length - 1]?.text === '' )) {
-					// ensure at least one line
 				}
 			} else {
 				const chip       = ` ${msg.filename} `;
@@ -682,13 +925,10 @@ function fmtTime(ts: number): string {
 	return `${hh}:${mm}:${ss}`;
 }
 
-function stripHtml(s: string): string {
-	return s
-		.replace(/<[^>]+>/g, '')
-		.replace(/&lt;/g, '<')
-		.replace(/&gt;/g, '>')
-		.replace(/&quot;/g, '"')
-		.replace(/&amp;/g, '&');
+// Event-log values are single-line; collapse any surviving newlines after the
+// shared terminal sanitizer has stripped escapes and control bytes.
+function flatten(s: string): string {
+	return sanitizeTerminal(s).replace(/[\n\r]+/g, ' ');
 }
 
 function dirGlyph(d: EventLogEntry['direction']): string {
@@ -811,7 +1051,7 @@ export class Sidebar implements Widget {
 			const dir    = dirGlyph(e.direction);
 			const kind   = truncate(e.kind, KIND_LABEL_W);
 			const sumRoom = Math.max(0, w - (TIME_W + 1 + 1 + 1 + KIND_LABEL_W + 1));
-			const sum    = truncate(stripHtml(e.summary), sumRoom);
+			const sum    = truncate(flatten(e.summary), sumRoom);
 
 			const m = /^([^\s:]+):\s+(.*)$/.exec(sum);
 			let sumSeg: string;
@@ -830,11 +1070,14 @@ export class Sidebar implements Widget {
 
 			if (this.expanded.has(e.id)) {
 				for (const [k, v] of Object.entries(e.details)) {
-					const val   = typeof v === 'string' ? v : JSON.stringify(v);
-					const head  = `  ${k}: `;
+					// Key and value are both peer-influenced (e.g. broadcast meta.*
+					// keys), so both must pass through the terminal sanitizer.
+					const key   = flatten(k);
+					const val   = flatten(typeof v === 'string' ? v : JSON.stringify(v));
+					const head  = `  ${key}: `;
 					const room  = Math.max(0, w - head.length);
 					const vTrim = truncate(val, room);
-					const line  = keyFg + `  ${k}:` + ansi.reset + ' ' + valFg + vTrim + ansi.reset;
+					const line  = keyFg + `  ${key}:` + ansi.reset + ' ' + valFg + vTrim + ansi.reset;
 					lines.push({ text: line, entryId: e.id, isHeader: false });
 				}
 			}
@@ -919,7 +1162,7 @@ export class Sidebar implements Widget {
 
 		for (const p of fps.peers) {
 			if (y >= rect.y + rect.h) break;
-			writeLine(colorFg(theme.peerName) + ansi.bold + ' ' + truncate(p.username, rect.w - 1) + ansi.reset);
+			writeLine(colorFg(theme.peerName) + ansi.bold + ' ' + truncate(sanitizeTerminal(p.username), rect.w - 1) + ansi.reset);
 			writeSwatches(p.fingerprint.swatches);
 			writeLine(colorFg(theme.disabled) + '  ' + truncate(p.fingerprint.hex, rect.w - 2) + ansi.reset);
 			y++;
@@ -981,11 +1224,10 @@ export class Sidebar implements Widget {
 	}
 
 	private _ensureSelectionVisible(): void {
-		// Recompute on next render; advance scrollTop one step if selection is off-screen.
-		// Cheap approximation: scroll one line in the appropriate direction.
 		const onScreen = this.rendered.some(r => r.entryId === this.selectedId && r.isHeader);
 		if (onScreen) return;
-		// Scroll a page in the direction of the selection.
+		// Selection is off-screen: page toward it. At the top we can only page
+		// down; otherwise page up.
 		this._scrollPage(this.scrollTop === 0 ? +1 : -1);
 	}
 

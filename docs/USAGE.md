@@ -24,6 +24,7 @@ XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-p
 >   - [configuration](#configuration)
 >   - [navigation](#navigation)
 > - [starting a session](#starting-a-session)
+> - [formatting messages](#formatting-messages)
 > - [development](#development-1)
 
 ---
@@ -252,7 +253,7 @@ bun build:web
 
 Produces `web/dist/`: an inlined `index.html` plus a same-origin pool worker
 (`covcom-pool-worker.js`) used for encrypted file transfer. The policy is
-strict-CSP friendly — `worker-src 'self'` with no `blob:`, so file transfer
+strict-CSP friendly, `worker-src 'self'` with no `blob:`, so file transfer
 works in Safari/WebKit under a strict CSP (see
 [leviathan-crypto/docs/csp.md](https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md)).
 Serve the directory from any static file host with no build step, or let
@@ -378,6 +379,30 @@ a sequence of encrypted blobs and learned nothing about the content.
 Late joiners receive current epoch seeds from all present members and enter
 the session at whatever epoch each sender is at. Messages sent before you
 joined are not recoverable. This is forward secrecy working as intended.
+
+---
+
+## formatting messages
+
+Both clients render a small markdown subset in message bodies. The web client
+draws it as styled DOM; the CLI draws it with terminal colors and bold/italic.
+
+- **Bold.** Wrap text in `*asterisks*`.
+
+- **Italic.** Wrap text in `_underscores_`.
+
+- **Bold and italic.** Combine the markers as `_*both*_` or `*_both_*`.
+
+- **Inline code.** Wrap text in `` `backticks` ``. The contents render
+  verbatim, so markers inside code stay literal.
+
+- **Code block.** Fence a span of lines with ` ``` ` on their own lines. The
+  block preserves whitespace and newlines.
+
+Formatting is applied at display time only. The wire still carries your exact
+plaintext, and the markers travel with it as ordinary characters. Untrusted
+text from peers is sanitized before rendering, so a crafted message cannot
+inject HTML in the browser or escape sequences in the terminal.
 
 ---
 
