@@ -1,14 +1,16 @@
 // Inbound client to server messages
 
 export interface CreateMsg {
-	type:        'create'
-	adminToken?: string
+	type:             'create'
+	adminToken?:      string
+	protocolVersion?: number   // absent = pre-v3 client; server rejects on mismatch
 }
 
 export interface JoinMsg {
-	type:       'join'
-	roomId:     string
-	roomSecret: string
+	type:             'join'
+	roomId:           string
+	roomSecret:       string
+	protocolVersion?: number   // absent = pre-v3 client; server rejects on mismatch
 }
 
 export interface IdentifyMsg {
@@ -72,14 +74,16 @@ export type InboundMsg =
 // Outbound server to client messages
 
 export interface RoomCreatedMsg {
-	type:       'room_created'
-	roomId:     string
-	roomSecret: string
+	type:          'room_created'
+	roomId:        string
+	roomSecret:    string
+	serverVersion: number
 }
 
 export interface JoinedMsg {
-	type:    'joined'
-	members: { username: string; ek: string; ratchetEk: string; claim: string }[]
+	type:          'joined'
+	members:       { username: string; ek: string; ratchetEk: string; claim: string }[]
+	serverVersion: number
 }
 
 export interface PeerJoinedMsg {
@@ -111,7 +115,8 @@ export interface BroadcastFwdMsg {
 
 export interface ErrorMsg {
 	type: 'error'
-	reason: 'room_full' | 'not_found' | 'forbidden' | 'username_taken'
+	reason: 'room_full' | 'not_found' | 'forbidden' | 'username_taken' | 'version_mismatch'
+	serverVersion?: number   // present on version_mismatch to aid a newer client
 }
 
 // server delivers one of these per recipient from a ratchet_step

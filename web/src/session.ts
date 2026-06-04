@@ -1,6 +1,8 @@
 import {
 	Session,
 	generateKeypair,
+	PROTOCOL,
+	PROTOCOL_VERSION,
 	SealStream,
 	OpenStream,
 	XChaCha20Cipher,
@@ -40,7 +42,6 @@ export interface SessionEvents {
 	'connection-restored':       { at: number; downMs: number };
 }
 
-const AUTO_RATCHET_INTERVAL = 25;
 const RECONNECT_INITIAL_MS  = 1000;
 const RECONNECT_MAX_MS      = 30000;
 
@@ -118,7 +119,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		this._username    = opts.username;
 		this._isReconnect = false;
 		this._settled     = false;
-		this._openWs(opts.server, () => this._sendOut({ type: 'create', adminToken: opts.adminToken }));
+		this._openWs(opts.server, () => this._sendOut({ type: 'create', adminToken: opts.adminToken, protocolVersion: PROTOCOL_VERSION }));
 	}
 
 	async join(invite: InvitePayload, username: string): Promise<void> {
@@ -138,7 +139,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 	sendMessage(text: string): boolean {
 		if (this._phase !== 'ready' || !this._lib || !this._isWsOpen()) return false;
 		try {
-			if (this._lib.counter >= AUTO_RATCHET_INTERVAL && this._knownPeers.size > 0) this._doRatchetStep();
+			if (this._lib.counter >= PROTOCOL.autoRatchetEvery && this._knownPeers.size > 0) this._doRatchetStep();
 			const bytes = new TextEncoder().encode(text);
 			const { ciphertext, counter, epoch } = this._lib.sealMessage(bytes);
 			const ts  = Date.now();
@@ -165,7 +166,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 	// the broker's 16 MiB ceiling.
 	async sendFile(file: File): Promise<void> {
 		if (this._phase !== 'ready' || !this._lib || !this._isWsOpen()) return;
-		if (this._lib.counter >= AUTO_RATCHET_INTERVAL && this._knownPeers.size > 0) this._doRatchetStep();
+		if (this._lib.counter >= PROTOCOL.autoRatchetEvery && this._knownPeers.size > 0) this._doRatchetStep();
 		const lib    = this._lib;
 		const ts     = Date.now();
 		const fileId = newFileId();
@@ -332,6 +333,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 			type: 'join',
 			roomId: this._room.id,
 			roomSecret: b64enc(this._room.secret),
+			protocolVersion: PROTOCOL_VERSION,
 		});
 	}
 
@@ -367,9 +369,11 @@ export class CovcomSession extends Emitter<SessionEvents> {
 
 		switch (msg.type) {
 		case 'room_created':
+			if (!this._checkServerVersion(msg.serverVersion)) break;
 			this._onRoomCreated(msg.roomId, msg.roomSecret);
 			break;
 		case 'joined':
+			if (!this._checkServerVersion(msg.serverVersion)) break;
 			this._onJoined(msg.members);
 			break;
 		case 'peer_joined':
@@ -842,6 +846,17 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		if (!this._pendingRekey) return;
 		this._pendingRekey = false;
 		this._emitPhase('waiting');
+	}
+
+	// True if the server's advertised version matches. A missing field means an
+	// older server that predates negotiation (the friend's v2 case): it can't
+	// reject us, so the newer client detects the skew and bails. Numbers go to
+	// the console for debugging; the on-screen message stays generic.
+	private _checkServerVersion(got: number | undefined): boolean {
+		if (got === PROTOCOL_VERSION) return true;
+		console.warn(`covcom: server protocol version mismatch (expected ${PROTOCOL_VERSION}, got ${got ?? 'none'})`);
+		this._onError('version_mismatch');
+		return false;
 	}
 
 	private _onError(reason: string): void {

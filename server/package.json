@@ -6,6 +6,9 @@
 		"start": "bun run src/index.ts",
 		"test": "bun test"
 	},
+	"dependencies": {
+		"@covcom/lib": "workspace:*"
+	},
 	"devDependencies": {
 		"@types/bun": "latest"
 	}

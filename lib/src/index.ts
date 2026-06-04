@@ -16,3 +16,4 @@ export {
 	RELAY_TAG_SEED, RELAY_TAG_FILE_ACK,
 	prefixTag, readRelayTag, encodeFileAck, decodeFileAck,
 } from './filetransfer.js';
+export { PROTOCOL, PROTOCOL_VERSION } from './protocol.js';

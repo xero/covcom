@@ -35,6 +35,9 @@
     },
     "server": {
       "name": "@covcom/server",
+      "dependencies": {
+        "@covcom/lib": "workspace:*",
+      },
       "devDependencies": {
         "@types/bun": "latest",
       },

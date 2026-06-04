@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { PROTOCOL_VERSION } from '@covcom/lib';
 import { startServer } from '../src/index.ts';
 
 type AnyMsg = Record<string, unknown>
@@ -27,7 +28,15 @@ class TestWS {
 	}
 
 	send(msg: object): void {
-		this.ws.send(JSON.stringify(msg));
+		// Every test client is a current-version client: stamp protocolVersion
+		// onto create/join so the server's negotiation gate accepts them. Tests
+		// that simulate an old/mismatched client send raw frames via sendRaw (or
+		// pass an explicit protocolVersion, which is respected).
+		const m = msg as AnyMsg;
+		const out = (m.type === 'create' || m.type === 'join') && m.protocolVersion === undefined
+			? { ...m, protocolVersion: PROTOCOL_VERSION }
+			: m;
+		this.ws.send(JSON.stringify(out));
 	}
 
 	sendRaw(data: string): void {
@@ -950,5 +959,80 @@ describe('identify cleanup', () => {
 		a.close();
 		b.close();
 		await delay(50);
+	});
+});
+
+// ── protocol-version negotiation ──────────────────────────────────────────
+
+describe('protocol version negotiation', () => {
+	let port: number;
+	let server: ReturnType<typeof startServer>;
+
+	beforeAll(() => {
+		server = startServer({ port: 0 });
+		port = server.port as number;
+	});
+
+	// Server-initiated closes (version_mismatch) can leave a socket half-closed,
+	// so stop(true) may hang; race it with a short timeout, as the zombie-close
+	// block does for the same reason.
+	afterAll(() => {
+		const stop = server.stop.bind(server);
+		return Promise.race([
+			stop(true),
+			new Promise<void>(resolve => setTimeout(resolve, 500)),
+		]);
+	});
+
+	test('room_created and joined carry serverVersion', async () => {
+		const a = await connect(port);
+		a.send({ type: 'create' });
+		const created = await a.recv();
+		expect(created.type).toBe('room_created');
+		expect(created.serverVersion).toBe(PROTOCOL_VERSION);
+
+		const { roomId, roomSecret } = created as { roomId: string; roomSecret: string };
+		a.send({ type: 'join', roomId, roomSecret });
+		const joined = await a.recv();
+		expect(joined.type).toBe('joined');
+		expect(joined.serverVersion).toBe(PROTOCOL_VERSION);
+		a.close();
+	});
+
+	test('create without protocolVersion rejected (pre-v3 client)', async () => {
+		const a = await connect(port);
+		a.sendRaw(JSON.stringify({ type: 'create' }));
+		const msg = await a.recv();
+		expect(msg).toEqual({ type: 'error', reason: 'version_mismatch', serverVersion: PROTOCOL_VERSION });
+		a.close();
+	});
+
+	test('create with wrong protocolVersion rejected', async () => {
+		const a = await connect(port);
+		a.send({ type: 'create', protocolVersion: PROTOCOL_VERSION + 1 });
+		const msg = await a.recv();
+		expect(msg.reason).toBe('version_mismatch');
+		expect(msg.serverVersion).toBe(PROTOCOL_VERSION);
+		a.close();
+	});
+
+	test('join without protocolVersion rejected (pre-v3 client)', async () => {
+		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
+		const b = await connect(port);
+		b.sendRaw(JSON.stringify({ type: 'join', roomId, roomSecret }));
+		const msg = await b.recv();
+		expect(msg).toEqual({ type: 'error', reason: 'version_mismatch', serverVersion: PROTOCOL_VERSION });
+		a.close();
+		b.close();
+	});
+
+	test('join with wrong protocolVersion rejected', async () => {
+		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
+		const b = await connect(port);
+		b.send({ type: 'join', roomId, roomSecret, protocolVersion: PROTOCOL_VERSION + 1 });
+		const msg = await b.recv();
+		expect(msg.reason).toBe('version_mismatch');
+		a.close();
+		b.close();
 	});
 });

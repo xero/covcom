@@ -9,6 +9,8 @@
 // server's byte-length validation is intentionally omitted; that is the
 // server's concern and is covered by server/test/server.test.ts.
 
+import { PROTOCOL_VERSION } from '@covcom/lib';
+
 interface ConnData {
 	roomId:    string | null;
 	username:  string | null;
@@ -38,10 +40,14 @@ function roomSecretB64(n: number): string {
 class Broker {
 	private rooms = new Map<string, RoomState>();
 	private seq   = 0;
+	// When set, room_created/joined omit serverVersion, mimicking a pre-v3
+	// server that predates version negotiation (the friend's v2 case).
+	simulateOldServer = false;
 
 	reset(): void {
 		this.rooms.clear();
 		this.seq = 0;
+		this.simulateOldServer = false;
 	}
 
 	handle(ws: MockWebSocket, msg: AnyMsg): void {
@@ -71,7 +77,9 @@ class Broker {
 		const secret = roomSecretB64(this.seq);
 		this.seq++;
 		this.rooms.set(id, { secret, conns: new Set() });
-		ws.deliver({ type: 'room_created', roomId: id, roomSecret: secret });
+		ws.deliver(this.simulateOldServer
+			? { type: 'room_created', roomId: id, roomSecret: secret }
+			: { type: 'room_created', roomId: id, roomSecret: secret, serverVersion: PROTOCOL_VERSION });
 	}
 
 	private join(ws: MockWebSocket, msg: AnyMsg): void {
@@ -85,7 +93,9 @@ class Broker {
 		for (const conn of room.conns)
 			if (conn !== ws && conn.data.username && conn.data.ek && conn.data.ratchetEk && conn.data.claim)
 				members.push({ username: conn.data.username, ek: conn.data.ek, ratchetEk: conn.data.ratchetEk, claim: conn.data.claim });
-		ws.deliver({ type: 'joined', members });
+		ws.deliver(this.simulateOldServer
+			? { type: 'joined', members }
+			: { type: 'joined', members, serverVersion: PROTOCOL_VERSION });
 	}
 
 	private identify(ws: MockWebSocket, msg: AnyMsg): void {

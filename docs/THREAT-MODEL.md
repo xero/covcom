@@ -313,6 +313,14 @@ with a new session will use a different keypair and username. The protocol
 does not prevent the same human from being correlated across sessions by
 out-of-band means (same username choice, writing style, timing patterns).
 
+**Protocol-version authenticity.** The `protocolVersion` and `serverVersion`
+fields exchanged at join are a plaintext compatibility gate, not an
+authenticated claim. A malicious server can advertise any version, and a client
+cannot distinguish a genuine version skew from a server that lies about its
+version. The field rejects incompatible builds cleanly; it proves nothing about
+the peer. Confidentiality and integrity rest on the signed identity claims and
+the AEAD, neither of which depends on the version.
+
 **Server availability.** A server that drops messages or refuses connections
 prevents communication. Denial-of-service against S is not a
 cryptographic attack and is outside this model.

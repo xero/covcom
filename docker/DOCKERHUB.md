@@ -43,13 +43,14 @@ A vulnerability in either project triggers a coordinated release of both.
 
 | Tag     | Alias    |
 |---------|----------|
-| `3.0.0` | `latest` |
+| `3.0.1` | `latest` |
 
 <!-- DEPRECATED-START -->
 ### Deprecated Versions
 
 | Tag     | Reason |
 |---------|--------|
+| `3.0.0` | ... |
 | `2.0.0` | unreleased |
 | `1.0.0` | XChaCha20 seal wasn't key-committing, thus vulnerable to salamander style partitioning-oracle attacks |
 | `0.0.1` | public beta |

@@ -5,6 +5,8 @@ import {
 	serializeInvite,
 	armorInvite,
 	INVITE_VERSION,
+	PROTOCOL,
+	PROTOCOL_VERSION,
 	SealStream,
 	OpenStream,
 	XChaCha20Cipher,
@@ -246,18 +248,27 @@ function doCreate(server: string, username: string, adminToken?: string): void {
 
 	ws.onOpen = () => {
 		writeConfig({ server: dns, username });
-		ws.send({ type: 'create', adminToken });
+		ws.send({ type: 'create', adminToken, protocolVersion: PROTOCOL_VERSION });
 	};
 
 	ws.onMessage = (msg) => {
 		if (msg.type === 'room_created') {
+			if (msg.serverVersion !== PROTOCOL_VERSION) {
+				handleVersionMismatch(ws, msg.serverVersion); return;
+			}
 			roomId = msg.roomId;
 			roomSecret = msg.roomSecret;
 			current = { phase: 'joining', roomId, roomSecret, dns, username };
-			ws.send({ type: 'join', roomId, roomSecret });
+			ws.send({ type: 'join', roomId, roomSecret, protocolVersion: PROTOCOL_VERSION });
 		} else if (msg.type === 'joined') {
+			if (msg.serverVersion !== PROTOCOL_VERSION) {
+				handleVersionMismatch(ws, msg.serverVersion); return;
+			}
 			doConnect(ws, roomId, roomSecret, dns, username, msg.members);
 		} else if (msg.type === 'error') {
+			if (msg.reason === 'version_mismatch') {
+				handleVersionMismatch(ws, msg.serverVersion); return;
+			}
 			logEvent({
 				direction: 'local',
 				kind: 'fatal',
@@ -328,10 +339,14 @@ function doJoin(
 			type: 'join',
 			roomId: invite.roomId,
 			roomSecret: invite.roomSecret,
+			protocolVersion: PROTOCOL_VERSION,
 		});
 
 	ws.onMessage = (msg) => {
 		if (msg.type === 'joined') {
+			if (msg.serverVersion !== PROTOCOL_VERSION) {
+				handleVersionMismatch(ws, msg.serverVersion); return;
+			}
 			doConnect(
 				ws,
 				invite.roomId,
@@ -342,6 +357,9 @@ function doJoin(
 				isReconnect,
 			);
 		} else if (msg.type === 'error') {
+			if (msg.reason === 'version_mismatch') {
+				handleVersionMismatch(ws, msg.serverVersion); return;
+			}
 			logEvent({
 				direction: 'local',
 				kind: 'fatal',
@@ -924,12 +942,43 @@ function startReconnect(
 	setTimeout(attempt, delay);
 }
 
-const AUTO_RATCHET_INTERVAL = 25;
+// Generic on-screen copy: no version numbers (the event-log sidebar isn't
+// available at landing anyway). Exact numbers go to stderr for debugging.
+const VERSION_MISMATCH_MSG = 'This server is running a different version.';
+
+function returnToLanding(error: string): void {
+	current = { phase: 'landing' };
+	renderLanding(_screen, {
+		config: {},
+		error,
+		onCreate: doCreate,
+		onJoinClick: (u) =>
+			renderJoin(_screen, {
+				username: u,
+				onConnect: (inv) => doJoin(inv, u),
+			}),
+	});
+}
+
+// Fires on a version_mismatch error from the server (old client to new server)
+// or a failed serverVersion check (new client to old server). The connection is
+// unusable either way; close it and bail to landing with a generic message.
+function handleVersionMismatch(ws: WS, got: number | undefined): void {
+	process.stderr.write(`covcom: server protocol version mismatch (expected ${PROTOCOL_VERSION}, got ${got ?? 'none'})\n`);
+	logEvent({
+		direction: 'local',
+		kind: 'fatal',
+		summary: 'version_mismatch',
+		details: { expected: PROTOCOL_VERSION, got: got ?? null },
+	});
+	ws.close();
+	returnToLanding(VERSION_MISMATCH_MSG);
+}
 
 function doSendMessage(text: string): void {
 	if (current.phase !== 'ready') return;
 	const st = current;
-	if (st.session.counter >= AUTO_RATCHET_INTERVAL && st.peers.size > 0)
+	if (st.session.counter >= PROTOCOL.autoRatchetEvery && st.peers.size > 0)
 		doRatchetStep();
 	const bytes = new TextEncoder().encode(text);
 	const { ciphertext, counter, epoch } = st.session.sealMessage(bytes);
@@ -970,7 +1019,7 @@ function doSendMessage(text: string): void {
 async function doSendFile(filePath: string): Promise<void> {
 	if (current.phase !== 'ready') return;
 	const st = current;
-	if (st.session.counter >= AUTO_RATCHET_INTERVAL && st.peers.size > 0)
+	if (st.session.counter >= PROTOCOL.autoRatchetEvery && st.peers.size > 0)
 		doRatchetStep();
 	const ts     = Date.now();
 	const fileId = crypto.randomUUID();

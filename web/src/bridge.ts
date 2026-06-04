@@ -10,6 +10,7 @@ const friendly: Record<string, string> = {
 	'not_found': 'Room not found.',
 	'username_taken': 'That username is taken in this room.',
 	'forbidden': 'Server rejected the connection.',
+	'version_mismatch': 'This server is running a different version.',
 	'invite_invalid': 'Invite is malformed or corrupt.',
 	'wasm_init_fail': 'Crypto setup failed; try reloading.',
 	'invalid_server': 'That server address looks invalid - please check it.',

@@ -1,6 +1,6 @@
 export type OutboundMsg =
-	| { type: 'create'; adminToken?: string }
-	| { type: 'join'; roomId: string; roomSecret: string }
+	| { type: 'create'; adminToken?: string; protocolVersion: number }
+	| { type: 'join'; roomId: string; roomSecret: string; protocolVersion: number }
 	| { type: 'identify'; username: string; ek: string; ratchetEk: string; claim: string }
 	| { type: 'relay'; to: string; payload: string }
 	| { type: 'broadcast'; payload: string; meta: Record<string, unknown>; sig: string }
@@ -9,13 +9,13 @@ export type OutboundMsg =
 	| { type: 'rekey'; ek: string; ratchetEk: string; claim: string }
 
 export type InboundMsg =
-	| { type: 'room_created'; roomId: string; roomSecret: string }
-	| { type: 'joined'; members: { username: string; ek: string; ratchetEk: string; claim: string }[] }
+	| { type: 'room_created'; roomId: string; roomSecret: string; serverVersion?: number }
+	| { type: 'joined'; members: { username: string; ek: string; ratchetEk: string; claim: string }[]; serverVersion?: number }
 	| { type: 'peer_joined'; username: string; ek: string; ratchetEk: string; claim: string }
 	| { type: 'peer_left'; username: string }
 	| { type: 'relay'; from: string; payload: string }
 	| { type: 'broadcast'; from: string; payload: string; meta: Record<string, unknown>; sig: string }
-	| { type: 'error'; reason: string }
+	| { type: 'error'; reason: string; serverVersion?: number }
 	| { type: 'ratchet_step_fwd'; from: string; kemCt: string; encSeed: string; pn: number; newEk: string; payload: string; meta: Record<string, unknown>; sig: string; claim: string }
 	| { type: 'ek_update_fwd'; from: string; ek: string; claim: string }
 	| { type: 'rekeyed' }

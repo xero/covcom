@@ -3,6 +3,7 @@ import {
 	armorInvite,
 	inviteFilename,
 	INVITE_VERSION,
+	PROTOCOL,
 	serializeInvite,
 } from '@covcom/lib';
 import type { CovcomSession } from '../session.js';
@@ -76,12 +77,12 @@ export function mountWaiting(
 			canvas.style.display = 'none';
 		});
 
-	// XChaCha20Cipher bumped to 0x03 in leviathan-crypto v3 (salamander defense).
+	// Values come from lib's PROTOCOL manifest so they can't drift from the cli.
 	const dl = el('dl', 'crypto-summary');
 	const entries: [string, string][] = [
-		['cipher', 'XChaCha20-Poly1305'],
-		['KEM',    'ML-KEM-768'],
-		['format', '0x03'],
+		['cipher', PROTOCOL.cipherName],
+		['KEM',    PROTOCOL.kemName],
+		['format', PROTOCOL.cipherFormatHex],
 	];
 	for (const [term, def] of entries) {
 		dl.appendChild(el('dt', undefined, term));

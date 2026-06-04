@@ -6,7 +6,9 @@ This release adds rich-text formatting to messages on both clients and hardens
 every path that renders peer-controlled text. Untrusted display data is now
 treated as data, never as code. It also reworks file transfer to stream in
 bounded chunks with receiver-paced flow control, so large attachments move
-reliably without crashing the renderer.
+reliably without crashing the renderer. Clients and the server now negotiate a
+protocol version when you create or join a room, so a version skew is rejected
+cleanly at the door instead of failing as cryptic dropped messages.
 
 > [!WARNING]
 > **Breaking wire-protocol change**. File transfer drops the single `file`
@@ -14,7 +16,9 @@ reliably without crashing the renderer.
 > peer-to-peer relay payload now carries a one-byte tag prefix. Both clients
 > must run v3.0.1. A v3.0.0 client cannot receive files from a v3.0.1 peer, and
 > the tagged relay payload breaks its key handshake outright, so mixed-version
-> rooms fail to connect rather than just failing to share files.
+> rooms fail to connect rather than just failing to share files. Version
+> negotiation now catches this case at join time and returns the client to the
+> start screen with a clear message instead of a cryptic handshake failure.
 
 ### Security
 
@@ -64,6 +68,24 @@ text now emits the italic SGR.
 chunks over the peer-to-peer relay channel and the sender holds a bounded window
 of chunks ahead of the slowest recipient, so a large transfer survives a slow or
 backpressured relay. The scheme is N-party and paces to the slowest peer.
+
+**Protocol manifest.** A single `lib/src/protocol.ts` now holds covcom's
+protocol-identifying values: the cipher and KEM display names, the cipher and
+signature format bytes, the auto-ratchet interval, and the wire-contract
+version. Web, cli, and server read from it instead of each carrying its own
+copy. The cipher-suite tables, ratchet timing, and version checks now share one
+source, so they stay consistent across both clients and the server. The format
+bytes are derived from the cipher suites, so they track the cipher in use on
+their own.
+
+**Protocol version negotiation.** The client sends its protocol version when you
+create or join a room, and the server stamps its own version on the reply. A
+mismatch returns you to the start screen with a generic "different version"
+message instead of hanging or dying with a cryptic decryption error deeper in
+the handshake. The check runs in both directions, so it catches an old client
+against a new server and a new client against an old server. The version rides
+in plaintext as a compatibility gate, not a security boundary; the signed
+identity claims still protect against a hostile server.
 
 ### Changed
 

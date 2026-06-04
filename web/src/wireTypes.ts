@@ -3,8 +3,8 @@
 // each frame for the event log). No runtime; types only.
 
 export type OutboundMsg =
-	| { type: 'create'; adminToken?: string }
-	| { type: 'join'; roomId: string; roomSecret: string }
+	| { type: 'create'; adminToken?: string; protocolVersion: number }
+	| { type: 'join'; roomId: string; roomSecret: string; protocolVersion: number }
 	| { type: 'identify'; username: string; ek: string; ratchetEk: string; claim: string }
 	| { type: 'relay'; to: string; payload: string }
 	| { type: 'broadcast'; payload: string; meta: Record<string, unknown>; sig: string }
@@ -13,8 +13,8 @@ export type OutboundMsg =
 	| { type: 'rekey'; ek: string; ratchetEk: string; claim: string };
 
 export type InboundMsg =
-	| { type: 'room_created'; roomId: string; roomSecret: string }
-	| { type: 'joined'; members: { username: string; ek: string; ratchetEk: string; claim: string }[] }
+	| { type: 'room_created'; roomId: string; roomSecret: string; serverVersion?: number }
+	| { type: 'joined'; members: { username: string; ek: string; ratchetEk: string; claim: string }[]; serverVersion?: number }
 	| { type: 'peer_joined'; username: string; ek: string; ratchetEk: string; claim: string }
 	| { type: 'peer_left'; username: string }
 	| { type: 'relay'; from: string; payload: string }

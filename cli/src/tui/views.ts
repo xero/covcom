@@ -1,6 +1,6 @@
 import { join, resolve } from 'path';
 import { readdirSync } from 'fs';
-import { parseArmoredInvite, inviteFilename } from '@covcom/lib';
+import { parseArmoredInvite, inviteFilename, PROTOCOL } from '@covcom/lib';
 import type { InvitePayload, FingerprintSurface } from '@covcom/lib';
 import { Screen, Theme, ColorValue, loadTheme, colorFg, colorBg, ansi } from './screen.js';
 import { parseInput, InputEvent } from './keys.js';
@@ -172,13 +172,14 @@ export function renderLanding(
 		config:      { server?: string; username?: string }
 		onCreate:    (server: string, username: string, adminToken?: string) => void
 		onJoinClick: (username: string) => void
+		error?:      string
 	},
 ): void {
 	disposeSidebar();
 	_scrollView = null; _chatScreen = null; _chatRender = null; _errorDisplay = null;
 	const theme = loadTheme(readConfig());
 
-	let errorLine = '';
+	let errorLine = opts.error ?? '';
 
 	const serverInput   = new TextInput('server',    opts.config.server   ?? '');
 	const usernameInput = new TextInput('username',  opts.config.username ?? '');
@@ -301,12 +302,22 @@ export function renderWaiting(
 	ring.register('copy'); ring.register('download');
 	const widgets: Widget[] = [copyBtn, downloadBtn];
 
+	// Rows from lib's PROTOCOL manifest (lowercase labels stay cli house style).
+	// LCOL/RCOL are the inner cell widths; the box-drawing chars are the only
+	// ones in the codebase, per PROTOCOL.md, so they stay confined here.
+	const LCOL = 8;
+	const RCOL = 23;
+	const bar  = (l: string, m: string, r: string): string =>
+		l + '─'.repeat(LCOL) + m + '─'.repeat(RCOL) + r;
+	const rows: [string, string][] = [
+		['cipher', PROTOCOL.cipherName],
+		['kem',    PROTOCOL.kemName],
+		['format', PROTOCOL.cipherFormatHex],
+	];
 	const TABLE = [
-		'┌────────┬───────────────────────┐',
-		'│ cipher │  XChaCha20-Poly1305   │',
-		'│ kem    │  ML-KEM-768           │',
-		'│ format │  0x01                 │',
-		'└────────┴───────────────────────┘',
+		bar('┌', '┬', '┐'),
+		...rows.map(([k, v]) => '│' + (' ' + k).padEnd(LCOL) + '│' + ('  ' + v).padEnd(RCOL) + '│'),
+		bar('└', '┴', '┘'),
 	];
 
 	function render() {

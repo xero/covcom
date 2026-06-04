@@ -4,7 +4,7 @@ import type { InvitePayload } from '@covcom/lib';
 import { CovcomSession } from '../src/session.ts';
 import type { SessionEvents } from '../src/session.ts';
 import type { Room } from '../src/store.ts';
-import { installMockWebSocket, uninstallMockWebSocket, waitUntil } from './mock-ws.ts';
+import { broker, installMockWebSocket, uninstallMockWebSocket, waitUntil } from './mock-ws.ts';
 
 const SERVER = 'localhost:3000';
 
@@ -147,6 +147,23 @@ describe('messaging', () => {
 		alice.sendMessage('mine');
 		const self = ta.msgs.find(m => m.text === 'mine');
 		expect(self).toMatchObject({ from: 'alice', isSelf: true });
+	});
+});
+
+describe('version mismatch', () => {
+	test('older server (no serverVersion) drives fatal back to landing, never reaches waiting', async () => {
+		broker.simulateOldServer = true;
+		const s = make();
+		const t = track(s);
+		let fatal: SessionEvents['fatal'] | undefined;
+		s.on('fatal', f => {
+			fatal = f;
+		});
+		void s.create({ server: SERVER, username: 'alice' });
+		await waitUntil(() => fatal !== undefined);
+		expect(fatal!.reason).toBe('version_mismatch');
+		expect(t.phases.some(p => p.phase === 'waiting')).toBe(false);
+		expect(t.ready()).toBe(false);
 	});
 });
 

@@ -17,11 +17,12 @@ so only the current release is supported. A vulnerability in either project
 triggers a coordinated release that immediately deprecates the previous
 version.
 
-| Version        | Status       |
-|----------------|--------------|
-| [v3.0.1][v301] | ✓ supported  |
-| [v3.0.0][v300] | ✗ deprecated |
-| [v1.0.x][v100] | ✗ deprecated |
+| Version        | Status       | Reason |
+|----------------|--------------|--------|
+| [v3.0.1][v301] | ✓ supported  | Latest version |
+| [v3.0.0][v300] | ✗ deprecated | No peer-text injection hardening (web XSS/mXSS, CLI terminal-escape injection, and display-name spoofing) and a deprecated pre-negotiation wire protocol |
+| [v1.0.x][v100] | ✗ deprecated | XChaCha20 seal wasn't key-committing, thus vulnerable to salamander style partitioning-oracle attacks |
+
 
 > [!CAUTION]
 > Deprecated versions receive no patches. Upgrade promptly.

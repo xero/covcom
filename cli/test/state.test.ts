@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, spy
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { FILE_CHUNK_SIZE, INVITE_VERSION, Session, WINDOW, encodeFileAck } from '@covcom/lib';
+import { FILE_CHUNK_SIZE, INVITE_VERSION, PROTOCOL_VERSION, Session, WINDOW, encodeFileAck } from '@covcom/lib';
 import { initCrypto } from '../src/init.ts';
 import { b64enc } from '../src/util.ts';
 import { installFakeWebSocket, makePeer } from './helpers.ts';
@@ -64,8 +64,8 @@ describe('create flow', () => {
 
 		const sock = ws.last();
 		sock.open();                                                     // ws.onOpen → create
-		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET });
-		sock.emit({ type: 'joined', members: [] });
+		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET, serverVersion: PROTOCOL_VERSION });
+		sock.emit({ type: 'joined', members: [], serverVersion: PROTOCOL_VERSION });
 
 		expect(types(sock.sent)).toEqual(['create', 'join', 'identify']);
 		expect(find(sock.sent, 'identify')?.username).toBe('alice');
@@ -83,9 +83,39 @@ describe('join flow', () => {
 
 		const sock = ws.last();
 		sock.open();
-		sock.emit({ type: 'joined', members: [] });
+		sock.emit({ type: 'joined', members: [], serverVersion: PROTOCOL_VERSION });
 
 		expect(types(sock.sent)).toEqual(['join', 'identify']);
+	});
+});
+
+describe('version mismatch', () => {
+	// last options object as a loose record (error is a string, not a callback)
+	const rawOpts = (m: typeof renderLanding) =>
+		m.mock.calls[m.mock.calls.length - 1][1] as Record<string, unknown>;
+
+	test('older server (no serverVersion) kicks back to landing, no identify', () => {
+		mount(screen, {});
+		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:3000', 'alice');
+		const sock = ws.last();
+		sock.open();
+		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET }); // serverVersion omitted
+
+		expect(types(sock.sent)).toEqual(['create']);          // bailed before join/identify
+		expect(find(sock.sent, 'identify')).toBeUndefined();
+		expect(renderWaiting).not.toHaveBeenCalled();
+		expect(typeof rawOpts(renderLanding).error).toBe('string'); // generic message shown
+	});
+
+	test('server version_mismatch error kicks back to landing', () => {
+		mount(screen, {});
+		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:3000', 'alice');
+		const sock = ws.last();
+		sock.open();
+		sock.emit({ type: 'error', reason: 'version_mismatch', serverVersion: PROTOCOL_VERSION });
+
+		expect(renderWaiting).not.toHaveBeenCalled();
+		expect(typeof rawOpts(renderLanding).error).toBe('string');
 	});
 });
 
@@ -95,8 +125,8 @@ describe('handshake → ready', () => {
 		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:3000', 'alice');
 		const sock = ws.last();
 		sock.open();
-		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET });
-		sock.emit({ type: 'joined', members: [] });
+		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET, serverVersion: PROTOCOL_VERSION });
+		sock.emit({ type: 'joined', members: [], serverVersion: PROTOCOL_VERSION });
 
 		const aliceEk = find(sock.sent, 'identify')!.ek;
 
@@ -138,8 +168,8 @@ describe('streamed file send', () => {
 		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:3000', 'alice');
 		const sock = ws.last();
 		sock.open();
-		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET });
-		sock.emit({ type: 'joined', members: [] });
+		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET, serverVersion: PROTOCOL_VERSION });
+		sock.emit({ type: 'joined', members: [], serverVersion: PROTOCOL_VERSION });
 		const aliceEk = find(sock.sent, 'identify')!.ek;
 		const bob = makePeer(ROOM, 'bob');
 		sock.emit(bob.peerJoined());

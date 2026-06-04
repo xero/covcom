@@ -314,8 +314,11 @@ expected chain seeds have been received. It does not fire anywhere else.
   `0x01` file-transfer ack) kept in lockstep across web and cli. The server
   never inspects it. A half-applied tag breaks the chain-seed handshake, not
   just file transfer.
-- Error reason values: `room_full`, `not_found`, `forbidden`, `username_taken`.
-  Do not introduce new error reasons without flagging it.
+- Error reason values: `room_full`, `not_found`, `forbidden`, `username_taken`,
+  `version_mismatch`. Do not introduce new error reasons without flagging it.
+- The `create` and `join` messages carry `protocolVersion`; the `room_created`
+  and `joined` replies carry `serverVersion`. See the version-negotiation note
+  below before touching these fields.
 
 **Wire versioning is locked to leviathan-crypto.** All covcom ctx strings
 carry a `-v3` suffix (`covcom-identity-claim-v3`, `covcom-message-sig-v3`)
@@ -324,6 +327,29 @@ When leviathan-crypto bumps to a new major version, covcom's ctx strings
 bump in lockstep in the same PR. Do not introduce a v3 ctx string when
 targeting v4, or vice versa. If you need to evolve a ctx string without
 bumping the library, raise an issue.
+
+**The protocol manifest is the single source of truth.** `lib/src/protocol.ts`
+owns `PROTOCOL_VERSION` (covcom's own wire-contract integer) and the `PROTOCOL`
+manifest: the cipher and KEM display names, the cipher and signature format
+bytes, and the auto-ratchet interval. Web, cli, and server all read from it,
+mirroring the `FILE_CHUNK_SIZE` source-of-truth pattern. Do not re-hardcode any
+of these values in a client; the stale CLI `0x01` format byte was exactly that
+drift. The format bytes are derived from the suite objects
+(`XChaCha20Cipher.formatEnum`, `Ed25519PreHashSuite.formatEnum`), so no literal
+can drift again. `PROTOCOL_VERSION` is hand-bumped and is deliberately
+independent of the leviathan-crypto version and the `-v3` ctx suffix: the covcom
+wire contract can break without a cipher change, and leviathan can bump a format
+enum without breaking covcom.
+
+**Version negotiation runs at join, and is a compatibility gate, not a security
+boundary.** The server rejects a missing or mismatched `protocolVersion` with a
+`version_mismatch` error and closes the socket, before any room or username
+work. Each client rejects a missing or mismatched `serverVersion` the same way,
+so the check is bidirectional and whichever side is newer catches the skew. The
+version rides in plaintext; do not bind it into any crypto operation, and do not
+treat it as authenticated, since a hostile server can lie about it. The server
+reads `PROTOCOL_VERSION` from `@covcom/lib` (its only dependency on the lib) and
+still performs no crypto and stores nothing.
 
 ---
 

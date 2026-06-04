@@ -1,4 +1,5 @@
 import type { ServerWebSocket } from 'bun';
+import { PROTOCOL_VERSION } from '@covcom/lib';
 import { createRoom, getRoom } from './rooms.ts';
 import type { ConnData, Room } from './rooms.ts';
 import type {
@@ -39,6 +40,13 @@ export function handleCreate(
 	maxRoomSize: number,
 	adminToken:  string | undefined,
 ): void {
+	// Compatibility gate, not a security boundary: absent field means a pre-v3
+	// client, which mismatches and is rejected before any room work.
+	if (msg.protocolVersion !== PROTOCOL_VERSION) {
+		send(ws, { type: 'error', reason: 'version_mismatch', serverVersion: PROTOCOL_VERSION });
+		ws.close();
+		return;
+	}
 	if (adminToken !== undefined && adminToken !== '' && msg.adminToken !== adminToken) {
 		send(ws, { type: 'error', reason: 'forbidden' });
 		return;
@@ -46,7 +54,7 @@ export function handleCreate(
 	const id   = createRoom(rooms, maxRoomSize);
 	const room = rooms.get(id);
 	if (!room) throw new Error('room not found');
-	send(ws, { type: 'room_created', roomId: id, roomSecret: room.roomSecret });
+	send(ws, { type: 'room_created', roomId: id, roomSecret: room.roomSecret, serverVersion: PROTOCOL_VERSION });
 }
 
 export function handleJoin(
@@ -54,6 +62,11 @@ export function handleJoin(
 	msg:   JoinMsg,
 	rooms: Map<string, Room>,
 ): void {
+	if (msg.protocolVersion !== PROTOCOL_VERSION) {
+		send(ws, { type: 'error', reason: 'version_mismatch', serverVersion: PROTOCOL_VERSION });
+		ws.close();
+		return;
+	}
 	if (ws.data.roomId) {
 		send(ws, { type: 'error', reason: 'forbidden' }); return;
 	}
@@ -83,7 +96,7 @@ export function handleJoin(
 				claim: conn.data.claim,
 			});
 	}
-	send(ws, { type: 'joined', members });
+	send(ws, { type: 'joined', members, serverVersion: PROTOCOL_VERSION });
 }
 
 export function handleIdentify(

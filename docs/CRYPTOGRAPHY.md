@@ -255,8 +255,8 @@ in `server/src/types.ts`.
 
 | Type | Key fields | Description |
 |---|---|---|
-| `create` | `adminToken?` | Create a room |
-| `join` | `roomId`, `roomSecret` | Join a room |
+| `create` | `adminToken?`, `protocolVersion` | Create a room |
+| `join` | `roomId`, `roomSecret`, `protocolVersion` | Join a room |
 | `identify` | `username`, `ek`, `ratchetEk`, `claim` | Announce identity after join with signed claim |
 | `relay` | `to`, `payload` | Send a tagged payload to a peer: chain seed or file ack (base64) |
 | `broadcast` | `payload`, `meta`, `sig` | Send encrypted message with detached signature |
@@ -268,8 +268,8 @@ in `server/src/types.ts`.
 
 | Type | Key fields | Description |
 |---|---|---|
-| `room_created` | `roomId`, `roomSecret` | Server confirmation of room creation |
-| `joined` | `members[]` | Room joined; member list with public keys and claims |
+| `room_created` | `roomId`, `roomSecret`, `serverVersion` | Server confirmation of room creation |
+| `joined` | `members[]`, `serverVersion` | Room joined; member list with public keys and claims |
 | `peer_joined` | `username`, `ek`, `ratchetEk`, `claim` | New peer announced with signed identity claim |
 | `peer_left` | `username` | Peer disconnected |
 | `relay` | `from`, `payload` | Forwarded tagged payload: chain seed or file ack |
@@ -277,7 +277,7 @@ in `server/src/types.ts`.
 | `ratchet_step_fwd` | `from`, `kemCt`, `encSeed`, `pn`, `newEk`, `payload`, `meta`, `sig`, `claim` | Per-peer ratchet step delivery |
 | `ek_update_fwd` | `from`, `ek`, `claim` | Forwarded ek update with continuation claim |
 | `rekeyed` | n/a | Server acknowledgement of `rekey` |
-| `error` | `reason` | `room_full` \| `not_found` \| `forbidden` \| `username_taken` |
+| `error` | `reason`, `serverVersion?` | `room_full` \| `not_found` \| `forbidden` \| `username_taken` \| `version_mismatch` |
 
 `ratchet_step` carries both key material and the first encrypted message of the
 new epoch. The `payload` field is a `sealMessage` ciphertext at `newEpoch`.
@@ -297,6 +297,15 @@ The `claim` and `sig` fields are base64-encoded outputs from
 leviathan-crypto v3's `Sign` API. `claim` is an attached envelope; `sig`
 is a detached signature. The server forwards both opaquely without
 inspection.
+
+`protocolVersion` and `serverVersion` carry covcom's wire-contract version
+(`PROTOCOL_VERSION`), defined once in `lib/src/protocol.ts`. The server rejects
+a `create` or `join` whose `protocolVersion` is missing or does not match its
+own, returning `version_mismatch` and closing the socket. Each client applies
+the same check to `serverVersion` on `room_created` and `joined`; an absent
+field marks a peer that predates negotiation. The version is a plaintext
+compatibility gate. It is not bound into any signature or AEAD, so it carries no
+cryptographic weight and a hostile server can lie about it freely.
 
 ---
 

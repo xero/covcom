@@ -562,12 +562,17 @@ layout (centered on screen):
     ┌────────┬───────────────────────┐
     │ cipher │  XChaCha20-Poly1305   │
     │ kem    │  ML-KEM-768           │
-    │ format │  0x01                 │
+    │ format │  0x03                 │
     └────────┴───────────────────────┘
 
 tab order: copyBtn → downloadBtn
 table is inert (not focusable).
 ```
+
+the cipher name, KEM name, and format byte come from the `PROTOCOL` manifest in
+`lib/src/protocol.ts`, the same source the web client reads. the format byte is
+derived from the cipher suite, so the table tracks the cipher in use and cannot
+drift from the web display.
 
 **callout states:**
 

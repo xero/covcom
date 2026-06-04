@@ -45,8 +45,9 @@ button:hover{border-color:#444;color:#c2c0b6}
 <dl id="legend">
 	<dt>⚙ large</dt><dd>ML-KEM epoch ratchet</dd><dd>auto or manual</dd>
 	<dt>⚙ small</dt><dd>KDFChain</dd><dd>per-message</dd>
-	<dt>▬ link</dt><dd>message key</dd><dd>wiped after use</dd>
-	<dt>▭ msg</dt><dd>encrypted message</dd><dd>one per key</dd>
+	<dt>▬ link</dt><dd>message key + ciphertext</dd><dd>used once, then wiped</dd>
+	<dt>▤ file</dt><dd>one sealFileKey() link</dd><dd>streamed in chunks</dd>
+	<dt>⋯ chunk</dt><dd>SealStream frame</dd><dd>in-order, signed</dd>
 	<dt>● blob</dt><dd>Seal-encrypted relay</dd><dd>per recipient</dd>
 	<dt>✓ check</dt><dd>Ed25519 sig verified</dd><dd>before decrypt</dd>
 	<dt>▦ row</dt><dd>fingerprint</dd><dd>BLAKE3 of sign key</dd>
@@ -97,7 +98,7 @@ const PEERS={
 	bob:    {n:'bob',    col:COL.bob,    x:650,tx:650,epoch:0,out:0,sL:[],rL:{},ea:1.1,sp:0,fl:0,vis:false,fp:FP0.bob,fpFlash:0},
 	charlie:{n:'charlie',col:COL.charlie,x:1100,tx:1100,epoch:0,out:0,sL:[],rL:{},ea:2.2,sp:0,fl:0,vis:false,fp:FP0.charlie,fpFlash:0},
 };
-let blobs=[],sparks=[],ticks=[],paused=false,lastT=null;
+let blobs=[],sparks=[],ticks=[],chunks=[],paused=false,lastT=null;
 let gAlpha=1,fading=false,fadeT=0;
 const FADE=0.55;
 
@@ -138,7 +139,11 @@ function groupSend(names){
 }
 function triggerRatchet(n,delay=0){
 	setTimeout(()=>{
-		const p=PEERS[n];p.epoch++;p.out=0;p.sL=[];p.rL={};p.sp=1.4;p.fl=1;
+		// per-sender rotation: reset only this peer's SEND chain + epoch. Their
+		// receive chains (their view of others) are untouched; epochs are per-
+		// sender and independent. The peers who *receive* the ratchet_step reset
+		// their own receive-chain-for-n in the phase callbacks below.
+		const p=PEERS[n];p.epoch++;p.out=0;p.sL=[];p.sp=1.4;p.fl=1;
 		for(let i=0;i<28;i++){const a=Math.random()*Math.PI*2,s=50+Math.random()*110;sparks.push({x:p.x,y:GY,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,col:p.col});}
 	},delay*1000);
 }
@@ -148,6 +153,43 @@ function spawnBlob(f,t,lbl,delay,onLand){
 		setTimeout(()=>{spawnTick(PEERS[t].x,SGY-12,PEERS[f].col);if(onLand)onLand();},BDUR*1000);
 	},delay*1000);
 }
+
+// ── file attachment vocabulary ─────────────────────────────────────────────
+// A file is ONE link on the sender's send chain (sealFileKey() = one chain
+// step), the same as a message. On the wire that one link fans out as a
+// `file-begin` frame (SealStream preamble + name/size/mime) then N `file-chunk`
+// broadcast frames. So we add exactly one (file-kind) link per chain and express
+// the chunk-ness as a stream of small frames flowing sender→receiver along the
+// CHAIN plane (send gear → receive gear), distinct from the big-gear KEM blobs.
+// Each receiver's file link pulses (reuses the fingerprint flash) and fills as
+// chunks land; a ✓ per chunk = per-frame sig verified before decrypt; on the
+// final chunk it settles solid = OpenStream reassembled the file.
+const FCHUNK_DUR=0.9,FCHUNK_GAP=180;
+function spawnFile(from,toList,n){
+	const fp=PEERS[from];
+	fp.out++;
+	fp.sL.unshift({age:0,kind:'file',fill:1,done:true,flash:.8});  // sender: sent, solid
+	if(fp.sL.length>9)fp.sL.pop();
+	toList.forEach(to=>{
+		const tp=PEERS[to];
+		if(!tp.rL[from])tp.rL[from]=[];
+		const link={age:0,kind:'file',fill:0,done:false,flash:0};   // receiver: pulses+fills
+		tp.rL[from].unshift(link);
+		if(tp.rL[from].length>9)tp.rL[from].pop();
+		for(let i=0;i<n;i++){
+			const final=i===n-1,lead=i===0,frac=(i+1)/n;
+			setTimeout(()=>{
+				chunks.push({from,to,prog:0,dur:FCHUNK_DUR,col:fp.col,lead,arrived:false,
+					onArrive(){
+						link.flash=1;link.fill=Math.min(1,frac);
+						spawnTick(tp.x,SGY-12,fp.col);
+						if(final){link.done=true;link.fill=1;}
+					}});
+			},i*FCHUNK_GAP);
+		}
+	});
+}
+// ────────────────────────────────────────────────────────────────────────────
 
 function roundRect(x,y,w,h,r){
 	r=Math.min(r,w/2,h/2);
@@ -169,7 +211,7 @@ function drawGear(cx,cy,R,r,teeth,angle,fill,stroke,lw){
 	X.closePath();X.fillStyle=fill;X.fill();X.strokeStyle=stroke;X.lineWidth=lw;X.stroke();X.restore();
 }
 function drawFingerprint(p){
-	const cols=fpCols(p),sw=7,gap=1.5,total=8*sw+7*gap,x0=Math.round(p.x)-total/2,y=36,h=7;
+	const cols=fpCols(p),sw=7,gap=1.5,total=8*sw+7*gap,x0=Math.round(p.x)-total/2,y=40,h=7;
 	if(p.fpFlash>0.02){
 		X.save();X.globalAlpha=Math.min(1,p.fpFlash);X.strokeStyle=c4(p.col,.9);X.lineWidth=1.4;
 		roundRect(x0-3,y-3,total+6,h+6,2.5);X.beginPath();roundRect(x0-3,y-3,total+6,h+6,2.5);X.stroke();X.restore();
@@ -182,16 +224,70 @@ function drawFingerprint(p){
 }
 function drawLinks(cx,col,links){
 	if(!links||!links.length)return;
-	const startY=SGY+CR+5,lh=10,lg=4,lw=17;
+	const startY=SGY+CR+5,lg=4,lw=17,LH_MSG=10,LH_FILE=18;
+	let y=startY;
 	for(let i=0;i<Math.min(links.length,9);i++){
-		const y=startY+i*(lh+lg);if(y>DESIGN_H-14)break;
-		const a=Math.max(0,(1-links[i].age/5)*(1-i*0.1));if(a<0.03)continue;
+		const L=links[i],file=L.kind==='file',lh=file?LH_FILE:LH_MSG;
+		if(y+lh>DESIGN_H-8)break;
+		const a=Math.max(0,(1-L.age/5)*(1-i*0.1));if(a<0.03){y+=lh+lg;continue;}
 		X.save();X.globalAlpha=a;
 		if(i>0){X.beginPath();X.moveTo(cx,y-lg);X.lineTo(cx,y);X.strokeStyle=c4(col,.22);X.lineWidth=0.7;X.stroke();}
-		X.beginPath();roundRect(cx-lw/2,y,lw,lh,3);
-		X.fillStyle=c4(col,.09);X.fill();X.strokeStyle=c4(col,.55);X.lineWidth=0.7;X.stroke();
+		if(file)drawFileLink(cx,y,lw,lh,col,L,a);
+		else{
+			X.beginPath();roundRect(cx-lw/2,y,lw,lh,3);
+			X.fillStyle=c4(col,.09);X.fill();X.strokeStyle=c4(col,.55);X.lineWidth=0.7;X.stroke();
+		}
 		X.restore();
+		y+=lh+lg;
 	}
+}
+// One file link: a folded-corner page that fills bottom-up as chunks reassemble,
+// haloes while a chunk lands (same flash as the fingerprint), and gets a ✓ when
+// the final chunk closes the stream. The chunk lines hint at the framed payload.
+function filePath(x,y,w,h,fold){
+	X.beginPath();
+	X.moveTo(x+2,y);X.lineTo(x+w-fold,y);X.lineTo(x+w,y+fold);X.lineTo(x+w,y+h-2);
+	X.arcTo(x+w,y+h,x+w-2,y+h,2);X.lineTo(x+2,y+h);X.arcTo(x,y+h,x,y+h-2,2);
+	X.lineTo(x,y+2);X.arcTo(x,y,x+2,y,2);X.closePath();
+}
+function drawFileLink(cx,y,w,h,col,L,a){
+	const x=cx-w/2,fold=5;
+	if(L.flash>0.02){
+		X.save();X.globalAlpha=a*Math.min(1,L.flash)*.6;X.strokeStyle=c4(col,.85);X.lineWidth=1.1;
+		roundRect(x-2.5,y-2.5,w+5,h+5,3.5);X.beginPath();roundRect(x-2.5,y-2.5,w+5,h+5,3.5);X.stroke();X.restore();
+	}
+	filePath(x,y,w,h,fold);X.fillStyle=c4(col,.16);X.fill();
+	if(L.fill>0){
+		X.save();X.beginPath();X.rect(x,y+h-h*L.fill,w,h*L.fill);X.clip();
+		filePath(x,y,w,h,fold);X.fillStyle=c4(col,.46);X.fill();X.restore();
+	}
+	filePath(x,y,w,h,fold);X.strokeStyle=c4(col,.82);X.lineWidth=0.9;X.stroke();
+	X.beginPath();X.moveTo(x+w-fold,y);X.lineTo(x+w-fold,y+fold);X.lineTo(x+w,y+fold);
+	X.strokeStyle=c4(col,.7);X.lineWidth=0.7;X.stroke();
+	if(L.done){
+		X.font=`bold 9px ${MO}`;X.fillStyle=c4(col,.98);X.textAlign='center';X.textBaseline='middle';
+		X.fillText('✓',cx,y+h/2+1);X.textBaseline='alphabetic';
+	}else{
+		X.strokeStyle=c4(col,.55);X.lineWidth=0.6;
+		for(let i=0;i<2;i++){const ly=y+fold+3+i*4;X.beginPath();X.moveTo(x+3,ly);X.lineTo(x+w-3,ly);X.stroke();}
+	}
+}
+// A streamed frame travelling sender send-gear → receiver receive-gear, on the
+// chain plane (a low arc), so it never reads as a big-gear KEM/relay blob. The
+// lead frame (file-begin, carrying the preamble) is drawn slightly larger.
+function drawChunk(ch){
+	const fp=PEERS[ch.from],tp=PEERS[ch.to];
+	const sx=gp(fp.x).sx,tx=gp(tp.x).r0,y0=SGY;
+	const t=Math.min(ch.prog,1),mx=(sx+tx)/2,my=SGY-38;
+	const bx=(1-t)*(1-t)*sx+2*(1-t)*t*mx+t*t*tx;
+	const by=(1-t)*(1-t)*y0+2*(1-t)*t*my+t*t*y0;
+	const a=ch.prog<0.1?ch.prog/0.1:ch.prog>1?Math.max(0,(1.15-ch.prog)/0.15):1;
+	if(a<=0)return;
+	X.save();X.globalAlpha=a;
+	const r=ch.lead?3.4:2.2;
+	X.beginPath();X.arc(bx,by,r,0,Math.PI*2);X.fillStyle=c4(ch.col,.95);X.fill();
+	if(ch.lead){X.beginPath();X.arc(bx,by,r+3,0,Math.PI*2);X.strokeStyle=c4(ch.col,.5);X.lineWidth=0.8;X.stroke();}
+	X.restore();
 }
 function drawBlob(b){
 	const t=b.prog;
@@ -258,7 +354,7 @@ const PHASES=[
 		PEERS.alice.vis=true;PEERS.alice.x=210;PEERS.alice.tx=210;
 		PEERS.bob.vis=true;PEERS.bob.x=650;PEERS.bob.tx=650;
 		PEERS.charlie.vis=false;PEERS.charlie.x=1100;PEERS.charlie.tx=1100;
-		PEERS.alice.rL.bob=[];PEERS.bob.rL.alice=[];blobs=[];sparks=[];ticks=[];
+		PEERS.alice.rL.bob=[];PEERS.bob.rL.alice=[];blobs=[];sparks=[];ticks=[];chunks=[];
 		spawnBlob('alice','bob','identify\nclaim+sig',.3);
 		spawnBlob('bob','alice','identify\nclaim+sig',.95);
 	 }},
@@ -270,7 +366,7 @@ const PHASES=[
 	 dur:6,nx:0,
 	 enter(){this.nx=.1;},
 	 update(dt){this.nx-=dt;if(this.nx<=0){this.nx=.34+Math.random()*.44;groupSend(['alice','bob']);}}},
-	{lbl:'auto-ratchet: ML-KEM encap · KDF_SCKA_RK · epoch 0→1 · all chain state wiped',dur:3.2,
+	{lbl:'auto-ratchet: ML-KEM encap · KDF_SCKA_RK · epoch 0→1 · send chains reset · old keys wiped',dur:3.2,
 	 enter(){triggerRatchet('alice');triggerRatchet('bob',.6);setTimeout(()=>{PEERS.alice.rL.bob=[];PEERS.bob.rL.alice=[];},1700);}},
 	{lbl:'epoch 1: past ciphertext unrecoverable · PCS at every KEM ratchet boundary',
 	 dur:4.5,nx:0,
@@ -298,15 +394,27 @@ const PHASES=[
 		spawnBlob('charlie','alice','ratchet_step\nclaim+sig',sd,    ()=>{PEERS.alice.rL.charlie=[];});
 		spawnBlob('charlie','bob',  'ratchet_step\nclaim+sig',sd+.4, ()=>{PEERS.bob.rL.charlie=[];});
 	 }},
+	// ── file attachment: alice streams a file to the group (one chain link) ──
+	{lbl:'alice sends a file: one sealFileKey() link · file-begin = SealStream preamble + name/size/mime · file-chunk frames stream, each signed',dur:3.0,
+	 enter(){chunks=[];spawnFile('alice',['bob','charlie'],7);},
+	 update(){['bob','charlie'].forEach(n=>{const l=(PEERS[n].rL.alice||[])[0];if(l&&l.kind==='file')l.age=0;});const al=PEERS.alice.sL[0];if(al&&al.kind==='file')al.age=0;}},
+	{lbl:'charlie & bob reassemble: OpenStream pulls chunks in seq order · sig verified before decrypt · paced to slowest peer · file rebuilt',dur:1.7,
+	 enter(){['bob','charlie'].forEach(n=>{const l=(PEERS[n].rL.alice||[])[0];if(l&&l.kind==='file'){l.done=true;l.fill=1;l.flash=0;l.age=0;}});},
+	 update(){
+		const env=Math.max(0,1-phT/0.7),g=env*(0.5+0.5*Math.sin(phT*5.5));   // one quick breath, settles by ~0.7s
+		const age=5*Math.max(0,Math.min(1,(phT-0.55)/0.9));                  // fade out right after, over [0.55,1.45]s
+		['bob','charlie'].forEach(n=>{const l=(PEERS[n].rL.alice||[])[0];if(l&&l.kind==='file'){l.flash=g;l.age=age;}});
+		const al=PEERS.alice.sL[0];if(al&&al.kind==='file')al.age=age;
+	 }},
 	{lbl:'3-party session: Sender Keys · per-sender KDFChain · ML-KEM-768 + XChaCha20 · every message signed',
 	 dur:6,nx:0,
-	 enter(){this.nx=.1;},
+	 enter(){this.nx=.1;Object.values(PEERS).forEach(p=>{p.sL=p.sL.filter(l=>l.kind!=='file');Object.keys(p.rL).forEach(k=>{p.rL[k]=p.rL[k].filter(l=>l.kind!=='file');});});},
 	 update(dt){this.nx-=dt;if(this.nx<=0){this.nx=.16+Math.random()*.26;groupSend(['alice','bob','charlie']);}}},
 	{lbl:'alice rotates: ratchet_step per peer · new ratchet ek + continuation claim · epoch 1→2',dur:3.8,
 	 enter(){
 		triggerRatchet('alice',.7);
-		spawnBlob('alice','bob','ratchet_step\nclaim+sig',1.4,()=>{PEERS.alice.rL.bob=[];});
-		spawnBlob('alice','charlie','ratchet_step\nclaim+sig',1.8,()=>{PEERS.alice.rL.charlie=[];});
+		spawnBlob('alice','bob','ratchet_step\nclaim+sig',1.4,()=>{PEERS.bob.rL.alice=[];});
+		spawnBlob('alice','charlie','ratchet_step\nclaim+sig',1.8,()=>{PEERS.charlie.rL.alice=[];});
 	 }},
 
 	// ── act III: charlie disconnects and returns (reconnect) ──
@@ -331,7 +439,7 @@ const PHASES=[
 	 enter(){
 		PEERS.charlie.fpFlash=1;
 		triggerRatchet('bob',.8);
-		setTimeout(()=>{PEERS.bob.rL.alice=[];},1600);
+		setTimeout(()=>{PEERS.alice.rL.bob=[];},1600);
 	 },
 	 update(){if(PEERS.charlie.fpFlash<0.3)PEERS.charlie.fpFlash=1;}},
 	{lbl:'relay: alice & bob send current epoch seeds · charlie enters at their current epoch',dur:3.2,
@@ -356,7 +464,10 @@ let phIdx=0,phT=0;
 function resetToStart(){phIdx=0;phT=0;PH.textContent=PHASES[0].lbl;PHASES[0].enter();}
 
 function ageState(dt){
-	Object.values(PEERS).forEach(p=>{if(!p.vis)return;p.sL.forEach(l=>l.age+=dt);Object.values(p.rL).forEach(ls=>ls.forEach(l=>l.age+=dt));p.fpFlash=Math.max(0,p.fpFlash-dt*1.1);});
+	Object.values(PEERS).forEach(p=>{if(!p.vis)return;
+		p.sL.forEach(l=>{l.age+=dt;if(l.flash>0)l.flash=Math.max(0,l.flash-dt*2.4);});
+		Object.values(p.rL).forEach(ls=>ls.forEach(l=>{l.age+=dt;if(l.flash>0)l.flash=Math.max(0,l.flash-dt*2.4);}));
+		p.fpFlash=Math.max(0,p.fpFlash-dt*1.1);});
 	ticks.forEach(t=>t.age+=dt);ticks=ticks.filter(t=>t.age<0.78);
 }
 
@@ -389,6 +500,8 @@ function update(dt){
 	ageState(dt);
 	blobs.forEach(b=>b.prog+=dt/b.dur);
 	blobs=blobs.filter(b=>b.prog<=1.25);
+	chunks.forEach(c=>{c.prog+=dt/c.dur;if(c.prog>=1&&!c.arrived){c.arrived=true;if(c.onArrive)c.onArrive();}});
+	chunks=chunks.filter(c=>c.prog<=1.15);
 	sparks.forEach(s=>{s.x+=s.vx*dt;s.y+=s.vy*dt;s.vy+=100*dt;s.life-=dt;});
 	sparks=sparks.filter(s=>s.life>0);
 }
@@ -400,6 +513,7 @@ function render(){
 	X.save();X.globalAlpha=gAlpha;
 	Object.values(PEERS).forEach(drawPeer);
 	blobs.forEach(drawBlob);
+	chunks.forEach(drawChunk);
 	ticks.forEach(drawTick);
 	sparks.forEach(s=>{X.save();X.globalAlpha=s.life*.8;X.beginPath();X.arc(s.x,s.y,2.2,0,Math.PI*2);X.fillStyle=s.col;X.fill();X.restore();});
 	X.restore();
