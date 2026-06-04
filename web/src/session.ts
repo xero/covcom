@@ -1,11 +1,21 @@
 import {
 	Session,
 	generateKeypair,
-	SealStreamPool,
-	chacha20Wasm,
+	SealStream,
+	OpenStream,
+	XChaCha20Cipher,
+	FILE_CHUNK_SIZE,
+	forEachChunk,
+	WINDOW,
+	ACK_INTERVAL,
+	RELAY_TAG_SEED,
+	RELAY_TAG_FILE_ACK,
+	prefixTag,
+	readRelayTag,
+	encodeFileAck,
+	decodeFileAck,
 	wipe,
 } from '@covcom/lib';
-import { XChaCha20CipherWeb } from './cipher-suites.js';
 import type { InvitePayload, MessageEnvelope, FingerprintSurface } from '@covcom/lib';
 import { Emitter } from './emitter.js';
 import { redact, summarizeInbound, summarizeOutbound } from './wireSummary.js';
@@ -20,7 +30,7 @@ export interface SessionEvents {
 	'peer-left':                 { username: string };
 	'local-fingerprint-changed': { fingerprint: FingerprintSurface };
 	'message':                   { from: string; text: string; isSelf: boolean; epoch: number; counter: number; ts: number };
-	'file':                      { from: string; filename: string; mime: string; size: number; bytes: Uint8Array; isSelf: boolean; ts: number };
+	'file':                      { from: string; filename: string; mime: string; size: number; blob: Blob; isSelf: boolean; ts: number };
 	'ratchet':                   { from: string; isSelf: boolean; ts: number };
 	'wire':                      { direction: 'in' | 'out'; kind: string; summary: RichText; details: Record<string, unknown> };
 	'log':                       { kind: string; summary: string; details?: Record<string, unknown> };
@@ -56,6 +66,25 @@ function errMsg(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);
 }
 
+// In-flight inbound file transfer, keyed by `${from}|${fileId}`. The OpenStream
+// decrypts chunk by chunk; plaintext chunks accumulate until the final frame,
+// then assemble into a Blob. `handle` holds the resolved file-key checkout,
+// committed on success / rolled back on failure or teardown.
+interface InboundFile {
+	opener:   OpenStream;
+	handle:   { key: Uint8Array; commit: () => void; rollback: () => void };
+	chunks:   Uint8Array[];
+	nextSeq:  number;
+	filename: string;
+	mime:     string;
+	size:     number;
+	ts:       number;
+}
+
+function newFileId(): string {
+	return crypto.randomUUID();
+}
+
 // One long-lived instance per tab (per arch). `dispose()` is for `beforeunload`;
 // fatal/teardown paths return _phase to 'idle' so the same instance is reusable.
 export class CovcomSession extends Emitter<SessionEvents> {
@@ -75,6 +104,11 @@ export class CovcomSession extends Emitter<SessionEvents> {
 	private _connectionLostAt   = 0;
 	private _reconnectTimer:    ReturnType<typeof setTimeout> | null = null;
 	private _reconnectDelay     = RECONNECT_INITIAL_MS;
+	private _inboundFiles       = new Map<string, InboundFile>();
+	// Per-transfer sender pacing state, keyed by fileId. `recipients` is snapshot
+	// from _knownPeers at file-begin; `acked` tracks each recipient's last acked
+	// seq (init -1). The sender holds within WINDOW of the slowest recipient.
+	private _sendingFiles       = new Map<string, { recipients: Set<string>; acked: Map<string, number> }>();
 
 	// ── public API ───────────────────────────────────────────────────────────
 
@@ -124,43 +158,99 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		}
 	}
 
+	// Streams the file as a `file-begin` frame (SealStream preamble + metadata)
+	// followed by one signed `file-chunk` broadcast per chunk. The file is read in
+	// FILE_CHUNK_SIZE slices and the WS send buffer is drained between frames, so
+	// peak memory is O(chunkSize) regardless of file size and no frame approaches
+	// the broker's 16 MiB ceiling.
 	async sendFile(file: File): Promise<void> {
 		if (this._phase !== 'ready' || !this._lib || !this._isWsOpen()) return;
 		if (this._lib.counter >= AUTO_RATCHET_INTERVAL && this._knownPeers.size > 0) this._doRatchetStep();
-		const lib   = this._lib;
-		const bytes = new Uint8Array(await file.arrayBuffer());
+		const lib    = this._lib;
+		const ts     = Date.now();
+		const fileId = newFileId();
+		const mime   = file.type || 'application/octet-stream';
 		const { msgKey, counter, epoch } = lib.sealFileKey();
-		let pool: SealStreamPool | null = null;
+		let stream: SealStream | null = null;
 		try {
-			pool = await SealStreamPool.create(XChaCha20CipherWeb, msgKey, {
-				wasm: chacha20Wasm,
-				workers: navigator.hardwareConcurrency ?? 4,
-				chunkSize: 65536,
-			});
-			const ciphertext = await pool.seal(bytes);
-			const mime       = file.type || 'application/octet-stream';
-			const ts         = Date.now();
-			const sig        = lib.identity.signMessage(counter, epoch, this._username, ts, ciphertext);
-			const meta: MessageEnvelope = {
-				type: 'file', sender: this._username, counter, epoch, ts,
-				filename: file.name, size: file.size, mime,
+			stream = new SealStream(XChaCha20Cipher, msgKey, { chunkSize: FILE_CHUNK_SIZE });
+			// file-begin authenticates the preamble (the transfer's only frame with
+			// no chunk ciphertext of its own).
+			const beginSig = lib.identity.signMessage(counter, epoch, this._username, ts, stream.preamble);
+			const beginMeta: MessageEnvelope = {
+				type: 'file-begin', sender: this._username, counter, epoch, ts,
+				fileId, filename: file.name, size: file.size, mime,
+				chunkSize: FILE_CHUNK_SIZE, preamble: b64enc(stream.preamble),
 			};
 			this._sendOut({
 				type: 'broadcast',
-				payload: b64enc(ciphertext),
-				meta: meta as unknown as Record<string, unknown>,
-				sig: b64enc(sig),
+				payload: b64enc(stream.preamble),
+				meta: beginMeta as unknown as Record<string, unknown>,
+				sig: b64enc(beginSig),
 			});
-			this.emit('file', {
-				from: this._username, filename: file.name, mime, size: file.size,
-				bytes, isSelf: true, ts,
-			});
+			// Snapshot recipients now; a peer joining mid-transfer missed file-begin
+			// and is not a recipient. Empty set (self/lobby) means no pacing.
+			const acked = new Map<string, number>();
+			for (const p of this._knownPeers) acked.set(p, -1);
+			this._sendingFiles.set(fileId, { recipients: new Set(this._knownPeers), acked });
+
+			const s = stream;
+			await forEachChunk(
+				async (offset, len) => new Uint8Array(await file.slice(offset, offset + len).arrayBuffer()),
+				file.size,
+				FILE_CHUNK_SIZE,
+				async (chunk, seq, final) => {
+					await this._waitForCredit(fileId, seq);
+					await this._drainWs();
+					if (!this._isWsOpen()) throw new Error('connection lost during file send');
+					const ct  = final ? s.finalize(chunk) : s.push(chunk);
+					const sig = lib.identity.signMessage(counter, epoch, this._username, ts, ct);
+					const meta: MessageEnvelope = {
+						type: 'file-chunk', sender: this._username, counter, epoch, ts, fileId, seq, final,
+					};
+					this._sendOut({
+						type: 'broadcast',
+						payload: b64enc(ct),
+						meta: meta as unknown as Record<string, unknown>,
+						sig: b64enc(sig),
+					});
+				},
+			);
+			// Self-echo carries the original File (a Blob) so the sender's own card
+			// downloads without re-materializing the bytes.
+			this.emit('file', { from: this._username, filename: file.name, mime, size: file.size, blob: file, isSelf: true, ts });
 		} catch (err) {
 			this.emit('info', { kind: 'send-fail', text: `Send failed: ${errMsg(err)}`, details: { err: errMsg(err), filename: file.name } });
 		} finally {
-			pool?.destroy();
+			this._sendingFiles.delete(fileId);
+			stream?.dispose();
 			wipe(msgKey);
 		}
+	}
+
+	// Hold within WINDOW chunks of the slowest recipient so in-flight frames never
+	// overflow the relay's send buffer. Resolves immediately when there is no
+	// pacing state (cancelled), no recipients (self/lobby), or enough credit. Bails
+	// if the ws closes or the transfer is torn down; the send loop's own
+	// _isWsOpen check then aborts the transfer.
+	private async _waitForCredit(fileId: string, seq: number): Promise<void> {
+		for (;;) {
+			const st = this._sendingFiles.get(fileId);
+			if (!st || st.recipients.size === 0 || !this._isWsOpen()) return;
+			const minAcked = Math.min(...st.acked.values());
+			if (seq - minAcked <= WINDOW) return;
+			await new Promise((r) => setTimeout(r, 10));
+		}
+	}
+
+	// Pause the send loop while the WS send buffer is backed up, so streaming a
+	// large file can't balloon the socket buffer to O(filesize). No 'drain' event
+	// on WebSocket, so poll bufferedAmount.
+	private async _drainWs(threshold = 4 * 1024 * 1024): Promise<void> {
+		const ws = this._ws;
+		if (!ws) return;
+		while (ws.readyState === WebSocket.OPEN && ws.bufferedAmount > threshold)
+			await new Promise((r) => setTimeout(r, 10));
 	}
 
 	rotate(): void {
@@ -176,6 +266,8 @@ export class CovcomSession extends Emitter<SessionEvents> {
 	// ── internals: lifecycle ─────────────────────────────────────────────────
 
 	private _teardown(): void {
+		this._disposeAllInbound();
+		this._sendingFiles.clear();
 		if (this._reconnectTimer !== null) {
 			clearTimeout(this._reconnectTimer);
 			this._reconnectTimer = null;
@@ -290,7 +382,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 			this._onRelay(msg.from, msg.payload);
 			break;
 		case 'broadcast':
-			void this._onBroadcast(msg.from, msg.payload, msg.meta, msg.sig, false);
+			this._onBroadcast(msg.from, msg.payload, msg.meta, msg.sig);
 			break;
 		case 'ratchet_step_fwd':
 			this._onRatchetStepFwd(msg);
@@ -324,9 +416,11 @@ export class CovcomSession extends Emitter<SessionEvents> {
 			return;
 		}
 
-		// mid-session drop: schedule reconnect, keep chat mounted via store
+		// mid-session drop: schedule reconnect, keep chat mounted via store. Inbound
+		// transfers hold checkouts against _lib's key stores, so drop them first.
 		this._connectionLostAt = Date.now();
 		this.emit('connection-lost', { at: this._connectionLostAt });
+		this._disposeAllInbound();
 		this._lib?.dispose();
 		this._lib = null;
 		this._chainsExpected = 0;
@@ -412,7 +506,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 			}
 			try {
 				const blob = lib.wrapChainSeedFor(b64dec(m.ek), m.username);
-				this._sendOut({ type: 'relay', to: m.username, payload: b64enc(blob) });
+				this._sendOut({ type: 'relay', to: m.username, payload: b64enc(prefixTag(RELAY_TAG_SEED, blob)) });
 				const fp = lib.identity.peerFingerprint(m.username);
 				if (!fp) continue;
 				lib.updatePeerRatchetEk(m.username, b64dec(m.ratchetEk));
@@ -463,7 +557,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		}
 		try {
 			const blob = lib.wrapChainSeedFor(b64dec(msg.ek), msg.username);
-			this._sendOut({ type: 'relay', to: msg.username, payload: b64enc(blob) });
+			this._sendOut({ type: 'relay', to: msg.username, payload: b64enc(prefixTag(RELAY_TAG_SEED, blob)) });
 			lib.updatePeerRatchetEk(msg.username, b64dec(msg.ratchetEk));
 			this._peerRatchetEk.set(msg.username, msg.ratchetEk);
 			const fp = lib.identity.peerFingerprint(msg.username);
@@ -487,8 +581,15 @@ export class CovcomSession extends Emitter<SessionEvents> {
 	private _onRelay(from: string, payloadB64: string): void {
 		const lib = this._lib;
 		if (!lib) return;
+		const { tag, body } = readRelayTag(b64dec(payloadB64));
+		if (tag === RELAY_TAG_FILE_ACK) {
+			const { fileId, seq } = decodeFileAck(body);
+			const st = this._sendingFiles.get(fileId);
+			if (st && st.recipients.has(from) && seq > (st.acked.get(from) ?? -1)) st.acked.set(from, seq);
+			return;
+		}
 		try {
-			lib.unwrapChainSeed(from, b64dec(payloadB64));
+			lib.unwrapChainSeed(from, body);
 		} catch (err) {
 			this.emit('info', {
 				kind: 'key-exchange-fail',
@@ -589,13 +690,12 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		this._peerRatchetEk.set(msg.from, msg.ek);
 	}
 
-	private async _onBroadcast(
+	private _onBroadcast(
 		from:    string,
 		payload: string,
 		meta:    Record<string, unknown>,
 		sigB64:  string,
-		ratchet: boolean,
-	): Promise<void> {
+	): void {
 		if (this._phase !== 'ready' || !this._lib) return;
 		const lib        = this._lib;
 		const envelope   = meta as unknown as MessageEnvelope;
@@ -624,7 +724,6 @@ export class CovcomSession extends Emitter<SessionEvents> {
 				});
 				return;
 			}
-			if (ratchet) return;   // (unused path here; ratchet flow is _onRatchetStepFwd)
 			const text = new TextDecoder().decode(plain);
 			this.emit('message', {
 				from, text, isSelf: false,
@@ -632,49 +731,104 @@ export class CovcomSession extends Emitter<SessionEvents> {
 			});
 			return;
 		}
-		if (envelope.type === 'file') {
-			let h: { key: Uint8Array; commit: () => void; rollback: () => void };
-			try {
-				h = lib.openFileKey(from, envelope.epoch ?? 0, envelope.counter);
-			} catch (err) {
-				this.emit('info', {
-					kind: 'decrypt-fail',
-					text: `[${from}: file decrypt failed (${errMsg(err)})]`,
-					details: { from, err: errMsg(err) },
-				});
-				return;
-			}
-			let pool: SealStreamPool | null = null;
-			let settled = false;
-			try {
-				pool        = await SealStreamPool.create(XChaCha20CipherWeb, h.key, { wasm: chacha20Wasm });
-				const plain = await pool.open(ciphertext);
-				h.commit();
-				settled = true;
-				this.emit('file', {
-					from,
-					filename: envelope.filename ?? 'file',
-					size: envelope.size ?? plain.length,
-					mime: envelope.mime ?? 'application/octet-stream',
-					bytes: plain,
-					isSelf: false,
-					ts: envelope.ts,
-				});
-			} catch (err) {
-				if (!settled) h.rollback();
-				this.emit('info', {
-					kind: 'decrypt-fail',
-					text: `[${from}: file decrypt failed (${errMsg(err)})]`,
-					details: { from, err: errMsg(err), filename: envelope.filename ?? '∅' },
-				});
-			} finally {
-				pool?.destroy();
-			}
+		if (envelope.type === 'file-begin') {
+			this._onFileBegin(from, envelope, ciphertext); return;
 		}
+		if (envelope.type === 'file-chunk') {
+			this._onFileChunk(from, envelope, ciphertext);
+		}
+	}
+
+	private _onFileBegin(from: string, env: MessageEnvelope, preamble: Uint8Array): void {
+		const lib = this._lib;
+		if (!lib) return;
+		const key = `${from}|${env.fileId}`;
+		this._disposeInbound(key);   // drop any stale transfer reusing this id
+		let handle: { key: Uint8Array; commit: () => void; rollback: () => void };
+		try {
+			handle = lib.openFileKey(from, env.epoch ?? 0, env.counter);
+		} catch (err) {
+			this.emit('info', { kind: 'decrypt-fail', text: `[${from}: file key resolve failed (${errMsg(err)})]`, details: { from, err: errMsg(err) } });
+			return;
+		}
+		let opener: OpenStream;
+		try {
+			opener = new OpenStream(XChaCha20Cipher, handle.key, preamble);
+		} catch (err) {
+			handle.rollback();
+			this.emit('info', { kind: 'decrypt-fail', text: `[${from}: file open failed (${errMsg(err)})]`, details: { from, err: errMsg(err), filename: env.filename ?? '∅' } });
+			return;
+		}
+		this._inboundFiles.set(key, {
+			opener, handle, chunks: [], nextSeq: 0,
+			filename: env.filename ?? 'file',
+			mime: env.mime ?? 'application/octet-stream',
+			size: env.size ?? 0, ts: env.ts,
+		});
+	}
+
+	private _onFileChunk(from: string, env: MessageEnvelope, ct: Uint8Array): void {
+		const key = `${from}|${env.fileId}`;
+		const f   = this._inboundFiles.get(key);
+		if (!f) {
+			this.emit('info', { kind: 'decrypt-fail', text: `[${from}: file chunk before begin, dropping]`, details: { from, fileId: env.fileId } });
+			return;
+		}
+		if ((env.seq ?? -1) !== f.nextSeq) {
+			this._disposeInbound(key);
+			this.emit('info', { kind: 'decrypt-fail', text: `[${from}: out-of-order file chunk, dropping transfer]`, details: { from, expected: f.nextSeq, got: env.seq } });
+			return;
+		}
+		let plain: Uint8Array;
+		try {
+			plain = env.final ? f.opener.finalize(ct) : f.opener.pull(ct);
+		} catch (err) {
+			f.handle.rollback();
+			this._inboundFiles.delete(key);
+			this.emit('info', { kind: 'decrypt-fail', text: `[${from}: file decrypt failed (${errMsg(err)})]`, details: { from, err: errMsg(err), filename: f.filename } });
+			return;
+		}
+		f.chunks.push(plain);
+		f.nextSeq++;
+		// Ack consumed seq so the sender can advance its window. Twice per window
+		// plus the terminator; the sender paces to the slowest recipient's ack.
+		const seq = env.seq ?? 0;
+		if (seq % ACK_INTERVAL === 0 || env.final)
+			this._sendOut({ type: 'relay', to: from, payload: b64enc(encodeFileAck(env.fileId ?? '', seq)) });
+		if (env.final) {
+			f.handle.commit();
+			this._inboundFiles.delete(key);
+			const blob = new Blob(f.chunks as BlobPart[], { type: f.mime });
+			this.emit('file', { from, filename: f.filename, mime: f.mime, size: f.size || blob.size, blob, isSelf: false, ts: f.ts });
+		}
+	}
+
+	private _disposeInbound(key: string): void {
+		const f = this._inboundFiles.get(key);
+		if (!f) return;
+		try {
+			f.opener.dispose();
+		} catch { /* already wiped */ }
+		try {
+			f.handle.rollback();
+		} catch { /* already settled */ }
+		this._inboundFiles.delete(key);
+	}
+
+	private _disposeAllInbound(): void {
+		for (const key of [...this._inboundFiles.keys()]) this._disposeInbound(key);
 	}
 
 	private _onPeerLeft(username: string): void {
 		if (this._phase !== 'ready' && this._phase !== 'waiting') return;
+		for (const key of [...this._inboundFiles.keys()])
+			if (key.startsWith(`${username}|`)) this._disposeInbound(key);
+		// Drop the departed peer from every active send; a pending _waitForCredit
+		// re-derives minAcked next poll (empty recipient set => unpaced).
+		for (const st of this._sendingFiles.values()) {
+			st.recipients.delete(username);
+			st.acked.delete(username);
+		}
 		this._lib?.removePeer(username);
 		this._knownPeers.delete(username);
 		this._peerRatchetEk.delete(username);

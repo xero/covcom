@@ -41,11 +41,24 @@ Poly1305 authenticates every ciphertext, so a garbled or tampered message
 fails authentication before any plaintext is produced. Each message key is
 used exactly once, then wiped.
 
-File attachments use the same cipher through `SealStreamPool`, a chunked
-streaming wrapper that splits payloads into 65 KB frames and processes them
-in parallel across worker threads. The file key comes from the same chain as
-regular message keys and travels in the broadcast metadata, never in
-plaintext.
+File attachments stream. The file key comes from the same chain as regular
+message keys (one `sealFileKey()` step), and the file is encrypted with
+`SealStream`, leviathan's incremental STREAM construction, one bounded chunk at
+a time on the main thread. Each chunk is sent as its own `broadcast` frame: a
+`file-begin` frame carries the stream preamble and the filename/size/mime, then
+one `file-chunk` frame per chunk. The sender reads the file in slices and the
+receiver decrypts and reassembles chunk by chunk, so neither side ever holds the
+whole file encoded in memory and no frame approaches the relay's message-size
+limit. The STREAM construction binds chunk order and detects truncation; every
+frame carries its own detached signature. The file key travels in the
+`file-begin` metadata, never in plaintext.
+
+The transfer is flow controlled. The receiver acknowledges consumed chunks over
+the peer-to-peer `relay` channel, and the sender keeps only a bounded window of
+chunks in flight ahead of the slowest recipient. The relay forwards frames with
+no backpressure of its own, so this window is what keeps its per-connection
+buffer from overflowing and dropping a chunk. In a group the sender paces to the
+slowest receiver, so every participant reassembles the file intact.
 
 ---
 
@@ -293,7 +306,9 @@ The server does not decrypt anything, store messages, or participate in key
 exchange. When it receives a `relay` message addressed to a peer, it
 forwards the ciphertext to that peer and nothing else. When it receives a
 `broadcast`, it fans the ciphertext out to every other connection in the
-room. It cannot read either.
+room. It cannot read either. A `relay` payload carries a one-byte client tag
+that distinguishes a chain seed from a file-transfer acknowledgement; the
+server forwards the payload opaquely and never inspects the tag.
 
 Rooms persist in memory until the TTL cron runs, defaulting to 24 hours of
 inactivity. This is not the server keeping a record of conversations; it is

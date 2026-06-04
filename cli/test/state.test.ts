@@ -1,9 +1,14 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import { INVITE_VERSION, Session } from '@covcom/lib';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { FILE_CHUNK_SIZE, INVITE_VERSION, Session, WINDOW, encodeFileAck } from '@covcom/lib';
 import { initCrypto } from '../src/init.ts';
 import { b64enc } from '../src/util.ts';
 import { installFakeWebSocket, makePeer } from './helpers.ts';
 import type { OutboundMsg } from '../src/ws.ts';
+
+type Broadcast = Extract<OutboundMsg, { type: 'broadcast' }>;
 
 // serializeInvite requires a 32-byte roomId and a roomSecret that decodes to
 // 16 bytes (lib/src/invite.ts); doConnect builds an armored invite for the
@@ -122,3 +127,112 @@ describe('handshake → ready', () => {
 		bob.dispose();
 	});
 });
+
+describe('streamed file send', () => {
+	const tmp = mkdtempSync(join(tmpdir(), 'covcom-cli-send-'));
+	afterAll(() => rmSync(tmp, { recursive: true, force: true }));
+
+	// Reach ready (mirrors the handshake test), then drive the chat view's onFile.
+	function toReady(): ReturnType<ReturnType<typeof installFakeWebSocket>['last']> {
+		mount(screen, {});
+		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:3000', 'alice');
+		const sock = ws.last();
+		sock.open();
+		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET });
+		sock.emit({ type: 'joined', members: [] });
+		const aliceEk = find(sock.sent, 'identify')!.ek;
+		const bob = makePeer(ROOM, 'bob');
+		sock.emit(bob.peerJoined());
+		sock.emit(bob.relaySeed(aliceEk, 'alice'));
+		bob.dispose();
+		return sock;
+	}
+
+	test('emits one file-begin then ordered file-chunk frames, last final, and echoes locally', async () => {
+		const sock = toReady();
+		expect(renderChat).toHaveBeenCalled();
+
+		// > 2 chunks: two full chunks plus a remainder.
+		const path = join(tmp, 'doc.bin');
+		writeFileSync(path, Buffer.alloc(FILE_CHUNK_SIZE * 2 + 100, 7));
+
+		const before = sock.sent.length;
+		await (opts(renderChat).onFile as (p: string) => Promise<void>)(path);
+
+		const frames = sock.sent.slice(before).filter(s => s.type === 'broadcast') as Broadcast[];
+		const begins = frames.filter(f => (f.meta as { type?: string }).type === 'file-begin');
+		const chunks = frames.filter(f => (f.meta as { type?: string }).type === 'file-chunk');
+
+		expect(begins.length).toBe(1);
+		expect(chunks.length).toBe(3);
+		const meta = (f: Broadcast) => f.meta as { type: string; fileId: string; seq?: number; final?: boolean; size?: number; preamble?: string };
+
+		expect(meta(begins[0]).size).toBe(FILE_CHUNK_SIZE * 2 + 100);
+		expect(meta(begins[0]).preamble?.length).toBeGreaterThan(0);
+
+		const fileId = meta(begins[0]).fileId;
+		expect(chunks.map(c => meta(c).fileId)).toEqual([fileId, fileId, fileId]);
+		expect(chunks.map(c => meta(c).seq)).toEqual([0, 1, 2]);
+		expect(chunks.map(c => meta(c).final)).toEqual([false, false, true]);
+
+		for (const f of frames) {
+			expect(f.sig.length).toBeGreaterThan(0);
+			expect(f.payload.length).toBeGreaterThan(0);
+		}
+		expect(appendFile).toHaveBeenCalledTimes(1);   // self echo, once
+
+		doCleanup();
+	});
+
+	// Drive a transfer larger than the credit window with no acks: the sender must
+	// stall after WINDOW chunks (so the dumb relay can't be overrun), then resume
+	// when a tagged 0x01 relay ack advances the slowest-recipient seq.
+	test('paces to the credit window and resumes on a 0x01 relay ack', async () => {
+		const sock = toReady();   // bob is the lone recipient
+		expect(renderChat).toHaveBeenCalled();
+
+		const NCHUNKS = WINDOW + 6;
+		const path = join(tmp, 'big.bin');
+		writeFileSync(path, Buffer.alloc(FILE_CHUNK_SIZE * NCHUNKS, 7));   // exact multiple => NCHUNKS chunks
+
+		const before = sock.sent.length;
+		const chunkCount = () =>
+			sock.sent.slice(before).filter(s => s.type === 'broadcast' && (s.meta as { type?: string }).type === 'file-chunk').length;
+
+		// Fire without awaiting: with no acks the send loop blocks inside waitForCredit.
+		const sendP = (opts(renderChat).onFile as (p: string) => Promise<void>)(path);
+
+		// Let the initial window drain and the loop settle at its stall point.
+		await settle(chunkCount);
+		expect(chunkCount()).toBe(WINDOW);   // seq 0..WINDOW-1 sent, seq WINDOW blocked
+
+		const begin = sock.sent.slice(before).find(
+			s => s.type === 'broadcast' && (s.meta as { type?: string }).type === 'file-begin',
+		) as Broadcast;
+		const fileId = (begin.meta as { fileId: string }).fileId;
+
+		// bob acks through seq WINDOW-1 → minAcked advances → window reopens.
+		sock.emit({ type: 'relay', from: 'bob', payload: b64enc(encodeFileAck(fileId, WINDOW - 1)) });
+
+		await sendP;   // the remainder now flows to completion
+		expect(chunkCount()).toBe(NCHUNKS);
+		expect(appendFile).toHaveBeenCalled();   // self echo only after the full send
+
+		doCleanup();
+	});
+});
+
+// Poll until `fn` returns the same value for several consecutive ticks, i.e. the
+// async send loop has stopped making progress (stalled on backpressure).
+async function settle(fn: () => number, ms = 25, rounds = 5): Promise<void> {
+	let prev = NaN;
+	let stable = 0;
+	while (stable < rounds) {
+		await new Promise(r => setTimeout(r, ms));
+		const cur = fn();
+		if (cur === prev) stable++;
+		else {
+			stable = 0; prev = cur;
+		}
+	}
+}

@@ -95,7 +95,7 @@ export function wireBridge(session: CovcomSession): () => void {
 	offs.push(session.on('file', (f) => {
 		dispatch({ type: 'FILE_APPENDED', item: {
 			kind: 'file', from: f.from, filename: f.filename, mime: f.mime,
-			size: f.size, bytes: f.bytes, isSelf: f.isSelf, ts: f.ts,
+			size: f.size, blob: f.blob, isSelf: f.isSelf, ts: f.ts,
 		} });
 		dispatch({ type: 'EVENT_LOGGED', entry: {
 			direction: f.isSelf ? 'out' : 'in',

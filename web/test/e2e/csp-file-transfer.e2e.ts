@@ -4,18 +4,18 @@ import { createRoom, joinRoom, sendFile } from './helpers.ts';
 
 // Encrypted file transfer under the production CSP, across all three engines.
 //
-// This is the load-bearing Safari/WebKit regression test. File send/receive uses
-// SealStreamPool, whose default factory spawns a blob: worker, refused by WebKit
-// under a strict CSP even with `worker-src blob:`. XChaCha20CipherWeb instead
-// spawns a same-origin worker (covcom-pool-worker.js) under `worker-src 'self'`.
-// If that worker can't start, alice's pool.seal rejects and bob never gets the
-// file, so the assertions below fail. The webkit project is the real proof.
+// File send/receive uses leviathan's SealStream / OpenStream on the MAIN THREAD,
+// no Web Worker. That is the post-fix shape: there used to be a same-origin pool
+// worker (to dodge WebKit's blob:-worker CSP refusal), and the CSP carried
+// `worker-src 'self'` for it. Streaming replaced the worker, so the policy is now
+// `default-src 'none'` with no worker-src, the strictest possible, and the client
+// is a true single-file SPA. This test is the load-bearing proof that the strict,
+// worker-free CSP doesn't break file transfer on any engine (WebKit especially).
 
-// Collect real CSP violations; WebKit logs refused worker spawns to the console.
-// Match the violation vocabulary (refused / blocked / violates) rather than the
-// mere phrase "Content Security Policy", which also appears in the benign
-// "frame-ancestors is ignored when delivered via a meta element" advisory that
-// every engine emits for our meta-tag CSP (see leviathan-crypto/docs/csp.md).
+// Collect real CSP violations. Match the violation vocabulary (refused / blocked /
+// violates) rather than the mere phrase "Content Security Policy", which also
+// appears in the benign "frame-ancestors is ignored when delivered via a meta
+// element" advisory every engine emits for our meta-tag CSP.
 function watchCsp(page: Page, sink: string[]): void {
 	const re = /\b(refused|blocked|violates)\b/i;
 	page.on('console', (m: ConsoleMessage) => {
@@ -26,7 +26,7 @@ function watchCsp(page: Page, sink: string[]): void {
 	});
 }
 
-test('alice sends bob an encrypted file via the same-origin pool worker', async ({ browser }) => {
+test('encrypted file transfer works under the strict, worker-free CSP', async ({ browser }) => {
 	const ctxA = await browser.newContext();
 	const ctxB = await browser.newContext();
 	const alice = await ctxA.newPage();
@@ -41,18 +41,24 @@ test('alice sends bob an encrypted file via the same-origin pool worker', async 
 		await joinRoom(bob, 'bob', invite);
 		await expect(alice.locator('.view-chat #chat-input')).toBeVisible();
 
-		// >1 chunk (chunkSize is 64 KiB) so the parallel pool genuinely runs.
+		// The shipped policy must no longer mention worker-src (no worker is spawned).
+		const csp = await alice.evaluate(() =>
+			document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content') ?? '');
+		expect(csp, 'CSP should be present').toContain('default-src \'none\'');
+		expect(csp, 'CSP should not carry worker-src anymore').not.toContain('worker-src');
+
+		// >1 chunk would need >1 MiB; 200 KB is a single final chunk, enough to
+		// exercise the full SealStream/OpenStream round-trip under CSP.
 		const bytes = new Uint8Array(200_000);
 		for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 7) & 0xff;
 		await sendFile(alice, 'secret.bin', 'application/octet-stream', bytes);
 
-		// A peer file-card only renders after pool.open succeeds (AEAD verified),
-		// which requires the worker to have spawned and round-tripped.
+		// A peer file-card only renders after OpenStream.finalize verifies the
+		// stream, which on WebKit proves the worker-free path runs under the CSP.
 		const card = bob.locator('#chat-history li.msg.peer .file-card');
 		await expect(card.locator('.file-name')).toHaveText('secret.bin');
 		await expect(card.locator('.file-meta')).toContainText('195.3 KB');
 
-		// No silent decrypt failure on either side.
 		await expect(bob.locator('#chat-history')).not.toContainText('file decrypt failed');
 		expect(cspHits, `CSP violations: ${cspHits.join(' | ')}`).toHaveLength(0);
 	} finally {

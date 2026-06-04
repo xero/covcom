@@ -65,9 +65,7 @@ function renderFile(item: ChatItem & { kind: 'file' }, peers: Map<string, PeerVi
 	const meta  = el('p', 'file-meta', `${formatBytes(item.size)} · ${item.mime}`);
 	const btnDl = el('button', 'btn-download', 'Download');
 	btnDl.addEventListener('click', () => {
-		const buf  = item.bytes.buffer.slice(item.bytes.byteOffset, item.bytes.byteOffset + item.bytes.byteLength) as ArrayBuffer;
-		const blob = new Blob([buf], { type: item.mime });
-		const url  = URL.createObjectURL(blob);
+		const url  = URL.createObjectURL(item.blob);
 		const a    = document.createElement('a');
 		a.href     = url;
 		a.download = item.filename;

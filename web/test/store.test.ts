@@ -66,7 +66,7 @@ describe('peers', () => {
 describe('chat items', () => {
 	test('message/file/system/ratchet append in order', () => {
 		dispatch({ type: 'MESSAGE_APPENDED', item: { kind: 'message', from: 'a', text: 'hi', isSelf: false, ts: 1 } });
-		dispatch({ type: 'FILE_APPENDED', item: { kind: 'file', from: 'a', filename: 'f.txt', mime: 'text/plain', size: 3, bytes: new Uint8Array([1, 2, 3]), isSelf: false, ts: 2 } });
+		dispatch({ type: 'FILE_APPENDED', item: { kind: 'file', from: 'a', filename: 'f.txt', mime: 'text/plain', size: 3, blob: new Blob([new Uint8Array([1, 2, 3])]), isSelf: false, ts: 2 } });
 		dispatch({ type: 'SYSTEM_APPENDED', text: 'sys', className: 'rejoin' });
 		dispatch({ type: 'RATCHET_APPENDED', from: 'a', isSelf: true });
 		const kinds = getState().messages.map(m => m.kind);

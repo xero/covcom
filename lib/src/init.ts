@@ -20,7 +20,3 @@ export async function initCrypto(): Promise<void> {
 	});
 	initialized = true;
 }
-
-// Exposed so SealStreamPool callers in web/ and cli/ can pass the WASM source
-// without importing leviathan-crypto directly.
-export { chacha20Wasm };

@@ -22,6 +22,7 @@ XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-p
 > - [message encryption](#message-encryption)
 > - [ratchet step](#ratchet-step)
 > - [chain seed distribution](#chain-seed-distribution)
+> - [relay payload tagging](#relay-payload-tagging)
 > - [wire format](#wire-format)
 > - [invite encoding](#invite-encoding)
 > - [key hygiene](#key-hygiene)
@@ -38,7 +39,7 @@ All primitives are provided by [leviathan-crypto][LC].
 | [ML-KEM-768][LC-MLKEM] | FIPS 203, security level 3 | KEM ratchet, chain seed distribution |
 | [HKDF-SHA-256][LC-SHA2] | RFC 5869 | All key derivation |
 | [Seal+MlKemSuite][LC-AEAD] | ML-KEM-768 + XChaCha20-Poly1305 | Chain seed relay blobs |
-| [SealStreamPool][LC-AEAD] | XChaCha20-Poly1305, 65536-byte chunks | File attachments |
+| [SealStream / OpenStream][LC-AEAD] | XChaCha20-Poly1305, STREAM construction | File attachments (chunked) |
 | [Ed25519PreHashSuite][LC-SIGN] | formatEnum `0x11`, ctxDomain `ed25519-prehash-envelope-v3` | Identity-claim and per-message signing |
 | [BLAKE3][LC-BLAKE3] | 32-byte payload-chain digest, 16-byte fingerprint digest | Identity-log chain hash, fingerprint derivation |
 | [Sha256Tree][LC-MERKLE] | SHA-256 binary Merkle | Per-sender transcript log of claim payloads |
@@ -149,8 +150,12 @@ One wider than Signal §5.7 for out-of-order tolerance.
 3. `wipe(msgKey)`
 
 File attachments: `sealFileKey()` returns a single-use 32-byte key. The caller
-encrypts via `SealStreamPool` (65536-byte chunks, parallel WASM workers) and
-wipes the key in a `try/finally` block.
+builds a `SealStream` (XChaCha20-Poly1305 STREAM, main thread) from it and seals
+the file one chunk at a time, emitting a `file-begin` frame (the stream preamble)
+followed by one `file-chunk` frame per chunk (see the wire envelope below). The
+key is wiped in a `try/finally` block. The receiver resolves the key once via
+`openFileKey()`, opens with an `OpenStream` over the preamble, and reassembles;
+its checkout is committed on the final chunk and rolled back on any failure.
 
 ---
 
@@ -217,6 +222,28 @@ Relay blob plaintext: `epoch[4 LE] || seed[32]` = 36 bytes.
 - Sets `_senderState[sender]` at decoded epoch (not hardcoded 0)
 - Wipes the full 36-byte plain buffer
 
+The wrapped blob travels inside a tagged `relay` payload. The tag frames the
+wire payload only; the 36-byte sealed plaintext above is unchanged.
+
+---
+
+## relay payload tagging
+
+The `relay` wire `payload` is base64 of a one-byte tag followed by a body. The
+tag sits outside any seal and tells the receiver how to read the body:
+
+- `0x00` chain seed: the body is the ML-KEM-wrapped blob from
+  `wrapChainSeedFor`. The receiver strips the tag and passes the body to
+  `unwrapChainSeed`.
+- `0x01` file ack: the body is UTF-8 JSON `{f: fileId, s: seq}`, where `seq` is
+  the highest chunk index the receiver has consumed for that transfer.
+
+File acks drive file-transfer flow control. A receiver sends one ack every
+`ACK_INTERVAL` (32) consumed chunks and one on the final chunk. The sender keeps
+at most `WINDOW` (64) chunks in flight ahead of the lowest acked `seq` across all
+recipients, which bounds in-flight data below the relay's per-connection buffer
+limit so no chunk is dropped.
+
 ---
 
 ## wire format
@@ -231,7 +258,7 @@ in `server/src/types.ts`.
 | `create` | `adminToken?` | Create a room |
 | `join` | `roomId`, `roomSecret` | Join a room |
 | `identify` | `username`, `ek`, `ratchetEk`, `claim` | Announce identity after join with signed claim |
-| `relay` | `to`, `payload` | Send chain seed to a peer (base64) |
+| `relay` | `to`, `payload` | Send a tagged payload to a peer: chain seed or file ack (base64) |
 | `broadcast` | `payload`, `meta`, `sig` | Send encrypted message with detached signature |
 | `ratchet_step` | `payloads{}`, `newEk`, `payload`, `meta`, `sig`, `claim` | Fan-out ratchet step with continuation claim |
 | `ek_update` | `ek`, `claim` | Broadcast new encapsulation key post-ratchet |
@@ -245,7 +272,7 @@ in `server/src/types.ts`.
 | `joined` | `members[]` | Room joined; member list with public keys and claims |
 | `peer_joined` | `username`, `ek`, `ratchetEk`, `claim` | New peer announced with signed identity claim |
 | `peer_left` | `username` | Peer disconnected |
-| `relay` | `from`, `payload` | Forwarded chain seed blob |
+| `relay` | `from`, `payload` | Forwarded tagged payload: chain seed or file ack |
 | `broadcast` | `from`, `payload`, `meta`, `sig` | Forwarded encrypted message with signature |
 | `ratchet_step_fwd` | `from`, `kemCt`, `encSeed`, `pn`, `newEk`, `payload`, `meta`, `sig`, `claim` | Per-peer ratchet step delivery |
 | `ek_update_fwd` | `from`, `ek`, `claim` | Forwarded ek update with continuation claim |
@@ -257,7 +284,14 @@ new epoch. The `payload` field is a `sealMessage` ciphertext at `newEpoch`.
 Receivers decrypt it after applying the ratchet step.
 
 `meta` on `broadcast` and `ratchet_step` is a `MessageEnvelope`:
-`{ epoch: number, counter: number, ... }`.
+`{ type, sender, epoch, counter, ts, ... }`. `type` is one of `message`,
+`file-begin`, or `file-chunk`. File transfers ride `broadcast` (no dedicated
+message type): a `file-begin` adds `fileId`, `filename`, `size`, `mime`,
+`chunkSize`, and `preamble` (base64 `SealStream` preamble; it is also the frame's
+`payload`, and `sig` covers it), and each `file-chunk` adds `fileId`, `seq`, and
+`final`, with the chunk ciphertext in `payload` and its own `sig`. All frames in
+one transfer share the `sealFileKey()` `epoch`/`counter`; chunks decrypt in `seq`
+order through a single `OpenStream`.
 
 The `claim` and `sig` fields are base64-encoded outputs from
 leviathan-crypto v3's `Sign` API. `claim` is an attached envelope; `sig`

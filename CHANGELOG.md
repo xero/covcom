@@ -4,7 +4,17 @@
 
 This release adds rich-text formatting to messages on both clients and hardens
 every path that renders peer-controlled text. Untrusted display data is now
-treated as data, never as code.
+treated as data, never as code. It also reworks file transfer to stream in
+bounded chunks with receiver-paced flow control, so large attachments move
+reliably without crashing the renderer.
+
+> [!WARNING]
+> **Breaking wire-protocol change**. File transfer drops the single `file`
+> envelope for a `file-begin` frame followed by `file-chunk` frames, and every
+> peer-to-peer relay payload now carries a one-byte tag prefix. Both clients
+> must run v3.0.1. A v3.0.0 client cannot receive files from a v3.0.1 peer, and
+> the tagged relay payload breaks its key handshake outright, so mixed-version
+> rooms fail to connect rather than just failing to share files.
 
 ### Security
 
@@ -50,6 +60,11 @@ still carries your exact plaintext.
 and fenced blocks, fenced blocks render with a filled background, and italic
 text now emits the italic SGR.
 
+**Receiver flow control for file transfer.** The receiver acknowledges consumed
+chunks over the peer-to-peer relay channel and the sender holds a bounded window
+of chunks ahead of the slowest recipient, so a large transfer survives a slow or
+backpressured relay. The scheme is N-party and paces to the slowest peer.
+
 ### Changed
 
 **Web message rendering.** User messages render through the shared token model:
@@ -61,9 +76,16 @@ columns through a pragmatic wcwidth instead of counting code points, so wide
 CJK glyphs and emoji wrap and pad at their true width. A word wider than the
 pane is hard-split on code-point boundaries and never severs a surrogate pair.
 
+### Fixed
+
+**Large encrypted file transfer no longer crashes the renderer.** Files stream
+as bounded per-chunk frames instead of one monolithic sealed frame, so a big
+attachment no longer balloons renderer memory or exceeds the relay's
+message-size cap. Multi-hundred-megabyte files now transfer end to end.
+
 ---
 
-## [3.0.0]
+## v3.0.0
 
 The signing release. Every participant now carries a per-session Ed25519
 identity, every message carries a verifiable signature, and each client builds
@@ -118,7 +140,7 @@ per-entry detail. User-controlled fields render as tokens, never as raw markup.
 
 ---
 
-## [2.0.0]
+## v2.0.0
 
 An internal testing build that was never released to the public. v3 superseded
 it before any public release, so there are no user-facing changes to record
@@ -126,7 +148,7 @@ here.
 
 ---
 
-## [1.0.0]
+## v1.0.0
 
 The first public release. End-to-end encrypted group chat with post-quantum
 cryptography, ephemeral sessions, and two first-class clients. Share an invite,

@@ -63,4 +63,7 @@ export class WS {
 	close(): void {
 		this._ws.close();
 	}
+	isOpen(): boolean {
+		return this._ws.readyState === WebSocket.OPEN;
+	}
 }

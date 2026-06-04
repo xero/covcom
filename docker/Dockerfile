@@ -17,7 +17,7 @@ RUN bun i --ignore-scripts
 COPY lib/ ./lib/
 COPY web/ ./web/
 
-# Build web client (inlined index.html + same-origin covcom-pool-worker.js, strict-CSP friendly)
+# Build web client (single inlined index.html, strict-CSP friendly)
 RUN bun run --cwd web build
 
 # ── Stage 2: final image ───────────────────────────────────────────────────

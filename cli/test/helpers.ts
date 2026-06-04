@@ -2,7 +2,7 @@
 // WebSocket (so `new WS(url)` in state.ts captures sends without a live
 // server) and a real-crypto peer that produces valid wire frames.
 
-import { generateKeypair, Session } from '@covcom/lib';
+import { generateKeypair, Session, RELAY_TAG_SEED, prefixTag } from '@covcom/lib';
 import { b64dec, b64enc } from '../src/util.ts';
 import type { InboundMsg, OutboundMsg } from '../src/ws.ts';
 
@@ -78,7 +78,9 @@ export function makePeer(roomId: string, username: string) {
 		// using the local client's ek as advertised in its `identify` frame
 		relaySeed(localEkB64: string, localName: string): InboundMsg {
 			const blob = session.wrapChainSeedFor(b64dec(localEkB64), localName);
-			return { type: 'relay', from: username, payload: b64enc(blob) };
+			// Real clients tag-prefix relay payloads (0x00 = chain seed); the local
+			// handler strips byte 0 before unwrap, so the peer must match the format.
+			return { type: 'relay', from: username, payload: b64enc(prefixTag(RELAY_TAG_SEED, blob)) };
 		},
 		dispose() {
 			session.dispose();

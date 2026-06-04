@@ -20,7 +20,7 @@ export interface PeerView {
 
 export type ChatItem =
 	| { kind: 'message'; from: string; text: string; isSelf: boolean; ts: number }
-	| { kind: 'file'; from: string; filename: string; mime: string; size: number; bytes: Uint8Array; isSelf: boolean; ts: number }
+	| { kind: 'file'; from: string; filename: string; mime: string; size: number; blob: Blob; isSelf: boolean; ts: number }
 	| { kind: 'system'; text: RichText; className?: string; ts: number }
 	| { kind: 'ratchet'; from: string; isSelf: boolean; ts: number };
 

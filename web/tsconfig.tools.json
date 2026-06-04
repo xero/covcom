@@ -9,5 +9,5 @@
 		"types": ["bun"],
 		"skipLibCheck": true
 	},
-	"include": ["build-worker.ts", "vite.config.ts"]
+	"include": ["vite.config.ts"]
 }

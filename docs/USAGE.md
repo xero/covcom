@@ -251,12 +251,12 @@ Open `http://localhost:5173`.
 bun build:web
 ```
 
-Produces `web/dist/`: an inlined `index.html` plus a same-origin pool worker
-(`covcom-pool-worker.js`) used for encrypted file transfer. The policy is
-strict-CSP friendly, `worker-src 'self'` with no `blob:`, so file transfer
-works in Safari/WebKit under a strict CSP (see
+Produces `web/dist/`: a single inlined `index.html`, no sidecar files. All
+crypto, including chunked encrypted file transfer, runs as WASM on the main
+thread, so the policy is the strictest possible, `default-src 'none'`, and works
+in Safari/WebKit under a strict CSP (see
 [leviathan-crypto/docs/csp.md](https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md)).
-Serve the directory from any static file host with no build step, or let
+Serve the file from any static host with no build step, or let
 `bun build:docker` bake it into the image.
 
 **Preview the production build:**

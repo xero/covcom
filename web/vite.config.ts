@@ -10,13 +10,11 @@ import { createHash } from 'node:crypto';
 //
 // The load-bearing facts:
 //  - 'wasm-unsafe-eval' permits WebAssembly.{compile,instantiate} but not
-//    eval/new Function. The crypto runs as WASM on the main thread; the pool
-//    worker compiles on the main thread and posts the module to the worker.
-//  - worker-src 'self': the file-transfer pool spawns a SAME-ORIGIN worker
-//    (web/src/cipher-suites.ts → XChaCha20CipherWeb, served from public/ as
-//    covcom-pool-worker.js). The default blob: worker is refused by WebKit/Safari
-//    under a strict CSP; 'self' works on all three engines. No blob: / child-src
-//    needed. See ../leviathan-crypto/docs/csp.md (covcom is its worked example).
+//    eval/new Function. All crypto, messages and streamed file transfer alike,
+//    runs as WASM on the main thread. No worker is spawned, so no worker-src is
+//    needed and `default-src 'none'` blocks workers outright; the app is a true
+//    single-file SPA. (File transfer formerly used a same-origin pool worker to
+//    dodge WebKit's blob:-worker CSP refusal; SealStream/OpenStream replaced it.)
 //  - connect-src: 'self' covers the same-origin container (wss://DOMAIN/ws via
 //    Caddy); wss: covers a decoupled remote relay; ws://localhost|127.* covers
 //    plaintext self-host. The client makes no http(s) fetch at runtime.
@@ -48,7 +46,6 @@ function csp(): Plugin {
 					`script-src ${scriptSrc}`,
 					'style-src \'unsafe-inline\'',
 					'connect-src \'self\' wss: ws://localhost:* ws://127.0.0.1:*',
-					'worker-src \'self\'',
 					'img-src \'self\' data: blob:',
 					'font-src \'none\'',
 					'base-uri \'none\'',

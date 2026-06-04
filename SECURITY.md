@@ -1,90 +1,30 @@
-# Security Policy
-
-> [!NOTE]
-> This policy covers COVCOM and its cryptographic dependency
-> [leviathan-crypto](https://github.com/xero/leviathan-crypto), both
-> maintained by the same author and release in tandem.
+# COVCOM Security Policy
 
 > ### Table of Contents
-> - [supported versions](#supported-versions)
-> - [cryptographic foundation](#cryptographic-foundation)
-> - [threat model](#threat-model)
-> - [reporting a vulnerability](#reporting-a-vulnerability)
-> - [scope](#scope)
+> - [Supported Versions]
+> - [Reporting a Vulnerability]
+>   - [Scope]
+> - [Cryptographic Foundations]
+> - [Threat Model]
 
 ---
 
-## supported versions
+## Supported Versions
 
-COVCOM follows a rolling support policy. When a security fix ships, the
-previous version is deprecated immediately. Only the current release is
-supported.
+This policy covers COVCOM and its cryptographic dependency [leviathan-crypto],
+both maintained by the same author and released in tandem. Support is rolling,
+so only the current release is supported. A vulnerability in either project
+triggers a coordinated release that immediately deprecates the previous
+version.
 
-| Version | Status      |
-|---------|-------------|
-| v1.0.0  | ✓ supported |
+| Version        | Status       |
+|----------------|--------------|
+| [v3.0.1][v301] | ✓ supported  |
+| [v3.0.0][v300] | ✗ deprecated |
+| [v1.0.x][v100] | ✗ deprecated |
 
-Deprecated versions receive no patches. Upgrade promptly.
-
-COVCOM releases in tandem with leviathan-crypto. The ratchet module
-([PR #12](https://github.com/xero/leviathan-crypto/pull/12)) ships
-alongside COVCOM v1.0.0. A vulnerability in either project triggers a
-coordinated release of both.
-
----
-
-## cryptographic foundation
-
-All cryptographic operations in COVCOM are provided by
-[leviathan-crypto](https://github.com/xero/leviathan-crypto), a
-zero-dependency TypeScript/WASM library by the same author. There are no
-third-party cryptographic dependencies.
-
-The active primitive set:
-
-| Primitive | Purpose |
-|---|---|
-| XChaCha20-Poly1305 | Message and file encryption |
-| ML-KEM-768 (FIPS 203) | Post-quantum key encapsulation |
-| HKDF-SHA-256 | Key derivation throughout |
-| Seal+MlKemSuite | Chain seed distribution |
-| Ed25519PreHashSuite | Identity-claim and per-message signing |
-| BLAKE3 | Identity-log chain hash and fingerprint derivation |
-| SHA-256 Merkle | Per-sender transcript log |
-
-The protocol implements the Sparse Post-Quantum Ratchet from the
-[Signal Double Ratchet spec](https://signal.org/docs/specifications/doubleratchet/)
-(§5, Revision 4) with a Sender Keys group messaging model.
-
----
-
-## threat model
-
-**The protocol provides:**
-- Message confidentiality against passive and active network adversaries
-- Forward secrecy, so past messages are unrecoverable from current state
-- Post-compromise security at every KEM ratchet boundary
-- Harvest-now-decrypt-later resistance via ML-KEM-768
-- Enumeration resistance via a 2^128 room secret space
-- Session anonymity, with no persistent identity keys visible to the server
-- Per-message provenance: every broadcast carries a detached Ed25519
-  signature over `counter || epoch || sender || ts || ciphertext`,
-  verified before AEAD
-- Split-view detection: each peer's identity claims form a BLAKE3-chained
-  log surfaced as an 8-colour fingerprint for out-of-band comparison
-- Untrusted-content rendering: peer-controlled display text (usernames,
-  message bodies, filenames) never becomes markup in the web client or
-  terminal escapes in the CLI, defeating XSS, terminal escape injection,
-  and bidi or homoglyph display-name spoofing
-
-**The protocol does not protect against:**
-- Endpoint compromise (malware, physical device access)
-- Traffic analysis (timing, message volume, session duration)
-- A server that lies about room membership
-- Cryptographic deniability
-- Multi-session correlation by out-of-band means
-
-See the full Dolev-Yao style adversary analysis in [THREAT-MODEL.md](./docs/THREAT-MODEL.md).
+> [!CAUTION]
+> Deprecated versions receive no patches. Upgrade promptly.
 
 ---
 
@@ -98,7 +38,7 @@ See the full Dolev-Yao style adversary analysis in [THREAT-MODEL.md](./docs/THRE
 Use GitHub's private vulnerability reporting form:
 [https://github.com/xero/covcom/security/advisories/new][advisory]
 
-This opens a private channel between you and the maintainer, and you will
+This opens a private channel between you and me, and you will
 receive a response promptly. If the vulnerability is confirmed, we will
 collaborate to fully understand the issue, including a review of proposed
 fixes, so you can track and validate firsthand. Before any public advisory
@@ -108,7 +48,7 @@ research notes, for full hacker scene credit.
 
 ### Direct Contact
 
-If you prefer to contact the maintainer directly:
+If you prefer to contact me directly:
 
 - **Email:** x﹫xero.style · PGP: [`0xAC1D0000`][pgp]
 - **Matrix:** x0﹫rx.haunted.computer
@@ -116,9 +56,7 @@ If you prefer to contact the maintainer directly:
 > [!NOTE]
 > Encrypted communication is welcome and _preferred_ for sensitive reports.
 
----
-
-## scope
+### Scope
 
 **In scope:**
 
@@ -132,8 +70,8 @@ If you prefer to contact the maintainer directly:
 
 **Out of scope:**
 
-- Bugs in leviathan-crypto unrelated to COVCOM's use of it. Please Report those
-  in the [leviathan-crypto repository](https://github.com/xero/leviathan-crypto)
+- Bugs in leviathan-crypto unrelated to COVCOM's use of it. Please report those
+  in the [leviathan-crypto repository][leviathan-crypto]
 - The non-goals listed in the threat model: endpoint security, traffic
   analysis, server availability attacks, multi-session correlation
 - Attacks requiring physical access to a participant's device
@@ -143,5 +81,93 @@ If you prefer to contact the maintainer directly:
   with unlimited classical resources)
 - Spam or denial-of-service against publicly hosted instances
 
-[advisory]: https://github.com/xero/covcom/security/advisories/new
-[pgp]:      https://0w.nz/pgp.pub
+---
+
+## Cryptographic Foundations
+
+All cryptographic operations in COVCOM are provided by [leviathan-crypto], a
+zero-dependency TypeScript/WASM library by the same author. There are no
+third-party cryptographic dependencies.
+
+The active primitive set:
+
+| Primitive                             | Purpose                                            |
+|---------------------------------------|----------------------------------------------------|
+| [XChaCha20-Poly1305][chacha20]        | Message and file encryption                        |
+| [ML-KEM-768][mlkem] (FIPS 203)        | Post-quantum key encapsulation                     |
+| [HKDF-SHA-256][sha2]                  | Key derivation throughout                          |
+| [Seal+MlKemSuite][aead]               | Chain seed distribution                            |
+| [Ed25519PreHashSuite][signaturesuite] | Identity-claim and per-message signing             |
+| [BLAKE3][blake3]                      | Identity-log chain hash and fingerprint derivation |
+| [SHA-256 Merkle][merkle]              | Per-sender transcript log                          |
+
+The protocol implements the Sparse Post-Quantum Ratchet from the
+[Signal Double Ratchet spec][doubleratchet] (§5, Revision 4) with a Sender
+Keys group messaging model.
+
+> [!TIP]
+> The [cryptography reference][crypto-doc] documents how each primitive is
+> constructed and composed. The [protocol specification][protocol-doc] covers
+> the wire format, session handshake, and ratchet flow.
+
+---
+
+## Threat Model
+
+### The protocol provides
+
+**Message confidentiality.** Passive and active network adversaries learn nothing from the wire.
+
+**Forward secrecy.** Past messages stay unrecoverable from current state.
+
+**Post-compromise security.** State heals at every KEM ratchet boundary.
+
+**Harvest-now-decrypt-later resistance.** ML-KEM-768 guards against future quantum decryption.
+
+**Enumeration resistance.** A 2^128 room secret space defeats guessing.
+
+**Session anonymity.** No persistent identity keys are visible to the server.
+
+**Per-message provenance.** Every broadcast carries a detached Ed25519 signature, verified before AEAD, over the signed bytes `counter || epoch || sender || ts || ciphertext`.
+
+**Split-view detection.** Each peer's identity claims form a BLAKE3-chained log, surfaced as an 8-colour fingerprint for out-of-band comparison.
+
+**Untrusted-content rendering.** Peer-controlled display text (usernames, message bodies, filenames) never becomes markup in the web client or terminal escapes in the CLI. This defeats XSS, terminal escape injection, and bidi or homoglyph display-name spoofing.
+
+### The protocol does not protect against
+
+**Endpoint compromise.** Malware or physical device access defeats any transport security.
+
+**Traffic analysis.** Timing, message volume, and session duration stay observable.
+
+**Membership lies.** A malicious server can misreport who is in a room.
+
+**Cryptographic deniability.** Signatures bind authorship, so messages are not deniable.
+
+**Multi-session correlation.** Out-of-band means can still link separate sessions.
+
+> [!NOTE]
+> See the full Dolev-Yao style adversary analysis in [THREAT-MODEL.md][threat-model-doc].
+
+[supported versions]:         #supported-versions
+[reporting a vulnerability]:  #reporting-a-vulnerability
+[scope]:                      #scope
+[cryptographic foundations]:  #cryptographic-foundations
+[threat model]:               #threat-model
+[v301]:                       https://github.com/xero/covcom/blob/main/CHANGELOG.md#v301
+[v300]:                       https://github.com/xero/covcom/blob/main/CHANGELOG.md#v300
+[v100]:                       https://github.com/xero/covcom/blob/main/CHANGELOG.md#v100
+[advisory]:                   https://github.com/xero/covcom/security/advisories/new
+[pgp]:                        https://0w.nz/pgp.pub
+[leviathan-crypto]:           https://github.com/xero/leviathan-crypto
+[chacha20]:                   https://github.com/xero/leviathan-crypto/wiki/chacha20
+[mlkem]:                      https://github.com/xero/leviathan-crypto/wiki/mlkem
+[sha2]:                       https://github.com/xero/leviathan-crypto/wiki/sha2
+[aead]:                       https://github.com/xero/leviathan-crypto/wiki/aead
+[signaturesuite]:             https://github.com/xero/leviathan-crypto/wiki/signaturesuite
+[blake3]:                     https://github.com/xero/leviathan-crypto/wiki/blake3
+[merkle]:                     https://github.com/xero/leviathan-crypto/wiki/merkle
+[doubleratchet]:              https://signal.org/docs/specifications/doubleratchet/
+[crypto-doc]:                 ./docs/CRYPTOGRAPHY.md
+[protocol-doc]:               ./docs/PROTOCOL.md
+[threat-model-doc]:           ./docs/THREAT-MODEL.md

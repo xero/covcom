@@ -872,7 +872,7 @@ describe('identify validation', () => {
 		b.send({ type: 'join', roomId, roomSecret });
 		await b.recv(); // joined
 
-		// U+202E reverses the text that follows it — a classic display-name spoof.
+		// U+202E reverses the text that follows it (classic display-name spoof).
 		const rlo = String.fromCodePoint(0x202e);
 		b.send({ type: 'identify', username: `ev${rlo}il`, ek: EK, ratchetEk: REK, claim: CLAIM });
 		expect(await a.tryRecv()).toBeUndefined();

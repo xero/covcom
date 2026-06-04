@@ -93,7 +93,7 @@ describe('content events', () => {
 	});
 
 	test('file → file chat item + event-log entry', () => {
-		session.fire('file', { from: 'bob', filename: 'a.bin', mime: 'application/octet-stream', size: 9, bytes: new Uint8Array(9), isSelf: false, ts: 7 });
+		session.fire('file', { from: 'bob', filename: 'a.bin', mime: 'application/octet-stream', size: 9, blob: new Blob([new Uint8Array(9)]), isSelf: false, ts: 7 });
 		expect(last(getState().messages)).toMatchObject({ kind: 'file', filename: 'a.bin', size: 9 });
 		expect(last(getState().events)).toMatchObject({ kind: 'file', direction: 'in' });
 	});
