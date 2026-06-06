@@ -9,7 +9,7 @@ import type { Span, Doc } from '@covcom/lib';
 //
 // Every token's text is passed through stripFormatChars() so bidi controls and
 // zero-width chars can't reorder/spoof the rendered text. (CSS unicode-bidi:
-// isolate on the message/name spans is the layout-level half of the same fix.)
+// isolate on the message/name containers is the layout-level half of the same fix.)
 
 export type { Span, Block, Doc, RichText } from '@covcom/lib';
 export { b, code } from '@covcom/lib';

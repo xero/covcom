@@ -121,9 +121,16 @@ export function sanitizeTerminal(s: string): string {
 	const stripped = s
 		.replace(ANSI_RE, '')                           // CSI, OSC (incl. OSC 52), 2-char escapes
 		// eslint-disable-next-line no-control-regex -- stripping stray C0/C1 control bytes is the point
-		.replace(/[\x00-\x09\x0B-\x1F\x7F-\x9F]/g, '')  // stray C0/C1 + DEL, keep \n (0x0A)
-		.replace(/<[^>]*>/g, '');                       // stray HTML-ish tags (defensive parity)
-	return stripFormatChars(stripped);                  // bidi controls + zero-width spoofing chars
+		.replace(/[\x00-\x09\x0B-\x1F\x7F-\x9F]/g, ''); // stray C0/C1 + DEL, keep \n (0x0A)
+	// Strip HTML-ish tags to a fixed point: a single pass can leave a tag re-formed
+	// from overlapping `<…>` runs, so repeat until the string is stable.
+	let tagless = stripped;
+	let prev: string;
+	do {
+		prev = tagless;
+		tagless = tagless.replace(/<[^>]*>/g, '');      // stray HTML-ish tags (defensive parity)
+	} while (tagless !== prev);
+	return stripFormatChars(tagless);                   // bidi controls + zero-width spoofing chars
 }
 
 // ─── markup → ANSI ──────────────────────────────────────────────────────────────

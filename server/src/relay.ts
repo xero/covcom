@@ -16,9 +16,11 @@ import type {
 
 // Bidi controls + zero-width format chars that enable display-name spoofing
 // (text reordering / homoglyph handles) without being C0/C1. Mirrors
-// @covcom/lib's stripFormatChars; kept inline so the relay stays
-// dependency-free. ZWNJ/ZWJ (U+200C/D) and variation selectors are
-// intentionally allowed: legitimate in emoji and Persian/Arabic/Indic text.
+// @covcom/lib's stripFormatChars; duplicated here so the relay can reject unsafe
+// usernames without importing the client's sanitizer. ZWNJ/ZWJ (U+200C/D) and
+// variation selectors are intentionally allowed: legitimate in emoji and
+// Persian/Arabic/Indic text.
+
 const UNSAFE_FORMAT_CP: ReadonlySet<number> = new Set([
 	0x061c,
 	0x200b,

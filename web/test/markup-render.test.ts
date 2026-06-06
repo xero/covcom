@@ -11,7 +11,7 @@ const ALLOWED_TAGS = new Set(['B', 'I', 'KBD', 'PRE']);
 const FORBIDDEN_ATTRS = ['onerror', 'onclick', 'onload', 'href', 'src', 'style'];
 
 function render(src: string): HTMLElement {
-	const host = document.createElement('span');
+	const host = document.createElement('div');
 	renderDoc(host, parseMarkup(src));
 	return host;
 }

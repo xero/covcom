@@ -52,7 +52,7 @@ function liBase(sender: string, isSelf: boolean, peers: Map<string, PeerView>, c
 
 function renderMessage(item: ChatItem & { kind: 'message' }, peers: Map<string, PeerView>): HTMLLIElement {
 	const li = liBase(item.from, item.isSelf, peers, false);
-	const text = el('span', 'msg-text');
+	const text = el('div', 'msg-text');
 	renderDoc(text, parseMarkup(item.text));
 	li.appendChild(text);
 	return li;
