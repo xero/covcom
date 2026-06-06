@@ -24,7 +24,8 @@
 		"build:cli:all": "bun run --cwd cli build:all",
 		"test:web": "bun run --cwd web test",
 		"test:cli": "bun run --cwd cli test",
-		"test": "bun run test:server && bun run test:lib && bun run test:web && bun run test:cli && bun run test:e2e",
+		"test": "bun run test:server && bun run test:lib && bun run test:web && bun run test:cli",
+		"test:all": "bun run test:server && bun run test:lib && bun run test:web && bun run test:cli && bun run test:e2e",
 		"test:e2e": "playwright test",
 		"versionbump": "bun run cicd.ts --versionbump",
 		"fix": "bunx eslint . --fix",
@@ -35,7 +36,7 @@
 		"bundle:cli": "bun run --cwd cli bundle",
 		"_shorthand": "# bake=build · check=lint+typecheck+build+unit+e2e",
 		"bake": "bun build:web && bun bundle:cli && bun build:cli:all",
-		"check": "bun run lint && bun typecheck && bun bake && bun run test"
+		"check": "bun run lint && bun typecheck && bun bake && bun run test:all"
 	},
 	"devDependencies": {
 		"eslint": "^10.4.1",
