@@ -59,6 +59,19 @@ export async function sendAndClassify(
 	return winners;
 }
 
+// Time one awaited step and log it so GitHub Actions output carries actual
+// per-browser, per-size durations. Used to tune the stress-sweep timeouts from
+// observed data rather than guesses. Logs even when `fn` throws.
+export async function timeStep<T>(label: string, fn: () => Promise<T>): Promise<T> {
+	const start = Date.now();
+	try {
+		return await fn();
+	} finally {
+		const elapsedMs = Date.now() - start;
+		console.log(`[e2e-timing] ${label}: ${elapsedMs}ms (${(elapsedMs / 1000).toFixed(1)}s)`);
+	}
+}
+
 // The relay broker; the web client points at it via the landing "Server" field.
 // localhost maps to plaintext ws:// in the client, so no TLS is needed.
 export const SERVER = 'localhost:3000';

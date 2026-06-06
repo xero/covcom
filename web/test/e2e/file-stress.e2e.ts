@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createRoom, joinRoom, sendAndClassify, watchCrash } from './helpers.ts';
+import { createRoom, joinRoom, sendAndClassify, timeStep, watchCrash } from './helpers.ts';
 
 // Large-attachment round-trips, the at-scale proof that chunked streaming fixed
 // the "Aw, Snap!" crash. GATED behind COVCOM_STRESS=1 so `bun test:e2e` never
@@ -26,9 +26,17 @@ const SIZES: { label: string; bytes: number; wireLabel: string }[] = [
 ];
 
 for (const { label, bytes, wireLabel } of SIZES) {
-	test(`stress attach ${label}: round-trips with no crash`, async ({ browser }, testInfo) => {
+	test(`stress attach ${label}: round-trips with no crash`, async ({ browser, browserName }, testInfo) => {
 		test.skip(process.env.COVCOM_STRESS !== '1', 'set COVCOM_STRESS=1 to run the stress sweep');
-		testInfo.setTimeout(300_000);
+
+		// Only 1 GiB is flaky in CI, and only on Firefox; smaller sizes already
+		// pass at 240s. Give the giant case more budget rather than inflating
+		// every transfer. testInfo gets the transfer budget plus room for setup
+		// and teardown, still well inside the job's 45-minute limit.
+		const transferTimeoutMs = bytes >= 1024 * MiB
+			? (browserName === 'firefox' ? 480_000 : 420_000)
+			: 240_000;
+		testInfo.setTimeout(transferTimeoutMs + 120_000);
 
 		const ctxA = await browser.newContext();
 		const ctxB = await browser.newContext();
@@ -45,14 +53,20 @@ for (const { label, bytes, wireLabel } of SIZES) {
 			await expect(alice.locator('.view-chat #chat-input')).toBeVisible();
 
 			const name    = `stress-${label.replace(/\s+/g, '')}.bin`;
-			const outcome = await sendAndClassify(alice, name, 'application/octet-stream', bytes, 240_000);
+			const outcome = await timeStep(
+				`${browserName} ${label} sender classify`,
+				() => sendAndClassify(alice, name, 'application/octet-stream', bytes, transferTimeoutMs),
+			);
 			expect(outcome, `${label} alice send outcome`).toBe('ok');
 
 			// bob only renders after every chunk decrypts and OpenStream.finalize
 			// verifies the stream, so a visible peer card is proof of an intact
 			// end-to-end transfer.
 			const peerCard = bob.locator('#chat-history li.msg.peer .file-card').filter({ hasText: name });
-			await expect(peerCard.locator('.file-name')).toHaveText(name, { timeout: 240_000 });
+			await timeStep(
+				`${browserName} ${label} receiver render`,
+				() => expect(peerCard.locator('.file-name')).toHaveText(name, { timeout: transferTimeoutMs }),
+			);
 			await expect(peerCard.locator('.file-meta')).toContainText(wireLabel);
 			await expect(bob.locator('#chat-history')).not.toContainText('file decrypt failed');
 
@@ -70,9 +84,11 @@ for (const { label, bytes, wireLabel } of SIZES) {
 // WINDOW of min(acked) across bob AND carol, so a transfer this far past the
 // window only completes if credit from both peers advances. 180 MiB (~2880
 // frames) is the real-world case and is many windows deep. Same COVCOM_STRESS gate.
-test('stress attach 180 MiB to two recipients: both round-trip with no crash', async ({ browser }, testInfo) => {
+test('stress attach 180 MiB to two recipients: both round-trip with no crash', async ({ browser, browserName }, testInfo) => {
 	test.skip(process.env.COVCOM_STRESS !== '1', 'set COVCOM_STRESS=1 to run the stress sweep');
-	testInfo.setTimeout(300_000);
+
+	const transferTimeoutMs = 240_000;
+	testInfo.setTimeout(transferTimeoutMs + 120_000);
 
 	const bytes = 180 * MiB;
 	const ctxA = await browser.newContext();
@@ -94,12 +110,18 @@ test('stress attach 180 MiB to two recipients: both round-trip with no crash', a
 		await expect(alice.locator('.view-chat #chat-input')).toBeVisible();
 
 		const name    = 'stress-180MiB-2rcpt.bin';
-		const outcome = await sendAndClassify(alice, name, 'application/octet-stream', bytes, 240_000);
+		const outcome = await timeStep(
+			`${browserName} 180 MiB 2-recipient sender classify`,
+			() => sendAndClassify(alice, name, 'application/octet-stream', bytes, transferTimeoutMs),
+		);
 		expect(outcome, '180 MiB 2-recipient alice send outcome').toBe('ok');
 
 		for (const [who, page] of [['bob', bob], ['carol', carol]] as const) {
 			const peerCard = page.locator('#chat-history li.msg.peer .file-card').filter({ hasText: name });
-			await expect(peerCard.locator('.file-name'), `${who} peer card`).toHaveText(name, { timeout: 240_000 });
+			await timeStep(
+				`${browserName} 180 MiB 2-recipient receiver render ${who}`,
+				() => expect(peerCard.locator('.file-name'), `${who} peer card`).toHaveText(name, { timeout: transferTimeoutMs }),
+			);
 			await expect(peerCard.locator('.file-meta')).toContainText('180.0 MB');
 			await expect(page.locator('#chat-history')).not.toContainText('file decrypt failed');
 		}
