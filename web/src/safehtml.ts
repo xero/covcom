@@ -1,8 +1,10 @@
-// A string explicitly vouched for as static, trusted HTML. The brand is
-// unforgeable from a plain string: the only way to obtain one is trustedHtml(),
-// which is the single audited chokepoint. setHtml() is the ONLY innerHTML sink
-// in the web client; every other DOM build goes through el()/createElement, so
-// a user-controlled value can never become markup.
+// A string explicitly vouched for as static, trusted HTML. The brand stops a
+// plain string from reaching an innerHTML sink by accident; it is not a hard
+// boundary (an explicit `x as unknown as SafeHtml` still forges one), so the
+// real guarantee rests on trustedHtml() being the single audited chokepoint,
+// enforced by lint/tests. setHtml() is the ONLY innerHTML sink in the web
+// client; every other DOM build goes through el()/createElement + textContent,
+// so a peer-controlled value can never become markup.
 
 declare const safeHtmlBrand: unique symbol;
 export type SafeHtml = string & { readonly [safeHtmlBrand]: true };

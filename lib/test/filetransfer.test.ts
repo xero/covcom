@@ -164,4 +164,13 @@ describe('relay tag framing + file ack codec', () => {
 		const { tag } = readRelayTag(encodeFileAck('abc', 0));
 		expect(tag).not.toBe(RELAY_TAG_SEED);
 	});
+
+	test('decodeFileAck never throws on hostile input, returns an ignored sentinel', () => {
+		const sentinel = { fileId: '', seq: -1 };
+		expect(decodeFileAck(new TextEncoder().encode('not json'))).toEqual(sentinel);
+		expect(decodeFileAck(new Uint8Array([0xff, 0xfe]))).toEqual(sentinel);
+		expect(decodeFileAck(new TextEncoder().encode('{}'))).toEqual(sentinel);
+		expect(decodeFileAck(new TextEncoder().encode('{"f":123,"s":"x"}'))).toEqual(sentinel);
+		expect(decodeFileAck(new TextEncoder().encode('null'))).toEqual(sentinel);
+	});
 });

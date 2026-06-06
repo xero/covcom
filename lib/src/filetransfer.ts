@@ -77,7 +77,17 @@ export function encodeFileAck(fileId: string, seq: number): Uint8Array {
 	return prefixTag(RELAY_TAG_FILE_ACK, new TextEncoder().encode(JSON.stringify({ f: fileId, s: seq })));
 }
 
+// Defensive: `body` is a peer-controlled relay payload, so malformed/hostile
+// input must not throw into the caller (an unguarded throw here is a trivial
+// remote DoS). On any parse failure return a sentinel both callers already
+// ignore: fileId '' misses the sendingFiles map and seq -1 fails the ack guard.
 export function decodeFileAck(body: Uint8Array): { fileId: string; seq: number } {
-	const { f, s } = JSON.parse(new TextDecoder().decode(body)) as { f: string; s: number };
-	return { fileId: f, seq: s };
+	try {
+		const v = JSON.parse(new TextDecoder().decode(body)) as { f?: unknown; s?: unknown };
+		const fileId = typeof v.f === 'string' ? v.f : '';
+		const seq    = typeof v.s === 'number' && Number.isFinite(v.s) ? v.s : -1;
+		return { fileId, seq };
+	} catch {
+		return { fileId: '', seq: -1 };
+	}
 }
