@@ -53,6 +53,11 @@ format characters used for display-name spoofing. The server rejects rather
 than sanitizes, because the username is bound by the signed identity claim and
 silently altering it would break peer verification.
 
+**Clickjacking protection on the container.** Caddy now sends
+`X-Frame-Options: DENY`. The equivalent `frame-ancestors` directive moved out of
+the web client's `<meta>` CSP, where browsers silently ignore it, into a real
+response header.
+
 ### Added
 
 **Rich text in messages.** Both clients render a markdown subset in message
@@ -87,6 +92,10 @@ against a new server and a new client against an old server. The version rides
 in plaintext as a compatibility gate, not a security boundary; the signed
 identity claims still protect against a hostile server.
 
+**Server address autofill.** The web client prefills the connection field with
+the host that served the page, which is the relay in the single-container
+deployment. Edit it to point at a decoupled relay.
+
 ### Changed
 
 **Web message rendering.** User messages render through the shared token model:
@@ -98,12 +107,24 @@ columns through a pragmatic wcwidth instead of counting code points, so wide
 CJK glyphs and emoji wrap and pad at their true width. A word wider than the
 pane is hard-split on code-point boundaries and never severs a surrogate pair.
 
+**Docker self-hosting ergonomics.** `docker/run` loads `docker/.env`, fails fast
+with a clear message when `DOMAIN` is unset instead of launching a container
+that exits on startup, and always builds with `--no-cache` so a rebuild never
+serves a stale web client. The image also points Caddy's storage at the mounted
+`/data` and `/config` volumes, so the TLS certificate and ACME account survive a
+restart.
+
 ### Fixed
 
 **Large encrypted file transfer no longer crashes the renderer.** Files stream
 as bounded per-chunk frames instead of one monolithic sealed frame, so a big
 attachment no longer balloons renderer memory or exceeds the relay's
 message-size cap. Multi-hundred-megabyte files now transfer end to end.
+
+**Secure WebSocket scheme on HTTPS deployments.** The web client derives the
+socket scheme from the page it loaded, so an HTTPS page connects over `wss://`
+instead of attempting a `ws://` connection that the CSP and mixed-content rules
+block.
 
 ---
 

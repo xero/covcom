@@ -56,10 +56,14 @@ docker pull xerostyle/covcom:latest
 docker run -d \
   -p 80:80 -p 443:443 \
   -e DOMAIN=chat.example.com \
+  -v covcom_caddy_data:/data \
+  -v covcom_caddy_config:/config \
   xerostyle/covcom:latest
 ```
 
-Caddy auto-provisions a TLS certificate for `$DOMAIN` on first start.
+Caddy auto-provisions a TLS certificate for `$DOMAIN` on first start and stores
+it on the `covcom_caddy_data` volume, so it survives restarts and avoids
+Let's Encrypt rate limits.
 
 Open https://chat.example.com in a browser. Create a room, share the invite, & chat.
 

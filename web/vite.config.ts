@@ -51,7 +51,9 @@ function csp(): Plugin {
 					'base-uri \'none\'',
 					'object-src \'none\'',
 					'form-action \'none\'',
-					'frame-ancestors \'none\'',
+					// frame-ancestors is intentionally omitted: it is ignored in a
+					// <meta> CSP, so it is enforced as an HTTP header instead (Caddy
+					// sets X-Frame-Options: DENY in docker/entrypoint.sh).
 				].join('; ');
 
 				const meta = `<meta http-equiv="Content-Security-Policy" content="${policy}" />`;

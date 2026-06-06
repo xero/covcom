@@ -22,6 +22,10 @@ function buildMainForm(opts: MainFormOpts): HTMLElement {
 	serverInput.type = 'text';
 	serverInput.id   = 'server';
 	serverInput.placeholder = 'example.com or localhost:3000';
+	// Default to the host serving this page: in the single container Caddy serves
+	// the SPA and proxies /ws on the same origin, so this is the relay. Editable
+	// for a decoupled relay (and the Vite dev port, where the relay is :3000).
+	serverInput.value = location.host;
 	serverField.append(serverLabel, serverInput);
 
 	const usernameField = el('div', 'field');

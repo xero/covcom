@@ -128,8 +128,14 @@ docker pull xerostyle/covcom:latest
 docker run -d \
   -p 80:80 -p 443:443 \
   -e DOMAIN=chat.example.com \
+  -v covcom_caddy_data:/data \
+  -v covcom_caddy_config:/config \
   xerostyle/covcom:latest
 ```
+
+The `covcom_caddy_data` volume persists Caddy's TLS certificate and ACME
+account across restarts. Without it, Caddy re-provisions on every start and
+will hit Let's Encrypt rate limits.
 
 Published to [Docker Hub](https://hub.docker.com/r/xerostyle/covcom) as
 `xerostyle/covcom` and [GHCR](https://github.com/xero/covcom/pkgs/container/covcom)
@@ -144,13 +150,21 @@ image.
 bun build:docker
 ```
 
+This always builds clean (`--no-cache`), so a rebuild never serves a stale web
+client out of a cached image layer.
+
 **Run locally:**
+
+`DOMAIN` is required; the container exits immediately without it. Pass it
+inline, or put it in `docker/.env` (copy `docker/.env.example`), which
+`docker/run` loads automatically.
 
 ```sh
 DOMAIN=chat.example.com bun run:docker
 ```
 
-Caddy provisions a TLS certificate for `$DOMAIN` on first start. The
+Caddy provisions a TLS certificate for `$DOMAIN` on first start and stores it
+on the mounted `covcom_caddy_data` volume, so it survives restarts. The
 container listens on ports 80 and 443.
 
 **Stop:**
@@ -178,13 +192,10 @@ DOMAIN=chat.example.com bun run:docker
 ```
 
 On the fallback path, `docker/run` builds a local `covcom` image and runs it
-directly, forwarding `DOMAIN`, `PORT`, `ADMIN_TOKEN`, and `MAX_ROOM_SIZE`
-and mounting the `covcom_caddy_data` and `covcom_caddy_config` volumes for
-Caddy.
-
-> [!NOTE]
-> The fallback `docker run` does not forward `ROOM_TTL`, so it stays at the
-> default. Use the `docker compose` path if you need to set `ROOM_TTL`.
+directly, forwarding `DOMAIN`, `PORT`, `ADMIN_TOKEN`, `ROOM_TTL`, and
+`MAX_ROOM_SIZE` from the environment or `docker/.env`, and mounting the
+`covcom_caddy_data` and `covcom_caddy_config` volumes so Caddy's certificate
+survives restarts.
 
 ### Production (no docker)
 

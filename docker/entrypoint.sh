@@ -19,6 +19,9 @@ esac
 
 cat > /etc/caddy/Caddyfile <<EOF
 ${SITE_ADDR} {
+	# Clickjacking protection: frame-ancestors is ignored in the SPA's <meta>
+	# CSP, so enforce the equivalent as a real response header here.
+	header X-Frame-Options "DENY"
 	@ws path /ws
 	handle @ws {
 		reverse_proxy localhost:${PORT:-3000}

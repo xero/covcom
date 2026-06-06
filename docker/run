@@ -3,6 +3,14 @@ set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cmd="${1:-}"
 
+# Load docker/.env so DOMAIN and friends are available to both the compose and
+# the bare `docker run` paths (compose auto-loads it; the run path needs this).
+if [ -f docker/.env ]; then
+	set -a
+	. ./docker/.env
+	set +a
+fi
+
 command -v docker >/dev/null 2>&1 || {
 	echo "docker not found. install: https://docs.docker.com/get-docker/" >&2
 	exit 1
@@ -17,22 +25,29 @@ have_compose() { docker compose version >/dev/null 2>&1; }
 case "$cmd" in
 build)
 	if have_compose; then
-		docker compose -f docker/docker-compose.yml build
+		docker compose -f docker/docker-compose.yml build --no-cache
 	else
-		docker build -t covcom -f docker/Dockerfile .
+		docker build --no-cache -t covcom -f docker/Dockerfile .
 	fi
 	;;
 up)
+	if [ -z "${DOMAIN:-}" ]; then
+		echo "ERROR: DOMAIN is required (the container exits immediately without it)." >&2
+		echo "  set it in docker/.env (DOMAIN=your.covcom.domain) or run:" >&2
+		echo "  DOMAIN=your.covcom.domain sh docker/run up" >&2
+		exit 1
+	fi
 	if have_compose; then
 		docker compose -f docker/docker-compose.yml up
 	else
 		docker image inspect covcom >/dev/null 2>&1 \
-			|| docker build -t covcom -f docker/Dockerfile .
+			|| docker build --no-cache -t covcom -f docker/Dockerfile .
 		docker rm -f covcom >/dev/null 2>&1 || true
 		docker run -d -p 80:80 -p 443:443 \
-			-e DOMAIN="${DOMAIN:-}" \
+			-e DOMAIN="${DOMAIN}" \
 			-e PORT="${PORT:-3000}" \
 			-e ADMIN_TOKEN="${ADMIN_TOKEN:-}" \
+			-e ROOM_TTL="${ROOM_TTL:-24}" \
 			-e MAX_ROOM_SIZE="${MAX_ROOM_SIZE:-20}" \
 			-v covcom_caddy_data:/data \
 			-v covcom_caddy_config:/config \

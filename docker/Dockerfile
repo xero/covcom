@@ -21,17 +21,28 @@ COPY web/ ./web/
 RUN bun run --cwd web build
 
 # ── Stage 2: final image ───────────────────────────────────────────────────
-FROM caddy:2-alpine AS covcom
+FROM caddy:2-alpine AS caddy
 FROM oven/bun:1
 
 # Setup
 COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
 RUN mkdir -p /etc/caddy /data /config
+# Point Caddy's storage at the mounted volumes so ACME certs/account survive
+# restarts (the official caddy image sets these; the bun base does not).
+ENV XDG_DATA_HOME=/data XDG_CONFIG_HOME=/config
 WORKDIR /app
 
-# Server
-COPY server/package.json server/bun.lock* ./server/
-RUN cd server && bun i --frozen-lockfile
+# Server + its workspace dependency (@covcom/lib -> leviathan-crypto).
+# Install from the workspace root with every workspace manifest present so the
+# frozen lockfile validates; --production drops devDeps (no vite/eslint/playwright
+# leak into the runtime image).
+COPY package.json bun.lock* ./
+COPY lib/package.json ./lib/
+COPY web/package.json ./web/
+COPY cli/package.json ./cli/
+COPY server/package.json ./server/
+RUN bun i --production --frozen-lockfile --ignore-scripts
+COPY lib/ ./lib/
 COPY server/ ./server/
 
 # Web client dist (built in stage 1)

@@ -58,9 +58,15 @@ function b64dec(s: string): Uint8Array {
 }
 
 function wsUrl(server: string): string {
-	const host  = server.split(':')[0];
-	const local = host === 'localhost' || host.startsWith('127.');
-	return `${local ? 'ws' : 'wss'}://${server}/ws`;
+	// Scheme follows the page's security context, not the target hostname: an
+	// https page must speak wss (mixed-content + CSP both forbid ws), a plain
+	// http page speaks ws. This is the single rule that holds for the same-origin
+	// container (wss://DOMAIN/ws via Caddy) and plaintext self-host alike.
+	const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+	// Tolerate a pasted scheme prefix / trailing slash so `https://host` and
+	// `host/` both normalize to the bare authority before we build the ws URL.
+	const host = server.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/\/+$/, '');
+	return `${scheme}://${host}/ws`;
 }
 
 function errMsg(err: unknown): string {

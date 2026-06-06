@@ -154,7 +154,14 @@ image.
 bun build:docker
 ```
 
+Builds clean every time (`--no-cache`), so a rebuild never serves a stale web
+client out of a cached image layer.
+
 **Run locally:**
+
+`DOMAIN` is required; the container exits immediately without it. Pass it
+inline, or put it in `docker/.env` (copy `docker/.env.example`), which
+`docker/run` loads automatically.
 
 ```sh
 DOMAIN=chat.example.com bun run:docker
@@ -177,23 +184,19 @@ docker compose -f docker/docker-compose.yml logs -f
 
 ### docker (raw)
 
-For environments without `docker compose`. The compose file is the
-recommended path; these are escape hatches.
-
-**Build:**
-
-```sh
-bun build:docker:raw
-```
-
-**Run:**
+For environments without `docker compose`. There is no separate command:
+`bun build:docker` and `bun run:docker` detect the missing compose plugin and
+fall back to plain `docker build` and `docker run` automatically.
 
 ```sh
-DOMAIN=chat.example.com bun run:docker:raw
+bun build:docker
+DOMAIN=chat.example.com bun run:docker
 ```
 
-The raw run forwards `DOMAIN`, `PORT`, `ADMIN_TOKEN`, and `MAX_ROOM_SIZE`
-from the environment and mounts named volumes for Caddy data and config.
+On the fallback path, `docker/run` builds a local `covcom` image and runs it,
+forwarding `DOMAIN`, `PORT`, `ADMIN_TOKEN`, `ROOM_TTL`, and `MAX_ROOM_SIZE`
+from the environment or `docker/.env`, and mounting the `covcom_caddy_data`
+and `covcom_caddy_config` volumes so Caddy's certificate survives restarts.
 
 ### production (no docker)
 
@@ -206,6 +209,12 @@ bun start:server
 
 This invokes `bun run src/index.ts` in the `server/` workspace and listens
 on `localhost:$PORT` (default `3000`).
+
+> [!WARNING]
+> The bundled Caddy provides TLS termination and the `X-Frame-Options: DENY`
+> response header. On this path the Bun server provides neither, so your reverse
+> proxy must terminate TLS and set the equivalent security headers. See
+> [Deployment Hardening](../SECURITY.md#deployment-hardening).
 
 ### development
 
@@ -361,7 +370,9 @@ filenames get a numeric suffix.
 
 **Create a room:**
 
-1. Enter a server address and a username, then select **Create Room**.
+1. Enter a server address and a username, then select **Create Room**. The web
+   client prefills the server field with the host serving the page, which is the
+   relay in the single-container deployment; edit it to target a separate relay.
 2. The lobby screen shows an armored invite block, a QR code of the same
    bytes, and copy/download buttons. Share it via any channel.
 3. The screen waits until a peer joins.

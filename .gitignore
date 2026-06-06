@@ -58,6 +58,7 @@ $RECYCLE.BIN/
 .dynamodb/
 .env.development.local
 .env.local
+docker/.env
 .env.production.local
 .env.test.local
 .eslintcache

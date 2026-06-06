@@ -6,6 +6,7 @@
 >   - [Scope]
 > - [Cryptographic Foundations]
 > - [Threat Model]
+> - [Deployment Hardening]
 
 ---
 
@@ -150,11 +151,53 @@ Keys group messaging model.
 > [!NOTE]
 > See the full Dolev-Yao style adversary analysis in [THREAT-MODEL.md][threat-model-doc].
 
+---
+
+## Deployment Hardening
+
+The protocol's guarantees are cryptographic and hold against the network. The
+Docker image adds a hardened transport and delivery layer on top, so a default
+deployment does not weaken them.
+
+**Automatic TLS.** Caddy terminates TLS and provisions a certificate over ACME
+for `$DOMAIN` on first start. Plain HTTP on port 80 redirects to HTTPS. The
+certificate and ACME account live on the `covcom_caddy_data` volume, so a
+restart reuses them instead of re-provisioning and tripping Let's Encrypt rate
+limits.
+
+**Single-origin relay.** The container serves the web client and proxies the
+WebSocket relay on one origin. The client derives the socket scheme from the
+page it loaded, so an HTTPS page always connects over `wss://` and never falls
+back to plaintext `ws://`.
+
+**Strict Content Security Policy.** The built client ships `default-src 'none'`
+with no `worker-src`, a hashed inline script instead of `'unsafe-inline'`, and a
+`connect-src` confined to the same origin, `wss:`, and loopback `ws://`. All
+cryptography runs as main-thread WASM under `wasm-unsafe-eval`; no worker is
+spawned. COVCOM is the [single-file SPA worked example][csp-spa-example] in
+leviathan-crypto's [CSP reference][csp-doc], which covers the full policy and
+its rationale.
+
+**Clickjacking protection.** Caddy sends `X-Frame-Options: DENY`. The equivalent
+`frame-ancestors` directive is silently ignored when delivered in a `<meta>`
+CSP, so the protection is enforced as a real response header.
+
+**Runtime-only configuration.** The image takes no build arguments. Secrets such
+as `ADMIN_TOKEN` are passed as runtime environment variables and are never baked
+into an image layer. The runtime image carries no build or development tooling.
+
+> [!WARNING]
+> The TLS termination and the `X-Frame-Options` header come from the bundled
+> Caddy, not the Bun server. If you run the server directly behind your own
+> reverse proxy (the no-docker path), you must terminate TLS and set the
+> equivalent security headers yourself.
+
 [supported versions]:         #supported-versions
 [reporting a vulnerability]:  #reporting-a-vulnerability
 [scope]:                      #scope
 [cryptographic foundations]:  #cryptographic-foundations
 [threat model]:               #threat-model
+[deployment hardening]:       #deployment-hardening
 [advisory]:                   https://github.com/xero/covcom/security/advisories/new
 [pgp]:                        https://0w.nz/pgp.pub
 [leviathan-crypto]:           https://github.com/xero/leviathan-crypto
@@ -169,3 +212,5 @@ Keys group messaging model.
 [crypto-doc]:                 ./docs/CRYPTOGRAPHY.md
 [protocol-doc]:               ./docs/PROTOCOL.md
 [threat-model-doc]:           ./docs/THREAT-MODEL.md
+[csp-doc]:                    https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md
+[csp-spa-example]:            https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md#single-file-spa-no-pool
