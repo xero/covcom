@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { createRoom, joinRoom, sendAndClassify, timeStep, watchCrash } from './helpers.ts';
+import { MiB, transferTimeout } from './timing.ts';
 
 // Large-attachment round-trips, the at-scale proof that chunked streaming fixed
 // the "Aw, Snap!" crash. GATED behind COVCOM_STRESS=1 so `bun test:e2e` never
@@ -17,7 +18,6 @@ import { createRoom, joinRoom, sendAndClassify, timeStep, watchCrash } from './h
 // source allocation lives in the renderer under test rather than crossing the
 // Node/CDP bridge.
 
-const MiB = 1024 * 1024;
 const SIZES: { label: string; bytes: number; wireLabel: string }[] = [
 	{ label: '64 MiB',  bytes: 64 * MiB,   wireLabel: '64.0 MB' },
 	{ label: '180 MiB', bytes: 180 * MiB,  wireLabel: '180.0 MB' },
@@ -29,13 +29,9 @@ for (const { label, bytes, wireLabel } of SIZES) {
 	test(`stress attach ${label}: round-trips with no crash`, async ({ browser, browserName }, testInfo) => {
 		test.skip(process.env.COVCOM_STRESS !== '1', 'set COVCOM_STRESS=1 to run the stress sweep');
 
-		// Only 1 GiB is flaky in CI, and only on Firefox; smaller sizes already
-		// pass at 240s. Give the giant case more budget rather than inflating
-		// every transfer. testInfo gets the transfer budget plus room for setup
-		// and teardown, still well inside the job's 45-minute limit.
-		const transferTimeoutMs = bytes >= 1024 * MiB
-			? (browserName === 'firefox' ? 480_000 : 420_000)
-			: 240_000;
+		// Per-engine budget scaled by size; testInfo adds setup/teardown room and
+		// stays well inside the job's 45-minute limit even for firefox 1 GiB.
+		const transferTimeoutMs = transferTimeout(bytes, browserName);
 		testInfo.setTimeout(transferTimeoutMs + 120_000);
 
 		const ctxA = await browser.newContext();
@@ -87,10 +83,10 @@ for (const { label, bytes, wireLabel } of SIZES) {
 test('stress attach 180 MiB to two recipients: both round-trip with no crash', async ({ browser, browserName }, testInfo) => {
 	test.skip(process.env.COVCOM_STRESS !== '1', 'set COVCOM_STRESS=1 to run the stress sweep');
 
-	const transferTimeoutMs = 240_000;
+	const bytes = 180 * MiB;
+	const transferTimeoutMs = transferTimeout(bytes, browserName);
 	testInfo.setTimeout(transferTimeoutMs + 120_000);
 
-	const bytes = 180 * MiB;
 	const ctxA = await browser.newContext();
 	const ctxB = await browser.newContext();
 	const ctxC = await browser.newContext();

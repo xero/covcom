@@ -30,7 +30,7 @@
 		"versionbump": "bun run cicd.ts --versionbump",
 		"fix": "bunx eslint . --fix",
 		"lint": "bunx eslint .",
-		"typecheck": "bunx tsc --noEmit -p tsconfig.json && bunx tsc --noEmit -p lib/tsconfig.json && bunx tsc --noEmit -p server/tsconfig.json && bunx tsc --noEmit -p web/tsconfig.json && bunx tsc --noEmit -p web/tsconfig.tools.json && bunx tsc --noEmit -p cli/tsconfig.json",
+		"typecheck": "bunx tsc --noEmit -p tsconfig.json && bunx tsc --noEmit -p lib/tsconfig.json && bunx tsc --noEmit -p server/tsconfig.json && bunx tsc --noEmit -p web/tsconfig.json && bunx tsc --noEmit -p web/tsconfig.tools.json && bunx tsc --noEmit -p web/test/e2e/tsconfig.json && bunx tsc --noEmit -p cli/tsconfig.json",
 		"build:docker": "sh ./docker/run build",
 		"run:docker": "sh ./docker/run up",
 		"bundle:cli": "bun run --cwd cli bundle",
