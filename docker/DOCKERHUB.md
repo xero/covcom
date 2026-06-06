@@ -39,22 +39,11 @@ COVCOM releases in tandem with its cryptographic library
 [leviathan-crypto](https://github.com/xero/leviathan-crypto/).
 A vulnerability in either project triggers a coordinated release of both.
 
-### Supported Version
-
-| Tag     | Alias    |
-|---------|----------|
-| `3.0.1` | `latest` |
-
-<!-- DEPRECATED-START -->
-### Deprecated Versions
-
-| Tag     | Reason |
-|---------|--------|
-| `3.0.0` | ... |
-| `2.0.0` | unreleased |
-| `1.0.0` | XChaCha20 seal wasn't key-committing, thus vulnerable to salamander style partitioning-oracle attacks |
-| `0.0.1` | public beta |
-<!-- DEPRECATED-END -->
+| Tag | Status       | Reason         |
+|-----|--------------|----------------|
+| [3.0.0](https://github.com/xero/covcom/blob/main/CHANGELOG.md#v300) | ✓ supported  | Latest version |
+| [1.0.0](https://github.com/xero/covcom/blob/main/CHANGELOG.md#v100) | ✗ deprecated | XChaCha20 seal wasn't key-committing, thus vulnerable to salamander style partitioning-oracle attacks |
+| 0.0.1 | ✗ deprecated | public beta |
 
 ---
 

@@ -17,11 +17,11 @@ so only the current release is supported. A vulnerability in either project
 triggers a coordinated release that immediately deprecates the previous
 version.
 
-| Version        | Status       | Reason |
-|----------------|--------------|--------|
-| [v3.0.1][v301] | ✓ supported  | Latest version |
-| [v3.0.0][v300] | ✗ deprecated | No peer-text injection hardening (web XSS/mXSS, CLI terminal-escape injection, and display-name spoofing) and a deprecated pre-negotiation wire protocol |
-| [v1.0.x][v100] | ✗ deprecated | XChaCha20 seal wasn't key-committing, thus vulnerable to salamander style partitioning-oracle attacks |
+| Version | Status       | Reason         |
+|---------|--------------|----------------|
+| [v3.0.0](https://github.com/xero/covcom/blob/main/CHANGELOG.md#v300) | ✓ supported  | Latest version |
+| [v1.0.0](https://github.com/xero/covcom/blob/main/CHANGELOG.md#v100) | ✗ deprecated | XChaCha20 seal wasn't key-committing, thus vulnerable to salamander style partitioning-oracle attacks |
+| v0.0.1 | ✗ deprecated | public beta |
 
 
 > [!CAUTION]
@@ -155,9 +155,6 @@ Keys group messaging model.
 [scope]:                      #scope
 [cryptographic foundations]:  #cryptographic-foundations
 [threat model]:               #threat-model
-[v301]:                       https://github.com/xero/covcom/blob/main/CHANGELOG.md#v301
-[v300]:                       https://github.com/xero/covcom/blob/main/CHANGELOG.md#v300
-[v100]:                       https://github.com/xero/covcom/blob/main/CHANGELOG.md#v100
 [advisory]:                   https://github.com/xero/covcom/security/advisories/new
 [pgp]:                        https://0w.nz/pgp.pub
 [leviathan-crypto]:           https://github.com/xero/leviathan-crypto

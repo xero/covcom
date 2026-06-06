@@ -44,35 +44,36 @@
 
 ## How it works
 
-Every message is encrypted with XChaCha20-Poly1305. That is the core cipher.
+Every message is encrypted with [XChaCha20-Poly1305](https://github.com/xero/covcom/wiki/CRYPTOGRAPHY#message-encryption). That is the core cipher.
 Everything else exists to get a fresh, unique XChaCha20 key to the right
 people at the right time.
 
-Each participant owns one send chain: a stateful `KDFChain` that steps
+Each participant owns one send chain: a stateful [`KDFChain`](https://github.com/xero/leviathan-crypto/wiki/ratchet#kdfchain) that steps
 forward on every message via HKDF-SHA-256, producing a unique 32-byte key
-and wiping the previous chain key. Message keys are wiped after use.
+and [wiping](https://github.com/xero/leviathan-crypto/wiki/utils#wipe) the previous chain key. Message keys are wiped after use.
 Past keys are unrecoverable from current state.
 
-Epoch transitions use ML-KEM-768 (FIPS 203). When a ratchet fires, the
+Epoch transitions use [ML-KEM-768](https://github.com/xero/leviathan-crypto/wiki/mlkem) (FIPS 203). When a [ratchet fires](https://github.com/xero/covcom/wiki/PROTOCOL#the-ratchet), the
 sender generates a shared seed, KEM-encapsulates it separately for each
-peer, and broadcasts the result. Every peer derives the same new chain from
+peer, and [broadcasts the result](https://github.com/xero/covcom/wiki/CRYPTOGRAPHY#chain-seed-distribution). Every peer derives the same new chain from
 that seed. The KEM ciphertext travels in-band; the decapsulator's keypair
 rotates immediately after use.
 
 The group uses a Sender Keys model: one send chain per participant, not one
 per pair. O(N) state regardless of room size.
 
-Every session also mints a fresh Ed25519 signing keypair on construction.
-Identity claims and every broadcast are signed under it. Each peer's
-claims form a BLAKE3-chained log: every claim binds the previous payload's
-hash, so the server cannot reorder, drop, or substitute a structural event
-mid-session without breaking the chain. The session signing public key
-derives a fingerprint surface (`BLAKE3(sessionPk, 16)` → eight OKLCh
-swatches + 16-char hex) for out-of-band verification. Both clients expose
-a sidebar with two panels: **Verify** lists your fingerprint and every
-peer's side-by-side; **Event Log** captures every inbound/outbound
-WebSocket frame and every crypto action with redacted payloads and
-expandable detail rows.
+Every session mints a fresh [Ed25519](https://github.com/xero/leviathan-crypto/wiki/signaturesuite#ed25519-suites) signing keypair on construction. Every
+identity claim and every broadcast is [signed](https://github.com/xero/leviathan-crypto/wiki/signing) under it, so each peer can
+authenticate where a message came from.
+
+Each peer's claims form a [BLAKE3](https://github.com/xero/leviathan-crypto/wiki/blake3#blake3)-chained log: every claim binds the previous
+payload's hash. The server cannot reorder, drop, or substitute a structural
+event mid-session without breaking the chain.
+
+The signing public key derives a [fingerprint](https://github.com/xero/covcom/wiki/CRYPTOGRAPHY#fingerprint-derivation) for out-of-band verification:
+`BLAKE3(sessionPk, 16)` rendered as eight OKLCh swatches and a 16-char hex
+string. Compare it with your peers over a trusted channel to rule out a
+machine-in-the-middle.
 
 This implements the [Sparse Post-Quantum Ratchet](https://signal.org/docs/specifications/doubleratchet/#the-sparse-post-quantum-ratchet) from Signal's Double Ratchet spec (§5, Revision 4). For more detail, see [PROTOCOL.md](./docs/PROTOCOL.md).
 
@@ -166,23 +167,24 @@ docker compose -f docker/docker-compose.yml logs -f
 
 ### Docker (raw)
 
-For environments without `docker compose`. The compose file is the
-recommended path; these are escape hatches.
-
-**Build:**
-
-```sh
-bun build:docker:raw
-```
-
-**Run:**
+The same `bun build:docker` and `bun run:docker` commands work without
+`docker compose`. When compose is absent, `docker/run` falls back to plain
+`docker build` and `docker run` automatically. There is no separate command
+to learn.
 
 ```sh
-DOMAIN=chat.example.com bun run:docker:raw
+bun build:docker
+DOMAIN=chat.example.com bun run:docker
 ```
 
-The raw run forwards `DOMAIN`, `PORT`, `ADMIN_TOKEN`, and `MAX_ROOM_SIZE`
-from the environment and mounts named volumes for Caddy data and config.
+On the fallback path, `docker/run` builds a local `covcom` image and runs it
+directly, forwarding `DOMAIN`, `PORT`, `ADMIN_TOKEN`, and `MAX_ROOM_SIZE`
+and mounting the `covcom_caddy_data` and `covcom_caddy_config` volumes for
+Caddy.
+
+> [!NOTE]
+> The fallback `docker run` does not forward `ROOM_TTL`, so it stays at the
+> default. Use the `docker compose` path if you need to set `ROOM_TTL`.
 
 ### Production (no docker)
 
@@ -257,6 +259,15 @@ bun run --cwd web preview
 Serves the contents of `web/dist/` locally for smoke-testing the bundled
 output.
 
+The interface mirrors the CLI: a chat pane plus the **Verify** and
+**Event Log** sidebars. **Verify** lists your fingerprint and every peer's
+side by side; **Event Log** records every inbound and outbound WebSocket
+frame and crypto action, with redacted payloads and expandable detail rows.
+Drag the divider between the chat and sidebar to resize, or double-click it
+to reset. The eye button in the header hides or shows system messages
+(joins, leaves, ratchets). Drag a file anywhere onto an open chat to send
+it; drop a `.room` file on the lobby to load an invite.
+
 ---
 
 ## CLI client
@@ -320,9 +331,15 @@ interactively.
 `copyCmd` sets the clipboard binary used on the lobby screen. If unset, the
 CLI probes for `pbcopy`, `xclip`, `xsel`, and `wl-copy` in that order.
 
+`showSystem` toggles whether system messages (peer joins, leaves, and ratchet
+events) appear in the transcript. It defaults to `true`.
+
 `theme` accepts any subset of the theme type. Each slot takes one of:
 `{ "type": "ansi16", "n": 0-15 }`, `{ "type": "256", "n": 0-255 }`, or
 `{ "type": "hex", "value": "#rrggbb" }`.
+
+> [!TIP]
+> The full list of config settings and color theme names are defined in the [CLI-SPEC](https://github.com/xero/covcom/wiki/CLI-SPEC#defaults)
 
 ### Navigation
 
@@ -339,6 +356,19 @@ When the sidebar has focus, `↑/↓` move selection in the event log, `PgUp/PgD
 page through, `Enter` expands the selected entry's details, and `+`/`-` step
 the sidebar width by 5%. `Esc` closes the sidebar.
 
+**Slash commands.** Anything you type that starts with `/` is a command;
+everything else is sent as a message. `/help` (or `/?`) lists them.
+
+| Command                         | Action                                  |
+|---------------------------------|-----------------------------------------|
+| `/help`, `/?`                   | Show the command list                   |
+| `/exit`, `/quit`, `/q`, `/part` | Quit and wipe the session               |
+| `/ratchet`                      | Rotate keys (same as `Ctrl+R`)          |
+| `/events`                       | Toggle the event-log sidebar (`Ctrl+E`) |
+| `/verify`                       | Toggle the verify sidebar (`Ctrl+V`)    |
+
+An unrecognized command prints `unknown command: <name>. type /help for a list`.
+
 Files attach via the `+` button. Type or paste a path and use `Tab` for
 completion. Received files save to the current working directory; existing
 filenames get a numeric suffix.
@@ -354,6 +384,13 @@ filenames get a numeric suffix.
    bytes, and copy/download buttons. Share it via any channel.
 3. The screen waits until a peer joins.
 
+Sample armored invite:
+```
+-----BEGIN COVCOM INVITE-----
+AWU5YTYyMWVhMzQwOTM2MDRkMTM5M2MxNTQ0ZDBjNjg0gCIiZMnOHFyPCn5zIfaLsGNvdmNvbS4zeGkuY2x1Yg==
+-----END COVCOM INVITE-----
+```
+
 **Join a room:**
 
 1. Enter a username and select **Join Room**.
@@ -364,9 +401,23 @@ filenames get a numeric suffix.
 Once both sides complete the handshake, the chat opens. The server has relayed
 a sequence of encrypted blobs and learned nothing about the content.
 
+Clients and the server negotiate a wire-protocol version at create and join
+time. If they disagree, the server refuses the connection up front and reports
+its own version, so a mismatched client sees "This server is running a
+different version" instead of a cryptic handshake failure. This is a
+compatibility gate, not a security boundary.
+
 Late joiners receive current epoch seeds from all present members and enter
 the session at whatever epoch each sender is at. Messages sent before you
 joined are not recoverable. This is forward secrecy working as intended.
+
+The connection survives drops. On network loss the client shows "connection
+lost; reconnecting…" and retries with exponential backoff, then shows
+"connection restored" once it reconnects; the chat stays mounted the whole
+time. Peers joining, leaving, and reconnecting appear as system messages. A
+peer who reconnects with a changed fingerprint is flagged "reconnected (fp
+changed)" so you can re-verify them. A join past `MAX_ROOM_SIZE` is refused
+with "Room is full", and empty rooms are pruned after `ROOM_TTL` hours.
 
 ---
 
@@ -374,15 +425,15 @@ joined are not recoverable. This is forward secrecy working as intended.
 
 Deeper references for users, auditors, contributors, and the curious.
 
-| Document                                                                  | Purpose                                                              |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [USAGE](./docs/USAGE.md)                                                  | Client and server applications development and runtime help          |
-| [PROTOCOL](./docs/PROTOCOL.md)                                            | Cipher, chains, ratchet, group model, session lifecycle, server role |
-| [CRYPTOGRAPHY](./docs/CRYPTOGRAPHY.md)                                    | Primitives, KDF chains, wire format, invite encoding                 |
-| [THREAT-MODEL](./docs/THREAT-MODEL.md)                                    | Principals, adversary tiers, guarantees, non-goals                   |
-| [CLI-SPEC](./docs/CLI-SPEC.md)                                            | CLI architecture, rendering, input, widgets, views, & color system   |
-| [SECURITY-POLICY](./SECURITY.md)                                          | Supported versions, disclosure policy, cryptographic foundation      |
-| [DIAGRAM](https://xero.github.io/covcom/diagram.html)                     | Animated visualization of a session: establishment, epochs, and reconnect ceremonies |
+| Document                                              | Purpose                                                               |
+| ----------------------------------------------------- | --------------------------------------------------------------------- |
+| [USAGE](./docs/USAGE.md)                              | Client and server applications development and runtime help           |
+| [PROTOCOL](./docs/PROTOCOL.md)                        | Cipher, chains, ratchet, group model, session lifecycle, server role  |
+| [CRYPTOGRAPHY](./docs/CRYPTOGRAPHY.md)                | Primitives, KDF chains, wire format, invite encoding                  |
+| [THREAT-MODEL](./docs/THREAT-MODEL.md)                | Principals, adversary tiers, guarantees, non-goals                    |
+| [CLI-SPEC](./docs/CLI-SPEC.md)                        | CLI architecture, rendering, input, widgets, views, & color system    |
+| [SECURITY-POLICY](./SECURITY.md)                      | Supported versions, disclosure policy, cryptographic foundation       |
+| [DIAGRAM](https://xero.github.io/covcom/diagram.html) | Animated and annotated visualization of a complete three peer session |
 
 > [!TIP]
 > Documentation is available in the repo `./docs` folder and published to the project [wiki](https://github.com/xero/covcom/wiki).
@@ -391,16 +442,17 @@ Deeper references for users, auditors, contributors, and the curious.
 
 ## Development
 
-**Run all unit tests:**
+**Run the full test suite:**
 
 ```sh
 bun run test
 ```
 
-This runs `test:server`, `test:lib`, `test:web`, and `test:cli` in sequence
-(each via `bun run`). Note the `bun run` prefix: a bare `bun test` invokes
-Bun's built-in runner with the script name treated as a path filter, not the
-package script.
+This runs `test:server`, `test:lib`, `test:web`, `test:cli`, and the
+Playwright `test:e2e` suite in sequence, each via `bun run`. Note the
+`bun run` prefix: a bare `bun test` invokes Bun's built-in runner with the
+script name treated as a path filter, not the package script. The e2e run
+needs Chromium installed once (see below).
 
 **Run tests for a single package:**
 
@@ -411,7 +463,7 @@ bun run test:web        # web client (store, session, bridge, views) via happy-d
 bun run test:cli        # CLI widgets, key parsing, state machine, event log
 ```
 
-**Run the end-to-end test (Playwright):**
+**Run the end-to-end test on its own (Playwright):**
 
 ```sh
 bunx playwright install chromium   # one time
@@ -420,14 +472,43 @@ bun run test:e2e
 
 `test:e2e` auto-starts the Bun broker and the Vite dev server, then drives two
 browser contexts through a real two-party encrypted chat (create → invite →
-join → exchange messages → verify fingerprints). It is not part of `bun run test`
-because it needs running servers and a browser.
+join → exchange messages → verify fingerprints). Run it directly while
+iterating; `bun run test` runs it last as part of the full suite.
 
-**Lint and autofix:**
+**Lint:**
 
 ```sh
-bun fix
+bun lint        # report issues
+bun fix         # report and autofix
 ```
+
+**Typecheck:**
+
+```sh
+bun typecheck
+```
+
+This runs `tsc --noEmit` across every workspace (root, lib, server, web, and
+cli). `bun build:web` compiles with esbuild and does not typecheck, so run
+this separately.
+
+**Build all release artifacts:**
+
+```sh
+bun bake
+```
+
+Builds the inlined web bundle and every CLI binary (`build:web`,
+`bundle:cli`, then `build:cli:all`).
+
+**Full pre-release check:**
+
+```sh
+bun check
+```
+
+Runs `lint`, `typecheck`, `bake`, and the full test suite in one pass. This
+is the single gate to validate a release candidate.
 
 **Repository layout:**
 

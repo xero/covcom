@@ -467,7 +467,7 @@ different armor headers or binary layouts are rejected; no migration path.
 [LC-CHACHA]:   https://github.com/xero/leviathan-crypto/wiki/chacha20
 [LC-MLKEM]:    https://github.com/xero/leviathan-crypto/wiki/mlkem
 [LC-SHA2]:     https://github.com/xero/leviathan-crypto/wiki/sha2
-[LC-SIGN]:     https://github.com/xero/leviathan-crypto/wiki/sign
+[LC-SIGN]:     https://github.com/xero/leviathan-crypto/wiki/signaturesuite#ed25519-suites
 [LC-BLAKE3]:   https://github.com/xero/leviathan-crypto/wiki/blake3
 [LC-MERKLE]:   https://github.com/xero/leviathan-crypto/wiki/merkle
 [LC-FORTUNA]:  https://github.com/xero/leviathan-crypto/wiki/fortuna
