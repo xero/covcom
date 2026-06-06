@@ -2,19 +2,24 @@ name: release
 on:
   workflow_dispatch:
     inputs:
-      bump:
+      version:
         description: 'Version bump type'
         required: true
         type: choice
         options: [patch, minor, major]
+      message:
+        description: 'Deprecation message for the outgoing version'
+        required: true
+        type: string
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     if: github.ref == 'refs/heads/main'
     steps:
       - name: generate app token
@@ -29,22 +34,146 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
+      # Registry logins run first as the fail-fast credential gate: an expired
+      # Docker Hub PAT dies here, before any file is edited or image built.
+      - name: login to docker hub
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: login to ghcr
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.3.14'
+
       - name: setup node (for npm version)
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 'lts/*'
 
-      - name: configure git identity
+      - name: install
+        run: bun i
+
+      - name: capture outgoing version
+        run: echo "OLD_VERSION=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+
+      - name: bump version and deprecate previous (cicd.ts)
+        env:
+          BUMP: ${{ inputs.version }}
+          REASON: ${{ inputs.message }}
+        run: bun versionbump "$BUMP" "$REASON"
+
+      - name: capture new version
+        run: echo "NEW_VERSION=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+
+      - id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        with:
+          images: |
+            xerostyle/covcom
+            ghcr.io/xero/covcom
+          tags: |
+            type=raw,value=${{ env.NEW_VERSION }}
+            type=raw,value=latest
+
+      - name: build and push image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: sync hub readme
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: xerostyle/covcom
+          readme-filepath: ./docker/DOCKERHUB.md
+
+      # Tombstone the outgoing tag: pulling it now fails by design. Build context
+      # lives in RUNNER_TEMP so it never lands in the release commit.
+      - name: write tombstone build context
+        env:
+          REASON: ${{ inputs.message }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/tombstone"
+          cat > "$RUNNER_TEMP/tombstone/DEPRECATED.txt" <<EOF
+          DEPRECATED: ${REASON}
+          Replacement: ${NEW_VERSION}
+          EOF
+          cat > "$RUNNER_TEMP/tombstone/Dockerfile" <<EOF
+          FROM busybox
+          LABEL deprecated="true"
+          LABEL deprecated.reason="${REASON}"
+          LABEL deprecated.replacement="${NEW_VERSION}"
+          COPY DEPRECATED.txt /DEPRECATED.txt
+          ENTRYPOINT ["sh", "-c", "cat /DEPRECATED.txt >&2; exit 1"]
+          EOF
+
+      - name: build and push tombstone
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: ${{ runner.temp }}/tombstone
+          file: ${{ runner.temp }}/tombstone/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            xerostyle/covcom:${{ env.OLD_VERSION }}
+            ghcr.io/xero/covcom:${{ env.OLD_VERSION }}
+
+      - name: commit, tag, and push
         run: |
           git config user.name  "leviathan-cicd[bot]"
           git config user.email "leviathan-cicd[bot]@users.noreply.github.com"
-
-      - name: bump version
-        run: |
-          npm version ${{ inputs.bump }} -m "chore(release): v%s"
-          echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
-
-      - name: push commit and tag
-        run: |
+          git add package.json bun.lock SECURITY.md docker/DOCKERHUB.md
+          git commit -m "chore(release): v${NEW_VERSION}"
+          git tag -a "v${NEW_VERSION}" -m "release v${NEW_VERSION}"
           git push origin main
-          git push origin v${{ env.VERSION }}
+          git push origin "v${NEW_VERSION}"
+
+      - name: create github release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh release create "v${NEW_VERSION}" \
+            --title "v${NEW_VERSION}" \
+            --generate-notes \
+            --verify-tag
+
+      - name: prepend deprecation banner to previous release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REASON: ${{ inputs.message }}
+        run: |
+          set -e
+          if ! gh release view "v${OLD_VERSION}" --json body -q .body > /tmp/existing.md 2>/dev/null; then
+            echo "no release v${OLD_VERSION} to annotate; skipping"
+            exit 0
+          fi
+          {
+            echo "> [!CAUTION]"
+            echo "> **This release is deprecated.** ${REASON}"
+            echo ">"
+            echo "> Use \`${NEW_VERSION}\` instead. Pulling this image tag will fail with a runtime error by design."
+            echo ""
+            echo "---"
+            echo ""
+            cat /tmp/existing.md
+          } > /tmp/release-notes.md
+          gh release edit "v${OLD_VERSION}" --notes-file /tmp/release-notes.md
