@@ -17,8 +17,9 @@ describe('setHtml', () => {
 	});
 });
 
-// The CI-enforced backstop: CI runs `bun test` but neither eslint nor tsc, so
-// this guards the "no HTML-string path" convention directly. It fails if any
+// The test-suite backstop: CI runs lint and typecheck (the quality job in
+// .github/workflows/test.yml), but this additionally enforces the "no
+// HTML-string path" convention at runtime. It fails if any
 // web/src file reaches a raw HTML sink; the only sanctioned one lives in
 // safehtml.ts. The patterns are dot-anchored so prose like rich.ts's "no
 // innerHTML anywhere" comment is not a false positive.

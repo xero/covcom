@@ -41,9 +41,16 @@ jobs:
       - name: unit tests (server, lib, web, cli)
         run: bun run test
 
+  # One job per engine (chromium/firefox/webkit) so the three run in tandem on
+  # separate runners rather than serially in one. fail-fast: false keeps a
+  # WebKit-only break from cancelling the others mid-run.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -53,18 +60,81 @@ jobs:
       - name: install
         run: bun i
 
-      - name: install playwright browsers
-        run: bunx playwright install --with-deps chromium firefox webkit
+      - name: install playwright browser
+        run: bunx playwright install --with-deps ${{ matrix.browser }}
 
-      - name: e2e tests (chromium, firefox, webkit)
-        run: bun run test:e2e
+      - name: e2e tests (${{ matrix.browser }})
+        run: bunx playwright test --project=${{ matrix.browser }}
 
       - name: upload report on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.browser }}
           path: |
             playwright-report/
             web/test/e2e/results/
           retention-days: 7
+
+  # CI-only gate: pushes attachments up to 1 GiB, the at-scale proof that chunked
+  # streaming fixed the large-file renderer crash. file-stress.e2e.ts self-skips
+  # unless COVCOM_STRESS=1, so `bun test:e2e` never runs it locally — this job is
+  # the only place it executes. Matrixed per engine so the three gigabyte sweeps
+  # run in tandem on separate runners; --workers=1 keeps a single gigabyte-sized
+  # renderer live at a time within each (see the file header).
+  e2e-stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: install
+        run: bun i
+
+      - name: install playwright browser
+        run: bunx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: stress tests (1 GiB attachments, ${{ matrix.browser }})
+        env:
+          COVCOM_STRESS: '1'
+        run: bunx playwright test file-stress --project=${{ matrix.browser }} --workers=1
+
+      - name: upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-stress-${{ matrix.browser }}
+          path: |
+            playwright-report/
+            web/test/e2e/results/
+          retention-days: 7
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      # Build-only smoke test: catches a broken Dockerfile on every PR rather than
+      # at release time. No registry login, no push. Native amd64 only — release
+      # adds linux/arm64 via QEMU, too slow/flaky for per-PR feedback; an amd64
+      # build catches the Dockerfile breakages that matter here.
+      - name: build image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

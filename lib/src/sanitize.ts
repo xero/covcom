@@ -23,9 +23,9 @@ const UNSAFE_FORMAT: ReadonlySet<number> = new Set([
 // All targets are BMP, so charCodeAt(0) (always a number) equals the code point;
 // an astral char's leading surrogate is never in the set, so it is kept intact.
 export function stripFormatChars(s: string): string {
-	let out = '';
-	for (const ch of s) if (!UNSAFE_FORMAT.has(ch.charCodeAt(0))) out += ch;
-	return out;
+	const out: string[] = [];
+	for (const ch of s) if (!UNSAFE_FORMAT.has(ch.charCodeAt(0))) out.push(ch);
+	return out.join('');
 }
 
 // The detection companion to stripFormatChars, exported as part of the lib's
