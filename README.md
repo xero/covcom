@@ -322,9 +322,8 @@ bun build:cli:all
 
 ### Configuration
 
-Settings save to `~/.config/covcom/config.json` after a
-successful connection. The file is optional; all fields can be set
-interactively.
+Settings save to `~/.config/covcom/config.json` after a successful connection.
+The file is optional
 
 ```json
 {
@@ -468,29 +467,30 @@ needs Chromium installed once (see below).
 **Run tests for a single package:**
 
 ```sh
-bun run test:server     # server WebSocket broker
-bun run test:lib        # shared crypto session layer
-bun run test:web        # web client (store, session, bridge, views) via happy-dom
-bun run test:cli        # CLI widgets, key parsing, state machine, event log
+bun run test:server  # server WebSocket broker
+bun run test:lib     # shared crypto session layer
+bun run test:web     # web client (store, session, bridge, views) via happy-dom
+bun run test:cli     # CLI widgets, key parsing, state machine, event log
 ```
 
 **Run the end-to-end test on its own (Playwright):**
 
 ```sh
-bunx playwright install chromium   # one time
+bunx playwright install --with-deps chromium firefox webkit  # one time
 bun run test:e2e
 ```
 
-`test:e2e` auto-starts the Bun broker and the Vite dev server, then drives two
-browser contexts through a real two-party encrypted chat (create → invite →
-join → exchange messages → verify fingerprints). Run it directly while
-iterating; `bun run test` runs it last as part of the full suite.
+`test:e2e` auto-starts the Bun broker and the Vite dev server, then drives real
+browser contexts through the full flow: a two-party encrypted chat (create →
+invite → join → exchange messages → verify fingerprints) plus the file-attachment
+round-trip and stress sweeps, which push encrypted attachments up to 180 MiB
+through chunked streaming.
 
 **Lint:**
 
 ```sh
-bun lint        # report issues
-bun fix         # report and autofix
+bun lint  # report issues
+bun fix   # report and autofix
 ```
 
 **Typecheck:**

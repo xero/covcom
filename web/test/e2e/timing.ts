@@ -10,6 +10,13 @@ export const MiB = 1024 * 1024;
 // chromium ~0.15, webkit ~0.12 s/MiB. These ms/MiB rates are roughly double
 // that, so every size gets ~2x headroom on the same engine. The doubling also
 // covers shared-runner contention, which clean local samples never see.
+//
+// firefox gets the largest rate because Playwright's bundled Firefox runs WASM
+// ~20x slower than the Firefox users install (its optimizing JIT tier does not
+// engage), so the leviathan-crypto seal/sign kernels are the bottleneck only
+// for e2e. Stock Firefox benches on par with Chromium and WebKit. This budget is a
+// Playwright-Firefox allowance, NOT evidence that Firefox is slow for users; do
+// not "optimize" covcom or leviathan-crypto for it.
 export const MS_PER_MIB: Record<string, number> = { firefox: 700, chromium: 300, webkit: 250 };
 
 // Per-engine transfer budget for a given size, with a 60s floor so small files
@@ -38,9 +45,10 @@ export function parseTimingLine(line: string): ParsedTiming | null {
 	return { browser: m[1], label: m[2], step: m[3], ms: Number(m[4]) };
 }
 
-// "1 GiB" -> 1024, "512 MiB" -> 512, "180 MiB 2-recipient" -> 180. Reads the
-// leading integer and first unit token; GiB scales to MiB. Returns 0 if the
-// label has no recognizable size prefix.
+// "180 MiB" -> 180, "180 MiB 2-recipient" -> 180, "64 MiB" -> 64. Reads the
+// leading integer and first unit token; GiB scales to MiB (no GiB sizes run
+// today, but the conversion stays so a larger sweep parses unchanged). Returns 0
+// if the label has no recognizable size prefix.
 export function parseLabelToMiB(label: string): number {
 	const m = label.match(/^(\d+)\s*(GiB|MiB)/);
 	if (!m) return 0;

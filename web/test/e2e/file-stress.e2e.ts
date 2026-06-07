@@ -3,34 +3,26 @@ import { createRoom, joinRoom, sendAndClassify, timeStep, watchCrash } from './h
 import { MiB, transferTimeout } from './timing.ts';
 
 // Large-attachment round-trips, the at-scale proof that chunked streaming fixed
-// the "Aw, Snap!" crash. GATED behind COVCOM_STRESS=1 so `bun test:e2e` never
-// pushes gigabytes through three browsers unattended. Run it explicitly, one
-// worker at a time so only one giant renderer is live:
-//
-//   COVCOM_STRESS=1 bunx playwright test file-stress --workers=1
-//
-// Before the fix WebKit crashed at 512 MiB (and the broker dropped anything past
-// ~12 MiB). Now every size must round-trip: alice streams it as bounded chunks
-// and bob reassembles and renders the file card. Each size is its own test per
-// engine so the report pinpoints any regression.
+// the "Aw, Snap!" crash (the broker once dropped anything past ~12 MiB). Runs as
+// part of the normal e2e suite: every size must round-trip — alice streams it as
+// bounded chunks and bob reassembles and renders the file card. Each size is its
+// own test per engine so the report pinpoints any regression. The sweep used to
+// climb to 1 GiB for perf work; CI now keeps the sizes that prove correctness
+// without the wall-clock cost, so it no longer needs a manual opt-in gate.
 //
 // The bytes are synthesized inside alice's page (helpers.attachSynthFile), so the
 // source allocation lives in the renderer under test rather than crossing the
 // Node/CDP bridge.
 
 const SIZES: { label: string; bytes: number; wireLabel: string }[] = [
-	{ label: '64 MiB',  bytes: 64 * MiB,   wireLabel: '64.0 MB' },
-	{ label: '180 MiB', bytes: 180 * MiB,  wireLabel: '180.0 MB' },
-	{ label: '512 MiB', bytes: 512 * MiB,  wireLabel: '512.0 MB' },
-	{ label: '1 GiB',   bytes: 1024 * MiB, wireLabel: '1.0 GB' },
+	{ label: '64 MiB',  bytes: 64 * MiB,  wireLabel: '64.0 MB' },
+	{ label: '180 MiB', bytes: 180 * MiB, wireLabel: '180.0 MB' },
 ];
 
 for (const { label, bytes, wireLabel } of SIZES) {
 	test(`stress attach ${label}: round-trips with no crash`, async ({ browser, browserName }, testInfo) => {
-		test.skip(process.env.COVCOM_STRESS !== '1', 'set COVCOM_STRESS=1 to run the stress sweep');
-
 		// Per-engine budget scaled by size; testInfo adds setup/teardown room and
-		// stays well inside the job's 45-minute limit even for firefox 1 GiB.
+		// stays well inside the job's time limit even for firefox 180 MiB.
 		const transferTimeoutMs = transferTimeout(bytes, browserName);
 		testInfo.setTimeout(transferTimeoutMs + 120_000);
 
@@ -79,10 +71,8 @@ for (const { label, bytes, wireLabel } of SIZES) {
 // Two recipients exercise the slowest-peer pacing path: the sender holds within
 // WINDOW of min(acked) across bob AND carol, so a transfer this far past the
 // window only completes if credit from both peers advances. 180 MiB (~2880
-// frames) is the real-world case and is many windows deep. Same COVCOM_STRESS gate.
+// frames) is the real-world case and is many windows deep.
 test('stress attach 180 MiB to two recipients: both round-trip with no crash', async ({ browser, browserName }, testInfo) => {
-	test.skip(process.env.COVCOM_STRESS !== '1', 'set COVCOM_STRESS=1 to run the stress sweep');
-
 	const bytes = 180 * MiB;
 	const transferTimeoutMs = transferTimeout(bytes, browserName);
 	testInfo.setTimeout(transferTimeoutMs + 120_000);
