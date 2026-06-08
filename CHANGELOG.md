@@ -69,6 +69,21 @@ still carries your exact plaintext.
 and fenced blocks, fenced blocks render with a filled background, and italic
 text now emits the italic SGR.
 
+**Distinct per-sender colors in the CLI.** Each peer's name renders in its own
+color in the chat scroll and the verify panel, cycling through seven shared
+slots (`peer1` through `peer7`) by join order to match the web client. Your own
+name always uses `peer0`, a slot reserved for self. Peers never draw from it,
+and they never draw the system-message color, so no peer can paint their name to
+look like you or like a server notice.
+
+**More themeable CLI slots.** The send, attach, and ratchet bar buttons take
+their own colors (`barBtnBg`, `barBtnFg`, `barBtnFocusBg`, `barBtnFocusFg`),
+defaulting to the generic button colors. The attach-mode icon that prefaces the
+input box takes `barAttach`. The in-chat "keys rotated" ratchet notice splits
+into `keyFg` for the key glyph and `ratchetTxtFg` for the label. System notices
+and `/help` output get their own `system` slot, split out from `disabled` so the
+two roles recolor independently.
+
 **Receiver flow control for file transfer.** The receiver acknowledges consumed
 chunks over the peer-to-peer relay channel and the sender holds a bounded window
 of chunks ahead of the slowest recipient, so a large transfer survives a slow or
@@ -96,7 +111,21 @@ identity claims still protect against a hostile server.
 the host that served the page, which is the relay in the single-container
 deployment. Edit it to point at a decoupled relay.
 
+**CLI paranoia flags.** `--clean` ignores the config file entirely, so the
+session never reads or writes `~/.config/covcom/config.json`. `--anon` skips
+only the saved server and username, leaving them untouched on disk while every
+other setting persists as normal.
+
 ### Changed
+
+**Unified sender-color names across both clients.** The web's `--sender-0`
+through `--sender-7` CSS variables are now `--peer0` through `--peer7`, and the
+silver system color is `--system`. The CLI drops the `yourName` theme slot in
+favor of `peer0` and renames `peerName0`-`peerName7` to `peer0`-`peer7`. Both
+clients now reserve slot 0 for self and cycle peers through slots 1 to 7, so a
+peer can no longer wrap onto your color or the system color. A config that still
+sets `yourName` or `peerName*` falls back to the defaults for those slots;
+update `~/.config/covcom/config.json` to keep a custom palette.
 
 **Web message rendering.** User messages render through the shared token model:
 fenced blocks become a `<pre>`, and paragraphs preserve their original line

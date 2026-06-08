@@ -26,6 +26,24 @@ cli app design doc. covers architecture, rendering, input, widgets, views, and c
 
 ---
 
+## invocation
+
+```
+covcom [--clean] [--anon] [--join <path>]
+```
+
+all flags are optional and order-independent. unknown args are ignored.
+
+| flag            | argument | notes                                                                                          |
+|-----------------|----------|------------------------------------------------------------------------------------------------|
+| `--join`        | path     | path to a `.room` invite file. the file is read at startup and routes the user straight to `JoinView` with the invite prefilled, skipping `LoginView`. without it, the user starts on `LoginView`. a missing or dangling value (e.g. `--join --clean`) is ignored rather than treated as a path. |
+| `--clean`       | none     | disables config persistence entirely for the run. see [config](#config).                       |
+| `--anon`        | none     | narrower variant of `--clean` scoped to `server` and `username`. see [config](#config).        |
+
+`--join` pairs with the paranoia flags for a fully ephemeral session, e.g. `covcom --clean --join /path/to/invite.room` joins from a file without reading or writing any config.
+
+---
+
 ## module map
 
 ```
@@ -358,15 +376,15 @@ key behaviors:
 **attachment chip rendering:**
 
 ```
-  yourName: ┤ filename.ext ├
+  you: ┤ filename.ext ├
 ```
 
 actually simpler, just an inline color change mid-line:
 
 ```
-  yourName:  filename.ext
-            ^            ^
-         attachBg      reset
+  you:  filename.ext
+       ^            ^
+    attachBg      reset
 ```
 
 rendered as part of the line text with ANSI color wrapping. `renderedLines[]`
@@ -478,6 +496,13 @@ the path input is a `TextInput` with tab-completion behavior layered on top:
 - subsequent Tabs on same prefix: cycle through matches
 - Esc: cancel, restore normal bar
 - Enter: confirm path, exit FilePicker mode, trigger upload callback
+
+on Enter, the resolved path is validated before upload: if it does not point at
+an existing file (missing path, or a directory), a `File Not Found` modal is
+shown with an error-colored border and the upload is aborted. the FilePicker
+stays open with the typed value intact so the path can be corrected. this guards
+against tab-completion leaving a partial or wrong path that would otherwise be
+transmitted as a 0-byte file.
 
 no file tree. no GUI. just a text input that knows about the filesystem.
 
@@ -719,20 +744,57 @@ type Theme = {
 
   barBg:         ColorValue
   barFg:         ColorValue
+  barBtnBg:      ColorValue
+  barBtnFg:      ColorValue
+  barBtnFocusBg: ColorValue
+  barBtnFocusFg: ColorValue
 
-  yourName:      ColorValue
   yourMsg:       ColorValue
-  peerName:      ColorValue
+  peer0:         ColorValue   // self (reserved)
+  peer1:         ColorValue
+  peer2:         ColorValue
+  peer3:         ColorValue
+  peer4:         ColorValue
+  peer5:         ColorValue
+  peer6:         ColorValue
+  peer7:         ColorValue
   peerMsg:       ColorValue
 
-  attachBg:      ColorValue
-  attachFg:      ColorValue
+  attachBg:         ColorValue
+  attachFg:         ColorValue
+  attachSelectedBg: ColorValue
+  attachSelectedFg: ColorValue
+  barAttach:        ColorValue
 
   calloutBg:     ColorValue
   calloutFg:     ColorValue
 
+  modalBg:       ColorValue
+  modalFg:       ColorValue
+  modalBorder:   ColorValue
+  modalTitle:    ColorValue
+
   disabled:      ColorValue
+  system:        ColorValue
   error:         ColorValue
+
+  evtTime:        ColorValue
+  evtArrow:       ColorValue
+  evtMsg:         ColorValue
+  evtKey:         ColorValue
+  evtVal:         ColorValue
+  evtSelf:        ColorValue
+  evtPeer:        ColorValue
+  evtKindDefault: ColorValue
+  evtKindError:   ColorValue
+  evtKindMember:  ColorValue
+  evtKindRatchet: ColorValue
+
+  codeFg:        ColorValue
+  codeBg:        ColorValue
+
+  keyFg:         ColorValue
+  ratchetTxtFg:  ColorValue
 }
 ```
 
@@ -755,20 +817,57 @@ const defaultTheme: Theme = {
 
   barBg:         { type: 'ansi16', n: 8  },   // dark gray
   barFg:         { type: 'ansi16', n: 15 },   // bright white
+  barBtnBg:      { type: 'ansi16', n: 8  },   // dark gray (mirrors btnBg)
+  barBtnFg:      { type: 'ansi16', n: 15 },   // bright white (mirrors btnFg)
+  barBtnFocusBg: { type: 'ansi16', n: 4  },   // blue (mirrors btnFocusBg)
+  barBtnFocusFg: { type: 'ansi16', n: 15 },   // bright white (mirrors btnFocusFg)
 
-  yourName:      { type: 'ansi16', n: 14 },   // bright cyan
   yourMsg:       { type: 'ansi16', n: 7  },   // white (muted)
-  peerName:      { type: 'ansi16', n: 10 },   // bright green
+  peer0:         { type: 'ansi16', n: 14 },   // bright cyan (self)
+  peer1:         { type: 'ansi16', n: 10 },   // bright green
+  peer2:         { type: 'ansi16', n: 12 },   // bright blue
+  peer3:         { type: 'ansi16', n: 13 },   // bright magenta
+  peer4:         { type: 'ansi16', n: 11 },   // bright yellow
+  peer5:         { type: 'ansi16', n: 9  },   // bright red
+  peer6:         { type: 'ansi16', n: 5  },   // magenta
+  peer7:         { type: 'ansi16', n: 2  },   // green
   peerMsg:       { type: 'ansi16', n: 15 },   // bright white
 
-  attachBg:      { type: 'ansi16', n: 6  },   // cyan
-  attachFg:      { type: 'ansi16', n: 0  },   // black
+  attachBg:         { type: 'ansi16', n: 6 },   // cyan
+  attachFg:         { type: 'ansi16', n: 0 },   // black
+  attachSelectedBg: { type: 'ansi16', n: 2 },   // green
+  attachSelectedFg: { type: 'ansi16', n: 0 },   // black
+  barAttach:        { type: 'ansi16', n: 6 },   // cyan (mirrors attachBg)
 
   calloutBg:     { type: 'ansi16', n: 3  },   // yellow
   calloutFg:     { type: 'ansi16', n: 0  },   // black
 
+  modalBg:       { type: 'ansi16', n: 0  },   // black
+  modalFg:       { type: 'ansi16', n: 15 },   // bright white
+  modalBorder:   { type: 'ansi16', n: 6  },   // cyan
+  modalTitle:    { type: 'ansi16', n: 14 },   // bright cyan
+
   disabled:      { type: 'ansi16', n: 8  },   // dark gray
+  system:        { type: '256',    n: 250 }, // light gray
   error:         { type: 'ansi16', n: 9  },   // bright red
+
+  evtTime:        { type: 'ansi16', n: 8  },  // dark gray
+  evtArrow:       { type: 'ansi16', n: 15 },  // bright white
+  evtMsg:         { type: 'ansi16', n: 15 },  // bright white
+  evtKey:         { type: 'ansi16', n: 8  },  // dark gray
+  evtVal:         { type: 'ansi16', n: 15 },  // bright white
+  evtSelf:        { type: 'ansi16', n: 5  },  // magenta
+  evtPeer:        { type: 'ansi16', n: 6  },  // cyan
+  evtKindDefault: { type: 'ansi16', n: 4  },  // blue
+  evtKindError:   { type: 'ansi16', n: 1  },  // red
+  evtKindMember:  { type: 'ansi16', n: 2  },  // green
+  evtKindRatchet: { type: 'ansi16', n: 3  },  // yellow
+
+  codeFg:        { type: 'ansi16', n: 15 },   // bright white
+  codeBg:        { type: 'ansi16', n: 8  },   // dark gray
+
+  keyFg:         { type: 'ansi16', n: 3  },   // yellow
+  ratchetTxtFg:  { type: 'ansi16', n: 8  },   // dark gray
 }
 ```
 
@@ -788,12 +887,26 @@ back by the CLI when the user changes a persisted setting (currently just
 the sidebar width). every field is optional; missing fields fall back to
 the documented default.
 
+two paranoia level flags are exposed to control how the config file is used.
+
+passing the `--clean` CLI flag disables config persistence entirely for that
+run: the file is neither read (nothing is prefilled into the login screen, all
+fields fall back to defaults) nor written (no `server`/`username` save after a
+successful create, no sidebar-width persistence).
+
+passing the `--anon` CLI flag is a narrower variant scoped to `server` and
+`username` only: those two are neither read (not prefilled into the login
+screen) nor written (no save after a successful create, and the on-disk values
+are left untouched). all other fields (`theme`, `copyCmd`, `showSystem`,
+`sidebar`, `icons`), read and persist exactly as normal. if both flags are
+passed, `--clean` takes precedence.
+
 ### top-level fields
 
 | field            | type                    | default | notes                                                                                       |
 |------------------|-------------------------|---------|---------------------------------------------------------------------------------------------|
-| `server`         | string                  | unset   | prefilled into the Server DNS input on the login screen. updated after a successful create. |
-| `username`       | string                  | unset   | prefilled into the Username input on the login screen. updated after a successful create.   |
+| `server`         | string                  | unset   | prefilled into the Server DNS input on the login screen. updated after a successful create. skipped under `--clean` and `--anon`. |
+| `username`       | string                  | unset   | prefilled into the Username input on the login screen. updated after a successful create. skipped under `--clean` and `--anon`.   |
 | `copyCmd`        | string                  | unset   | clipboard command for "Copy Code". whitespace-split into argv. see [copyCmd](#copycmd).     |
 | `showSystem`     | boolean                 | `true`  | when `false`, system messages (`<peer> joined`, server errors, etc.) are not appended to the chat scroll. event log still receives them. |
 | `sidebar`        | `{ width?: number }`    | `{}`    | see [sidebar](#sidebar-1).                                                                  |
@@ -878,23 +991,37 @@ of the terminal palette.
 | `btnDisabledFg`     | 8 (dark gray)      | disabled button foreground (invisible label).     |
 | `barBg`             | 8 (dark gray)      | chat input bar and sidebar tab strip background.  |
 | `barFg`             | 15 (bright white)  | chat input bar foreground.                        |
-| `yourName`          | 14 (bright cyan)   | own username prefix in the chat scroll.           |
+| `barBtnBg`          | 8 (dark gray)      | unfocused background of the bar action buttons (send / attach / ratchet / attach-mode cancel). Defaults to `btnBg`. |
+| `barBtnFg`          | 15 (bright white)  | unfocused foreground of the bar action buttons. Defaults to `btnFg`. |
+| `barBtnFocusBg`     | 4 (blue)           | focused background of the bar action buttons. Defaults to `btnFocusBg`. |
+| `barBtnFocusFg`     | 15 (bright white)  | focused foreground of the bar action buttons. Defaults to `btnFocusFg`. |
+| `peer0`             | 14 (bright cyan)   | **your own** username prefix in the chat scroll. Reserved for self — peers never use it, so no peer can wear your color. |
+| `peer1`             | 10 (bright green)  | peer username prefix in the chat scroll (and verify panel). Each peer is assigned one of `peer1`–`peer7` by join order, wrapping after 7 (so a peer never lands on `peer0` or the system color). |
+| `peer2`             | 12 (bright blue)   | peer username color, slot 2 (see `peer1`).        |
+| `peer3`             | 13 (bright magenta)| peer username color, slot 3.                      |
+| `peer4`             | 11 (bright yellow) | peer username color, slot 4.                      |
+| `peer5`             | 9 (bright red)     | peer username color, slot 5.                      |
+| `peer6`             | 5 (magenta)        | peer username color, slot 6.                      |
+| `peer7`             | 2 (green)          | peer username color, slot 7.                      |
 | `yourMsg`           | 7 (white)          | own message body.                                 |
-| `peerName`          | 10 (bright green)  | peer username prefix in the chat scroll.          |
 | `peerMsg`           | 15 (bright white)  | peer message body.                                |
 | `codeFg`            | 15 (bright white)  | inline code and fenced-block foreground.          |
 | `codeBg`            | 8 (dark gray)      | fenced-block background fill.                      |
+| `keyFg`             | 3 (yellow)         | `icons.keys` glyph in the in-chat "keys rotated" ratchet notice (any user). |
+| `ratchetTxtFg`      | 8 (dark gray)      | "keys rotated" label text in the in-chat ratchet notice (any user). |
 | `attachBg`          | 6 (cyan)           | attachment chip background.                       |
 | `attachFg`          | 0 (black)          | attachment chip foreground.                       |
 | `attachSelectedBg`  | 2 (green)          | attachment chip background when keyboard-selected. |
 | `attachSelectedFg`  | 0 (black)          | attachment chip foreground when keyboard-selected. |
+| `barAttach`         | 6 (cyan)           | attach-mode icon prefacing the input box (foreground on `barBg`). Defaults to `attachBg`. |
 | `calloutBg`         | 3 (yellow)         | callout strip background in WaitingView.          |
 | `calloutFg`         | 0 (black)          | callout strip foreground.                         |
 | `modalBg`           | 0 (black)          | modal body background.                            |
 | `modalFg`           | 15 (bright white)  | modal body foreground.                            |
 | `modalBorder`       | 6 (cyan)           | modal border ring.                                |
 | `modalTitle`        | 14 (bright cyan)   | modal title row.                                  |
-| `disabled`          | 8 (dark gray)      | secondary or muted UI text (status lines, etc.).  |
+| `disabled`          | 8 (dark gray)      | secondary or muted UI text (status lines, attachment size, fingerprint hex, scroll bar). |
+| `system`            | 256-color 250 (light gray) | in-chat system notices and `/help` output (the `system:` name prefix and body). Distinct from `disabled` so it can be recolored on its own. |
 | `error`             | 9 (bright red)     | error text (parse errors, server errors, etc.).   |
 | `evtTime`           | 8 (dark gray)      | event-log timestamp column.                       |
 | `evtArrow`          | 15 (bright white)  | event-log direction glyph (`→`, `←`, `·`).        |
@@ -925,8 +1052,8 @@ of the terminal palette.
 		},
 		"theme": {
 			"btnFocusBg":     { "type": "256",    "n":33 },
-			"yourName":       { "type": "hex",    "value": "#ff8800" },
-			"peerName":       { "type": "ansi16", "n":13 },
+			"peer0":          { "type": "hex",    "value": "#ff8800" },
+			"peer1":          { "type": "ansi16", "n":13 },
 			"evtKindRatchet": { "type": "ansi16", "n":5 }
 		}
 }
@@ -992,3 +1119,16 @@ called with the computed cursor position of that input. no other widget shows a 
   consider a toggle (e.g. ctrl+m) to disable/re-enable mouse reporting.
 - **QR code:** v2. WaitingView layout should leave space below the table for it.
   implementation: pure-TS QR matrix generator rendered with unicode half-blocks.
+
+---
+
+## Cross Reference
+
+| Document | Description |
+| -------- | ----------- |
+| [index](./README.md) | Project Documentation index |
+| [USAGE](./USAGE.md) | Client and server applications development and runtime help |
+| [PROTOCOL](./PROTOCOL.md) | Cipher, chains, ratchet, group model, session lifecycle, server role |
+| [CRYPTOGRAPHY](./CRYPTOGRAPHY.md) | Primitives, KDF chains, wire format, invite encoding |
+| [THREAT-MODEL](./THREAT-MODEL.md) | Principals, adversary tiers, guarantees, non-goals |
+| [TESTING](./TESTING.md) | Test layers, unit and end-to-end suites, cross-client interop, and CI |

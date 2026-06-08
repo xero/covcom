@@ -292,7 +292,7 @@ bun dev:cli
 **Join directly from a `.room` file:**
 
 ```sh
-bun dev:cli join /path/to/invite.room
+bun dev:cli --join /path/to/invite.room
 ```
 
 **Build a standalone binary for the current platform:**
@@ -332,7 +332,7 @@ interactively.
   "showSystem": true,
   "theme": {
     "btnFocusBg": { "type": "256", "n": 33 },
-    "yourName":   { "type": "hex", "value": "#ff8800" }
+    "peer0":      { "type": "hex", "value": "#ff8800" }
   }
 }
 ```
@@ -451,3 +451,16 @@ cli/       Custom zero-dependency TUI
 docker/    Dockerfile, Caddyfile template, entrypoint
 docs/      Project documentation
 ```
+
+---
+
+## Cross Reference
+
+| Document | Description |
+| -------- | ----------- |
+| [index](./README.md) | Project Documentation index |
+| [PROTOCOL](./PROTOCOL.md) | Cipher, chains, ratchet, group model, session lifecycle, server role |
+| [CRYPTOGRAPHY](./CRYPTOGRAPHY.md) | Primitives, KDF chains, wire format, invite encoding |
+| [THREAT-MODEL](./THREAT-MODEL.md) | Principals, adversary tiers, guarantees, non-goals |
+| [CLI-SPEC](./CLI-SPEC.md) | CLI architecture, rendering, input, widgets, views, and color system |
+| [TESTING](./TESTING.md) | Test layers, unit and end-to-end suites, cross-client interop, and CI |

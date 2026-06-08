@@ -31,22 +31,65 @@ export function writeSidebarWidth(width: number): void {
 	writeConfig({ ...cfg, sidebar: { ...(cfg.sidebar ?? {}), width: clamped } });
 }
 
-const CONFIG_DIR  = join(homedir(), '.config', 'covcom');
-const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
+// COVCOM_CONFIG_DIR overrides the config location; defaults to ~/.config/covcom.
+// Resolved per call rather than captured at load so the override is honoured
+// even when this module is imported before the variable is set.
+function configDir(): string {
+	return process.env.COVCOM_CONFIG_DIR ?? join(homedir(), '.config', 'covcom');
+}
+function configFile(): string {
+	return join(configDir(), 'config.json');
+}
 
-export function readConfig(): Config {
+// clean mode; the config file is ignored entirely: never read, never written.
+// set once at startup via the --clean CLI flag.
+let cleanMode = false;
+
+// anon mode; only server/username are skipped: they are neither read (no login
+// prefill) nor written (the on-disk values are left untouched). all other
+// settings still read and persist as normal. set via --anon.
+let anonMode = false;
+
+export function setCleanMode(on: boolean): void {
+	cleanMode = on;
+}
+
+export function setAnonMode(on: boolean): void {
+	anonMode = on;
+}
+
+// raw, unfiltered read of the on-disk config
+function readDiskConfig(): Config {
 	try {
-		return JSON.parse(readFileSync(CONFIG_FILE, 'utf8')) as Config;
+		return JSON.parse(readFileSync(configFile(), 'utf8')) as Config;
 	} catch {
 		return {};
 	}
 }
 
+export function readConfig(): Config {
+	if (cleanMode) return {};
+	const cfg = readDiskConfig();
+	if (anonMode) {
+		delete cfg.server;
+		delete cfg.username;
+	}
+	return cfg;
+}
+
 export function writeConfig(cfg: Config): void {
+	if (cleanMode) return;
+	let out = cfg;
+	if (anonMode) {
+		// persist everything except server/username; keep whatever is on
+		// disk for those two so an anon run never reads or rewrites them.
+		const disk = readDiskConfig();
+		out = { ...disk, ...cfg, server: disk.server, username: disk.username };
+	}
 	try {
-		mkdirSync(CONFIG_DIR, { recursive: true });
-		writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
+		mkdirSync(configDir(), { recursive: true });
+		writeFileSync(configFile(), JSON.stringify(out, null, 2));
 	} catch {
-		// Non-fatal
+		// non-fatal
 	}
 }

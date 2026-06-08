@@ -477,3 +477,16 @@ different armor headers or binary layouts are rejected; no migration path.
 [S22]:         https://signal.org/docs/specifications/doubleratchet/#symmetric-key-ratchet
 [S54]:         https://signal.org/docs/specifications/doubleratchet/#spqr-initialization
 [S72]:         https://signal.org/docs/specifications/doubleratchet/#recommended-cryptographic-algorithms
+
+---
+
+## Cross Reference
+
+| Document | Description |
+| -------- | ----------- |
+| [index](./README.md) | Project Documentation index |
+| [USAGE](./USAGE.md) | Client and server applications development and runtime help |
+| [PROTOCOL](./PROTOCOL.md) | Cipher, chains, ratchet, group model, session lifecycle, server role |
+| [THREAT-MODEL](./THREAT-MODEL.md) | Principals, adversary tiers, guarantees, non-goals |
+| [CLI-SPEC](./CLI-SPEC.md) | CLI architecture, rendering, input, widgets, views, and color system |
+| [TESTING](./TESTING.md) | Test layers, unit and end-to-end suites, cross-client interop, and CI |

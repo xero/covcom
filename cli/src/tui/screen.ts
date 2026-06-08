@@ -17,14 +17,25 @@ export interface Theme {
 	btnDisabledFg: ColorValue
 	barBg:         ColorValue
 	barFg:         ColorValue
-	yourName:      ColorValue
+	barBtnBg:      ColorValue
+	barBtnFg:      ColorValue
+	barBtnFocusBg: ColorValue
+	barBtnFocusFg: ColorValue
 	yourMsg:       ColorValue
-	peerName:      ColorValue
+	peer0:         ColorValue
+	peer1:         ColorValue
+	peer2:         ColorValue
+	peer3:         ColorValue
+	peer4:         ColorValue
+	peer5:         ColorValue
+	peer6:         ColorValue
+	peer7:         ColorValue
 	peerMsg:       ColorValue
 	attachBg:         ColorValue
 	attachFg:         ColorValue
 	attachSelectedBg: ColorValue
 	attachSelectedFg: ColorValue
+	barAttach:        ColorValue
 	calloutBg:     ColorValue
 	calloutFg:     ColorValue
 	modalBg:       ColorValue
@@ -32,6 +43,7 @@ export interface Theme {
 	modalBorder:   ColorValue
 	modalTitle:    ColorValue
 	disabled:      ColorValue
+	system:        ColorValue
 	error:         ColorValue
 	evtTime:        ColorValue
 	evtArrow:       ColorValue
@@ -46,6 +58,8 @@ export interface Theme {
 	evtKindRatchet: ColorValue
 	codeFg:         ColorValue
 	codeBg:         ColorValue
+	keyFg:          ColorValue
+	ratchetTxtFg:   ColorValue
 }
 
 export const defaultTheme: Theme = {
@@ -61,14 +75,25 @@ export const defaultTheme: Theme = {
 	btnDisabledFg: { type: 'ansi16', n: 8  },
 	barBg: { type: 'ansi16', n: 8  },
 	barFg: { type: 'ansi16', n: 15 },
-	yourName: { type: 'ansi16', n: 14 },
+	barBtnBg: { type: 'ansi16', n: 8  },
+	barBtnFg: { type: 'ansi16', n: 15 },
+	barBtnFocusBg: { type: 'ansi16', n: 4  },
+	barBtnFocusFg: { type: 'ansi16', n: 15 },
 	yourMsg: { type: 'ansi16', n: 7  },
-	peerName: { type: 'ansi16', n: 10 },
+	peer0: { type: 'ansi16', n: 14 },
+	peer1: { type: 'ansi16', n: 10 },
+	peer2: { type: 'ansi16', n: 12 },
+	peer3: { type: 'ansi16', n: 13 },
+	peer4: { type: 'ansi16', n: 11 },
+	peer5: { type: 'ansi16', n: 9  },
+	peer6: { type: 'ansi16', n: 5  },
+	peer7: { type: 'ansi16', n: 2  },
 	peerMsg: { type: 'ansi16', n: 15 },
 	attachBg: { type: 'ansi16', n: 6  },
 	attachFg: { type: 'ansi16', n: 0  },
 	attachSelectedBg: { type: 'ansi16', n: 2  },
 	attachSelectedFg: { type: 'ansi16', n: 0  },
+	barAttach: { type: 'ansi16', n: 6  },
 	calloutBg: { type: 'ansi16', n: 3  },
 	calloutFg: { type: 'ansi16', n: 0  },
 	modalBg: { type: 'ansi16', n: 0  },
@@ -76,6 +101,7 @@ export const defaultTheme: Theme = {
 	modalBorder: { type: 'ansi16', n: 6  },
 	modalTitle: { type: 'ansi16', n: 14 },
 	disabled: { type: 'ansi16', n: 8  },
+	system: { type: '256', n: 250 },
 	error: { type: 'ansi16', n: 9  },
 	evtTime: { type: 'ansi16', n: 8  },
 	evtArrow: { type: 'ansi16', n: 15 },
@@ -90,6 +116,8 @@ export const defaultTheme: Theme = {
 	evtKindRatchet: { type: 'ansi16', n: 3 },
 	codeFg: { type: 'ansi16', n: 15 },
 	codeBg: { type: 'ansi16', n: 8  },
+	keyFg: { type: 'ansi16', n: 3 },
+	ratchetTxtFg: { type: 'ansi16', n: 8 },
 };
 
 function parseHex(hex: string): [number, number, number] {
@@ -130,6 +158,18 @@ export function colorBg(cv: ColorValue): string {
 	if (cv.type === 'ansi16') return ansi.bg(cv.n);
 	if (cv.type === '256') return `\x1b[48;5;${cv.n}m`;
 	return ansi.bgHex(cv.value);
+}
+
+// Map a peer's 1-based colorIdx (assigned by join order) to one of the 7 shared
+// peer colors peer1..peer7, wrapping after 7. Slot peer0 is reserved for self
+// and is never returned here, so a peer can never wear your color (nor the
+// separate system/disabled color). Self is rendered with theme.peer0 directly.
+export function peerColor(theme: Theme, colorIdx: number): ColorValue {
+	const slots = [
+		theme.peer1, theme.peer2, theme.peer3, theme.peer4,
+		theme.peer5, theme.peer6, theme.peer7,
+	];
+	return slots[Math.max(0, colorIdx - 1) % 7];
 }
 
 export class Screen {

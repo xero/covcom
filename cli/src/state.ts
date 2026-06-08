@@ -89,9 +89,10 @@ let _showSystem = true;
 let _keysIcon = '';
 let _connectionLostAt = 0;
 
-function ratchetDisplayText(): string {
-	return _keysIcon ? `${_keysIcon} keys rotated` : 'keys rotated';
-}
+// In-chat ratchet notice. The key icon and this label are colored independently
+// (theme.keyFg / theme.ratchetTxtFg) by the ScrollView, so they're passed to
+// appendMessage as separate parts rather than a single prebuilt string.
+const RATCHET_LABEL = 'keys rotated';
 
 // In-flight inbound file transfer, keyed by `${from}|${fileId}`. Chunks decrypt
 // incrementally via OpenStream and accumulate until the final frame; the file is
@@ -189,10 +190,10 @@ function httpUrl(server: string): string {
 
 function peerFingerprints(
 	peers: Map<string, PeerInfo>,
-): { username: string; fingerprint: FingerprintSurface }[] {
-	const out: { username: string; fingerprint: FingerprintSurface }[] = [];
+): { username: string; fingerprint: FingerprintSurface; colorIdx: number }[] {
+	const out: { username: string; fingerprint: FingerprintSurface; colorIdx: number }[] = [];
 	for (const [username, info] of peers)
-		out.push({ username, fingerprint: info.fingerprint });
+		out.push({ username, fingerprint: info.fingerprint, colorIdx: info.colorIdx });
 	return out;
 }
 
@@ -279,7 +280,7 @@ function doCreate(server: string, username: string, adminToken?: string): void {
 				sender: 'system',
 				text: `Server error: ${msg.reason}`,
 				isSelf: false,
-				senderIndex: 7,
+				system: true,
 			});
 		}
 	};
@@ -296,7 +297,7 @@ function doCreate(server: string, username: string, adminToken?: string): void {
 				sender: 'system',
 				text: 'Connection failed. Is the server running?',
 				isSelf: false,
-				senderIndex: 7,
+				system: true,
 			});
 		}
 	};
@@ -370,7 +371,7 @@ function doJoin(
 				sender: 'system',
 				text: `Server error: ${msg.reason}`,
 				isSelf: false,
-				senderIndex: 7,
+				system: true,
 			});
 		}
 	};
@@ -387,7 +388,7 @@ function doJoin(
 				sender: 'system',
 				text: 'Connection failed. Is the server running?',
 				isSelf: false,
-				senderIndex: 7,
+				system: true,
 			});
 		}
 	};
@@ -440,7 +441,7 @@ function doConnect(
 					sender: 'system',
 					text: `[${m.username}: identity claim rejected (${err instanceof Error ? err.message : 'invalid'})]`,
 					isSelf: false,
-					senderIndex: 7,
+					system: true,
 				});
 			continue;
 		}
@@ -504,7 +505,7 @@ function doConnect(
 				sender: 'system',
 				text: 'All peers left. Waiting for someone to rejoin\u2026',
 				isSelf: false,
-				senderIndex: 7,
+				system: true,
 			});
 		disposeAllInbound();
 		current.session.dispose();
@@ -566,7 +567,7 @@ function doConnect(
 						sender: 'system',
 						text: `[${msg.username}: identity claim rejected (${err instanceof Error ? err.message : 'invalid'})]`,
 						isSelf: false,
-						senderIndex: 7,
+						system: true,
 					});
 				return;
 			}
@@ -589,7 +590,7 @@ function doConnect(
 					sender: 'system',
 					text: `${msg.username} joined`,
 					isSelf: false,
-					senderIndex: 7,
+					system: true,
 				});
 			logEvent({
 				direction: 'local',
@@ -694,7 +695,7 @@ function doConnect(
 						sender: 'system',
 						text: `[${msg.from}: ratchet claim rejected (${err instanceof Error ? err.message : 'invalid'})]`,
 						isSelf: false,
-						senderIndex: 7,
+						system: true,
 					});
 				return;
 			}
@@ -749,7 +750,7 @@ function doConnect(
 						sender: 'system',
 						text: `[${msg.from}: ratchet message signature invalid]`,
 						isSelf: false,
-						senderIndex: 7,
+						system: true,
 					});
 				return;
 			}
@@ -773,15 +774,17 @@ function doConnect(
 						sender: 'system',
 						text: `[${msg.from}: ratchet decrypt failed (${detail})]`,
 						isSelf: false,
-						senderIndex: 7,
+						system: true,
 					});
 				return;
 			}
 			appendMessage({
 				sender: msg.from,
-				text: ratchetDisplayText(),
+				text: RATCHET_LABEL,
 				isSelf: false,
 				senderIndex: colorIdxFor(msg.from, st.peers),
+				ratchet: true,
+				ratchetIcon: _keysIcon,
 			});
 			return;
 		}
@@ -796,7 +799,7 @@ function doConnect(
 						sender: 'system',
 						text: `[${msg.from}: ek_update claim rejected (${err instanceof Error ? err.message : 'invalid'})]`,
 						isSelf: false,
-						senderIndex: 7,
+						system: true,
 					});
 				return;
 			}
@@ -822,7 +825,7 @@ function doConnect(
 						sender: 'system',
 						text: `[${msg.from}: ${text}]`,
 						isSelf: false,
-						senderIndex: 7,
+						system: true,
 					});
 				}
 			}
@@ -846,7 +849,7 @@ function doConnect(
 						sender: 'system',
 						text: `${msg.username} left the room`,
 						isSelf: false,
-						senderIndex: 7,
+						system: true,
 					});
 				if (current.peers.size === 0) doLobbyTransition();
 			}
@@ -887,7 +890,7 @@ function doConnect(
 						sender: 'system',
 						text: `Server error: ${msg.reason}`,
 						isSelf: false,
-						senderIndex: 7,
+						system: true,
 					});
 			}
 		}
@@ -909,7 +912,7 @@ function doConnect(
 				sender: 'system',
 				text: 'Connection lost. Reconnecting\u2026',
 				isSelf: false,
-				senderIndex: 7,
+				system: true,
 			});
 		startReconnect(roomId, roomSecret, dns, username);
 	};
@@ -1082,7 +1085,7 @@ async function doSendFile(filePath: string): Promise<void> {
 			sender: 'system',
 			text: `Send failed: ${e instanceof Error ? e.message : String(e)}`,
 			isSelf: false,
-			senderIndex: 7,
+			system: true,
 		});
 	} finally {
 		sendingFiles.delete(fileId);
@@ -1147,7 +1150,7 @@ function doReceiveMessage(
 		try {
 			h = state.session.openFileKey(from, meta.epoch ?? 0, meta.counter);
 		} catch (e) {
-			appendMessage({ sender: 'system', text: `File receive failed: ${e instanceof Error ? e.message : String(e)}`, isSelf: false, senderIndex: 7 });
+			appendMessage({ sender: 'system', text: `File receive failed: ${e instanceof Error ? e.message : String(e)}`, isSelf: false, system: true });
 			return;
 		}
 		let opener: OpenStream;
@@ -1155,7 +1158,7 @@ function doReceiveMessage(
 			opener = new OpenStream(XChaCha20Cipher, h.key, ciphertext);
 		} catch (e) {
 			h.rollback();
-			appendMessage({ sender: 'system', text: `File receive failed: ${e instanceof Error ? e.message : String(e)}`, isSelf: false, senderIndex: 7 });
+			appendMessage({ sender: 'system', text: `File receive failed: ${e instanceof Error ? e.message : String(e)}`, isSelf: false, system: true });
 			return;
 		}
 		inboundFiles.set(key, {
@@ -1170,7 +1173,7 @@ function doReceiveMessage(
 		if (!f) return;
 		if ((meta.seq ?? -1) !== f.nextSeq) {
 			disposeInbound(key);
-			appendMessage({ sender: 'system', text: `[${from}: out-of-order file chunk, dropping transfer]`, isSelf: false, senderIndex: 7 });
+			appendMessage({ sender: 'system', text: `[${from}: out-of-order file chunk, dropping transfer]`, isSelf: false, system: true });
 			return;
 		}
 		let plain: Uint8Array;
@@ -1179,7 +1182,7 @@ function doReceiveMessage(
 		} catch (e) {
 			f.handle.rollback();
 			inboundFiles.delete(key);
-			appendMessage({ sender: 'system', text: `File receive failed: ${e instanceof Error ? e.message : String(e)}`, isSelf: false, senderIndex: 7 });
+			appendMessage({ sender: 'system', text: `File receive failed: ${e instanceof Error ? e.message : String(e)}`, isSelf: false, system: true });
 			return;
 		}
 		f.chunks.push(plain);
@@ -1198,7 +1201,7 @@ function doReceiveMessage(
 				try {
 					await Bun.write(outPath, new Blob(chunks, { type: mime }));
 				} catch (err) {
-					appendMessage({ sender: 'system', text: `Save failed: ${err instanceof Error ? err.message : String(err)}`, isSelf: false, senderIndex: 7 });
+					appendMessage({ sender: 'system', text: `Save failed: ${err instanceof Error ? err.message : String(err)}`, isSelf: false, system: true });
 					throw err;
 				}
 				showModal({ title: 'File Downloaded', body: `${filename}\n${outPath}` });
@@ -1230,9 +1233,11 @@ function doRatchetStep(): void {
 	st.session.commitRatchetStep();
 	appendMessage({
 		sender: st.username,
-		text: ratchetDisplayText(),
+		text: RATCHET_LABEL,
 		isSelf: true,
 		senderIndex: 0,
+		ratchet: true,
+		ratchetIcon: _keysIcon,
 	});
 	logEvent({
 		direction: 'out',

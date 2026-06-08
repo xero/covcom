@@ -1,7 +1,7 @@
 import { parseMarkup, stripFormatChars } from '@covcom/lib';
 import type { FingerprintSurface, Span } from '@covcom/lib';
 import { formatBytes } from '../util.js';
-import { Screen, Theme, ColorValue, colorFg, colorBg, ansi } from './screen.js';
+import { Screen, Theme, ColorValue, colorFg, colorBg, peerColor, ansi } from './screen.js';
 import type { Key } from './keys.js';
 import { getEvents, subscribeEvents, type EventLogEntry } from '../eventLog.js';
 import { SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_STEP } from '../config.js';
@@ -585,6 +585,7 @@ export class Button implements Widget {
 	label:    string;
 	disabled: boolean;
 	action:   () => void;
+	bar       = false;
 
 	constructor(id: string, label: string, action: () => void, disabled = false) {
 		this.id       = id;
@@ -595,8 +596,12 @@ export class Button implements Widget {
 
 	render(scr: Screen, rect: Rect, focused: boolean, theme: Theme) {
 		this.rect = rect;
-		const bg: ColorValue = this.disabled ? theme.btnDisabledBg : focused ? theme.btnFocusBg : theme.btnBg;
-		const fg: ColorValue = this.disabled ? theme.btnDisabledFg : focused ? theme.btnFocusFg : theme.btnFg;
+		const bg: ColorValue = this.disabled ? theme.btnDisabledBg
+			: focused ? (this.bar ? theme.barBtnFocusBg : theme.btnFocusBg)
+				: (this.bar ? theme.barBtnBg : theme.btnBg);
+		const fg: ColorValue = this.disabled ? theme.btnDisabledFg
+			: focused ? (this.bar ? theme.barBtnFocusFg : theme.btnFocusFg)
+				: (this.bar ? theme.barBtnFg : theme.btnFg);
 
 		scr.fillRect(rect.x, rect.y, rect.w, rect.h, bg);
 		const label = ` ${this.label} `;
@@ -621,7 +626,7 @@ export class Button implements Widget {
 // ─── ScrollView ───────────────────────────────────────────────────────────────
 
 type StoredMsg =
-	| { isFile: false; sender: string; text: string; isSelf: boolean; senderIndex: number }
+	| { isFile: false; sender: string; text: string; isSelf: boolean; senderIndex: number; system?: boolean; ratchet?: boolean; ratchetIcon?: string }
 	| {
 		isFile: true
 		sender: string
@@ -654,12 +659,12 @@ export class ScrollView implements Widget {
 		this.id = id;
 	}
 
-	addMessage(msg: { sender: string; text: string; isSelf: boolean; senderIndex: number }) {
+	addMessage(msg: { sender: string; text: string; isSelf: boolean; senderIndex?: number; system?: boolean; ratchet?: boolean; ratchetIcon?: string }) {
 		// The sender is a peer-controlled username rendered raw into the terminal
 		// (with SGR) by computeLines; sanitize it here so its visible length also
 		// drives prefix/indent math correctly. Message body text is sanitized
 		// separately in messageToLines.
-		this.msgs.push({ isFile: false, ...msg, sender: sanitizeTerminal(msg.sender) });
+		this.msgs.push({ isFile: false, senderIndex: 0, ...msg, sender: sanitizeTerminal(msg.sender) });
 	}
 
 	addFile(msg: {
@@ -722,17 +727,26 @@ export class ScrollView implements Widget {
 
 		for (let mi = 0; mi < this.msgs.length; mi++) {
 			const msg       = this.msgs[mi];
-			const isSystem  = msg.senderIndex === 7;
-			const nameFg    = msg.isSelf  ? colorFg(theme.yourName)
-			                : isSystem    ? colorFg(theme.disabled)
-			                :               colorFg(theme.peerName);
-			const textFg    = msg.isSelf  ? colorFg(theme.yourMsg)
-			                : isSystem    ? colorFg(theme.disabled)
+			const isSystem  = !msg.isFile && !!msg.system;
+			const nameFg    = isSystem    ? colorFg(theme.system)
+			                : msg.isSelf  ? colorFg(theme.peer0)
+			                :               colorFg(peerColor(theme, msg.senderIndex));
+			const textFg    = isSystem    ? colorFg(theme.system)
+			                : msg.isSelf  ? colorFg(theme.yourMsg)
 			                :               colorFg(theme.peerMsg);
 			const prefix    = `${msg.sender}: `;
 			const prefixLen = prefix.length;
 
-			if (!msg.isFile) {
+			if (!msg.isFile && msg.ratchet) {
+				// Ratchet notice: the key icon and the "keys rotated" label get their
+				// own theme slots, independent of the sender's message-body color. A
+				// single short line, clipped (not wrapped) like the attachment chip.
+				const icon = (msg.ratchetIcon ?? '').trim();
+				const line = nameFg + msg.sender + ansi.reset + ': '
+				           + (icon ? colorFg(theme.keyFg) + icon + ansi.reset + ' ' : '')
+				           + colorFg(theme.ratchetTxtFg) + msg.text + ansi.reset;
+				result.push({ text: line });
+			} else if (!msg.isFile) {
 				const contentW = Math.max(lineW - prefixLen, 10);
 				const lines    = messageToLines(msg.text, contentW, textFg, theme);
 				for (let li = 0; li < lines.length; li++) {
@@ -901,7 +915,7 @@ export type SidebarMode = 'event-log' | 'verify' | null;
 
 type GetFingerprints = () => {
 	local: FingerprintSurface
-	peers: { username: string; fingerprint: FingerprintSurface }[]
+	peers: { username: string; fingerprint: FingerprintSurface; colorIdx: number }[]
 }
 
 interface RenderedLogRow {
@@ -1169,7 +1183,7 @@ export class Sidebar implements Widget {
 
 		for (const p of fps.peers) {
 			if (y >= rect.y + rect.h) break;
-			writeLine(colorFg(theme.peerName) + ansi.bold + ' ' + truncate(sanitizeTerminal(p.username), rect.w - 1) + ansi.reset);
+			writeLine(colorFg(peerColor(theme, p.colorIdx)) + ansi.bold + ' ' + truncate(sanitizeTerminal(p.username), rect.w - 1) + ansi.reset);
 			writeSwatches(p.fingerprint.swatches);
 			writeLine(colorFg(theme.disabled) + '  ' + truncate(p.fingerprint.hex, rect.w - 2) + ansi.reset);
 			y++;

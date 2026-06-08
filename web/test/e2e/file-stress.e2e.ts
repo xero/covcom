@@ -2,17 +2,16 @@ import { expect, test } from '@playwright/test';
 import { createRoom, joinRoom, sendAndClassify, timeStep, watchCrash } from './helpers.ts';
 import { MiB, transferTimeout } from './timing.ts';
 
-// Large-attachment round-trips, the at-scale proof that chunked streaming fixed
-// the "Aw, Snap!" crash (the broker once dropped anything past ~12 MiB). Runs as
-// part of the normal e2e suite: every size must round-trip — alice streams it as
-// bounded chunks and bob reassembles and renders the file card. Each size is its
-// own test per engine so the report pinpoints any regression. The sweep used to
-// climb to 1 GiB for perf work; CI now keeps the sizes that prove correctness
-// without the wall-clock cost, so it no longer needs a manual opt-in gate.
+// Large-attachment round-trips, the at-scale proof for chunked streaming.
+// Every size must round-trip, alice streams it as bounded chunks and bob
+// reassembles and renders the file card. Each size is its own test per engine
+// so the report pinpoints any regression. The sweep used to climb to 1 GiB for
+// perf work; CI now keeps the sizes that prove correctness without the
+// wall-clock cost, so it no longer needs a manual opt-in gate.
 //
-// The bytes are synthesized inside alice's page (helpers.attachSynthFile), so the
-// source allocation lives in the renderer under test rather than crossing the
-// Node/CDP bridge.
+// The bytes are synthesized inside alice's page (helpers.attachSynthFile), so
+// the source allocation lives in the renderer under test rather than crossing
+// the Node/CDP bridge.
 
 const SIZES: { label: string; bytes: number; wireLabel: string }[] = [
 	{ label: '64 MiB',  bytes: 64 * MiB,  wireLabel: '64.0 MB' },

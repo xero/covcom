@@ -336,3 +336,16 @@ cryptographic attack and is outside this model.
 [S5]:       https://signal.org/docs/specifications/doubleratchet/#the-sparse-post-quantum-ratchet
 [S89]:      https://signal.org/docs/specifications/doubleratchet/#effect-of-dropped-messages-on-pcs
 [S811]:     https://signal.org/docs/specifications/doubleratchet/#harvest-now-decrypt-later-attacks
+
+---
+
+## Cross Reference
+
+| Document | Description |
+| -------- | ----------- |
+| [index](./README.md) | Project Documentation index |
+| [USAGE](./USAGE.md) | Client and server applications development and runtime help |
+| [PROTOCOL](./PROTOCOL.md) | Cipher, chains, ratchet, group model, session lifecycle, server role |
+| [CRYPTOGRAPHY](./CRYPTOGRAPHY.md) | Primitives, KDF chains, wire format, invite encoding |
+| [CLI-SPEC](./CLI-SPEC.md) | CLI architecture, rendering, input, widgets, views, and color system |
+| [TESTING](./TESTING.md) | Test layers, unit and end-to-end suites, cross-client interop, and CI |

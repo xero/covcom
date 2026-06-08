@@ -176,7 +176,7 @@ describe('Sidebar verify pane: peer username is sanitized', () => {
 			30,
 			() => ({
 				local: { swatches: [], hex: '00', badge: '#000000' },
-				peers: [{ username: 'eve\x1b[2Jx', fingerprint: { swatches: [], hex: 'ff', badge: '#ffffff' } }],
+				peers: [{ username: 'eve\x1b[2Jx', fingerprint: { swatches: [], hex: 'ff', badge: '#ffffff' }, colorIdx: 1 }],
 			}),
 			'me',
 		);

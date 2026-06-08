@@ -8,7 +8,7 @@ import type { CovcomSession } from '../session.js';
 import { getState, subscribe } from '../store.js';
 import type { ChatItem, PeerView, Room } from '../store.js';
 import { parseMarkup } from '@covcom/lib';
-import { el, clear, formatBytes, senderColor } from '../util.js';
+import { el, clear, formatBytes, peerColor } from '../util.js';
 import { renderRich, renderDoc } from '../rich.js';
 import { ICON_COG, ICON_SEND, ICON_ATTACH } from '../icons.js';
 import { setHtml } from '../safehtml.js';
@@ -35,8 +35,8 @@ function makeArmoredInvite(room: Room): string {
 
 function colorFor(name: string, peers: Map<string, PeerView>): string {
 	const peer = peers.get(name);
-	// Self isn't in peers → colorIdx 0; peers carry their assigned slot.
-	return senderColor(peer ? peer.colorIdx : 0);
+	// Self isn't in peers → colorIdx 0 → --peer0; peers carry their assigned slot.
+	return peerColor(peer ? peer.colorIdx : 0);
 }
 
 // ── chat-item renderers ────────────────────────────────────────────────────

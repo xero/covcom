@@ -564,3 +564,16 @@ ephemeral use.
 [DR-RENAME]: https://github.com/trevp/double_ratchet/wiki/Home/_compare/6fa4a516b01327d736df1f52014d8b561a18189a...ab41721f9ed7ca0bdac3e24ce9fc573750e0614d
 [LC-PR12]:  https://github.com/xero/leviathan-crypto/pull/12
 [FIPS203]:  https://csrc.nist.gov/pubs/fips/203/final
+
+---
+
+## Cross Reference
+
+| Document | Description |
+| -------- | ----------- |
+| [index](./README.md) | Project Documentation index |
+| [USAGE](./USAGE.md) | Client and server applications development and runtime help |
+| [CRYPTOGRAPHY](./CRYPTOGRAPHY.md) | Primitives, KDF chains, wire format, invite encoding |
+| [THREAT-MODEL](./THREAT-MODEL.md) | Principals, adversary tiers, guarantees, non-goals |
+| [CLI-SPEC](./CLI-SPEC.md) | CLI architecture, rendering, input, widgets, views, and color system |
+| [TESTING](./TESTING.md) | Test layers, unit and end-to-end suites, cross-client interop, and CI |

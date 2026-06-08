@@ -294,8 +294,31 @@ bun dev:cli
 **Join directly from a `.room` file:**
 
 ```sh
-bun dev:cli join /path/to/invite.room
+bun dev:cli --join /path/to/invite.room
 ```
+
+Two paranoia level flags are exposed which effect how the config file is used:
+
+**Run without touching the config file** (no read, no save):
+
+```sh
+bun dev:cli --clean
+```
+
+`--clean` ignores `~/.config/covcom/config.json` entirely: no saved server or
+username is prefilled, and nothing is written back. Combine with `--join` for a
+fully ephemeral session, e.g. `bun dev:cli --clean --join /path/to/invite.room`.
+
+**Run without exposing your saved identity:**
+
+```sh
+bun dev:cli --anon
+```
+
+`--anon` is a narrower `--clean`: it skips only the saved server and username.
+they are not prefilled and not written, and the on-disk values are left
+untouched, while theme, copy command, sidebar width, and icons still load and
+persist as usual.
 
 **Build a standalone binary for the current platform:**
 
@@ -442,6 +465,7 @@ Deeper references for users, auditors, contributors, and the curious.
 | [CRYPTOGRAPHY](./docs/CRYPTOGRAPHY.md)                | Primitives, KDF chains, wire format, invite encoding                  |
 | [THREAT-MODEL](./docs/THREAT-MODEL.md)                | Principals, adversary tiers, guarantees, non-goals                    |
 | [CLI-SPEC](./docs/CLI-SPEC.md)                        | CLI architecture, rendering, input, widgets, views, & color system    |
+| [TESTING](./docs/TESTING.md)                          | Test layers, unit and end-to-end suites, cross-client interop, and CI   |
 | [SECURITY-POLICY](./SECURITY.md)                      | Supported versions, disclosure policy, cryptographic foundation       |
 | [DIAGRAM](https://xero.github.io/covcom/diagram.html) | Animated and annotated visualization of a complete three peer session |
 

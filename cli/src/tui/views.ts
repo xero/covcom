@@ -1,5 +1,5 @@
 import { join, resolve } from 'path';
-import { readdirSync } from 'fs';
+import { readdirSync, existsSync, statSync } from 'fs';
 import { parseArmoredInvite, inviteFilename, PROTOCOL } from '@covcom/lib';
 import type { InvitePayload, FingerprintSurface } from '@covcom/lib';
 import { Screen, Theme, ColorValue, loadTheme, colorFg, colorBg, ansi } from './screen.js';
@@ -550,7 +550,7 @@ export function renderChat(
 		onSend:          (text: string) => void
 		onFile:          (filePath: string) => Promise<void>
 		onRotate:        () => void
-		getFingerprints: () => { local: FingerprintSurface; peers: { username: string; fingerprint: FingerprintSurface }[] }
+		getFingerprints: () => { local: FingerprintSurface; peers: { username: string; fingerprint: FingerprintSurface; colorIdx: number }[] }
 	},
 ): void {
 	_chatScreen = scr;
@@ -568,6 +568,7 @@ export function renderChat(
 	const sendBtn   = new Button('sendBtn',   lblSend,    () => doSend());
 	const attachBtn = new Button('attachBtn', lblAttach,  () => enterPicking());
 	const rotateBtn = new Button('rotateBtn', lblRatchet, () => opts.onRotate());
+	sendBtn.bar = attachBtn.bar = rotateBtn.bar = true;
 
 	// Sidebar mirrors the web's two-mode pane. Hidden by default; toggled with
 	// Ctrl+E (event log) and Ctrl+V (verify). Width is read from / persisted to
@@ -623,7 +624,7 @@ export function renderChat(
 			'  /verify                   toggle verify pane (Ctrl+V)',
 			'  /help (/?)                show this list',
 		].join('\n');
-		appendMessage({ sender: 'system', text, isSelf: false, senderIndex: 7 });
+		appendMessage({ sender: 'system', text, isSelf: false, system: true });
 	}
 
 	const commands: Record<string, () => void> = {
@@ -656,7 +657,7 @@ export function renderChat(
 			sender: 'system',
 			text: `unknown command: ${raw}. type /help for a list`,
 			isSelf: false,
-			senderIndex: 7,
+			system: true,
 		});
 	}
 
@@ -674,6 +675,7 @@ export function renderChat(
 		picking    = true;
 		pathInput  = new TextInput('pathInput', '');
 		cancelBtn  = new Button('cancelBtn', 'x', () => exitPicking());
+		cancelBtn.bar = true;
 		tabMatches = []; tabIdx = -1; tabCycled = '';
 
 		rebuildRing();
@@ -748,7 +750,7 @@ export function renderChat(
 			const inputW = Math.max(1, chatW - 3 - inputX);
 
 			scr.moveTo(iconX, barY);
-			scr.write(colorBg(theme.barBg) + colorFg(theme.attachBg) + ansi.bold + lblAttach + ansi.reset);
+			scr.write(colorBg(theme.barBg) + colorFg(theme.barAttach) + ansi.bold + lblAttach + ansi.reset);
 
 			pathInput.render(scr, { x: inputX,    y: barY, w: inputW, h: 1 }, ring.isFocused('pathInput'), theme);
 			cancelBtn.render(scr, { x: chatW - 3, y: barY, w: 3,      h: 1 }, ring.isFocused('cancelBtn'), theme);
@@ -801,6 +803,14 @@ export function renderChat(
 						exitPicking(); return;
 					}
 					const p = resolve(raw);
+					if (!existsSync(p) || !statSync(p).isFile()) {
+						showModal({
+							title: 'File Not Found',
+							body: `No file exists at:\n${p}`,
+							accent: theme.error,
+						});
+						return;
+					}
 					exitPicking();
 					void opts.onFile(p);
 					return;
@@ -921,10 +931,13 @@ export function renderChat(
 // ─── appendMessage / appendFile ───────────────────────────────────────────────
 
 export function appendMessage(msg: {
-	sender:      string
-	text:        string
-	isSelf:      boolean
-	senderIndex: number
+	sender:       string
+	text:         string
+	isSelf:       boolean
+	senderIndex?: number
+	system?:      boolean
+	ratchet?:     boolean
+	ratchetIcon?: string
 }): void {
 	if (!_scrollView || !_chatScreen) {
 		// not in chat; route system messages (server errors, etc.) to active view

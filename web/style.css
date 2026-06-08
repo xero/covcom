@@ -22,16 +22,18 @@
 	--gap: 1rem;
 	--radius: 0px;
 
-	/* sender palette: distinct colors readable on --depths */
-	--sender-0: #1c7293;
-	--sender-1: #1a936f;
-	--sender-2: #e6a817;
-	--sender-3: #a855f7;
-	--sender-4: #f97316;
-	--sender-5: #ef4444;
-	--sender-6: #06b6d4;
-	--sender-7: #84cc16;
-	--sender-8: #c0c0c0;
+	/* peer palette: distinct colors readable on --depths. peer0 is reserved for
+	   self; other peers cycle peer1..peer7. --system is deliberately NOT a peer
+	   slot so a peer can never wear the system-message color. */
+	--peer0: #1c7293;
+	--peer1: #1a936f;
+	--peer2: #e6a817;
+	--peer3: #a855f7;
+	--peer4: #f97316;
+	--peer5: #ef4444;
+	--peer6: #06b6d4;
+	--peer7: #84cc16;
+	--system: #c0c0c0;
 }
 
 html,
@@ -511,7 +513,7 @@ label {
 			background: #291717;
 		}
 		.event-log-dir {
-			color: var(--sender-8);
+			color: var(--system);
 		}
 	}
 }
@@ -623,7 +625,7 @@ label {
 		opacity: 0.55;
 		font-style: italic;
 		.msg-sender {
-			color: #c0c0c0 !important;
+			color: var(--system) !important;
 		}
 	}
 	&.ratchet .msg-text::before {

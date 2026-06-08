@@ -290,7 +290,7 @@ expected chain seeds have been received. It does not fire anywhere else.
 - Config is stored at `~/.config/covcom/config.json`. Fields: `server`,
   `username`, `copyCmd`, `theme`, `showSystem`, `sidebar`, `icons`. No key
   material.
-- The CLI accepts `covcom join <path>` as a positional argument. It also
+- The CLI accepts `covcom --join <path>` as a flag. It also
   accepts pasted armored text at the interactive join prompt.
 
 **Room invite format**

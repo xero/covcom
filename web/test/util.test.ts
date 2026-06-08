@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { clear, el, formatBytes, senderColor, senderIndex } from '../src/util.ts';
+import { clear, el, formatBytes, peerColor } from '../src/util.ts';
 
 describe('el', () => {
 	test('creates a tagged element', () => {
@@ -46,21 +46,15 @@ describe('formatBytes', () => {
 	});
 });
 
-describe('senderColor', () => {
-	test('maps index into the 8-slot palette', () => {
-		expect(senderColor(0)).toBe('var(--sender-0)');
-		expect(senderColor(7)).toBe('var(--sender-7)');
-		expect(senderColor(8)).toBe('var(--sender-0)');
-		expect(senderColor(10)).toBe('var(--sender-2)');
+describe('peerColor', () => {
+	test('self (colorIdx 0) is reserved peer0', () => {
+		expect(peerColor(0)).toBe('var(--peer0)');
 	});
-});
-
-describe('senderIndex', () => {
-	test('assigns stable incrementing indices per username', () => {
-		const known = new Map<string, number>();
-		expect(senderIndex('a', known)).toBe(0);
-		expect(senderIndex('b', known)).toBe(1);
-		expect(senderIndex('a', known)).toBe(0);
-		expect(known.size).toBe(2);
+	test('peers cycle peer1..peer7, never landing on peer0', () => {
+		expect(peerColor(1)).toBe('var(--peer1)');
+		expect(peerColor(7)).toBe('var(--peer7)');
+		expect(peerColor(8)).toBe('var(--peer1)');   // wraps after 7, not to peer0
+		expect(peerColor(14)).toBe('var(--peer7)');
+		expect(peerColor(15)).toBe('var(--peer1)');
 	});
 });

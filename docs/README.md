@@ -14,15 +14,16 @@
   unreadable and secure against future cryptanalysis.
 ```
 
-| Document                                                                  | Purpose                                                              |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [USAGE](USAGE.md)                                                         | Client and server applications development and runtime help          |
-| [PROTOCOL](PROTOCOL.md)                                                   | Cipher, chains, ratchet, group model, session lifecycle, server role |
-| [CRYPTOGRAPHY](CRYPTOGRAPHY.md)                                           | Primitives, KDF chains, wire format, invite encoding                 |
-| [THREAT-MODEL](THREAT-MODEL.md)                                           | Principals, adversary tiers, guarantees, non-goals                   |
-| [CLI-SPEC](CLI-SPEC.md)                                                   | CLI architecture, rendering, input, widgets, views, & color system   |
-| [SECURITY-POLICY](../SECURITY.md)                                         | Supported versions, disclosure policy, cryptographic foundation      |
-| [DIAGRAM](https://xero.github.io/covcom/diagram.html)                     | Animated visualization of a session: establishment, epochs, and reconnect ceremonies |
+| Document                                              | Purpose                                                               |
+| ----------------------------------------------------- | --------------------------------------------------------------------- |
+| [USAGE](USAGE.md)                                     | Client and server applications development and runtime help           |
+| [PROTOCOL](PROTOCOL.md)                               | Cipher, chains, ratchet, group model, session lifecycle, server role  |
+| [CRYPTOGRAPHY](CRYPTOGRAPHY.md)                       | Primitives, KDF chains, wire format, invite encoding                  |
+| [THREAT-MODEL](THREAT-MODEL.md)                       | Principals, adversary tiers, guarantees, non-goals                    |
+| [CLI-SPEC](CLI-SPEC.md)                               | CLI architecture, rendering, input, widgets, views, & color system    |
+| [TESTING](TESTING.md)                                 | Test layers, unit and end-to-end suites, cross-client interop, and CI |
+| [SECURITY-POLICY](../SECURITY.md)                     | Supported versions, disclosure policy, cryptographic foundation       |
+| [DIAGRAM](https://xero.github.io/covcom/diagram.html) | Animated protocol visualization, session establishment, epochs, fingerprinting, file attachments, ratchets, and reconnect ceremonies |
 
 ## Quickstart
 
@@ -37,3 +38,4 @@ docker run -d \
 ```
 
 Open https://chat.example.com in a browser. Create a room, share the invite, & chat.
+
