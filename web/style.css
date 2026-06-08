@@ -25,8 +25,8 @@
 	/* peer palette: distinct colors readable on --depths. peer0 is reserved for
 	   self; other peers cycle peer1..peer7. --system is deliberately NOT a peer
 	   slot so a peer can never wear the system-message color. */
-	--peer0: #1c7293;
-	--peer1: #1a936f;
+	--peer0: #1a936f;
+	--peer1: #1c7293;
 	--peer2: #e6a817;
 	--peer3: #a855f7;
 	--peer4: #f97316;
