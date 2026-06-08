@@ -6,16 +6,19 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    container:
+      image: ghcr.io/xero/covcom/ci:latest
+      options: --user root
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: latest
       - name: install
         run: bun i
       - name: lint
@@ -26,11 +29,13 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    container:
+      image: ghcr.io/xero/covcom/ci:latest
+      options: --user root
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: latest
       - name: install
         run: bun i
       - name: unit tests (server, lib, web, cli)
@@ -39,22 +44,23 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    container:
+      image: ghcr.io/xero/covcom/ci:latest
+      # --privileged so the swap-headroom step below can swapon inside the
+      # container (swapon needs CAP_SYS_ADMIN, absent from other jobs).
+      options: --user root --privileged
+    env:
+      HOME: /root
     strategy:
       fail-fast: false
       matrix:
         browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: latest
       - name: install
         run: bun i
-      - name: install playwright browser
-        run: bunx playwright install --with-deps ${{ matrix.browser }}
-      # Headroom for the file-stress sweep's ≤180 MiB renderers running alongside
-      # the rest of the suite. Inline so we add no third-party action to the
-      # SHA-pinned CI; swap absorbs a transient peak so a spike can't OOM the job.
+      # headroom for the file-stress tests running alongside the rest of the
+      # suite. swap absorbs a transient peak so a spike doesn't OOM the job.
       - name: add swap headroom
         run: |
           sudo fallocate -l 8G /mnt/swapfile
@@ -86,17 +92,20 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    container:
+      image: ghcr.io/xero/covcom/ci:latest
+      options: --user root
+    env:
+      HOME: /root
     permissions:
       contents: read
       actions: read
+      packages: read
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: latest
       - name: download timing artifacts
         continue-on-error: true
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: e2e-timing-*
           path: timing-artifacts
@@ -106,15 +115,15 @@ jobs:
   cross-client:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    container:
+      image: ghcr.io/xero/covcom/ci:latest
+      options: --user root
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: latest
       - name: install
         run: bun i
-      - name: install playwright chromium
-        run: bunx playwright install --with-deps chromium
       - name: build web client
         run: bun run build:web
       - name: build cli binary

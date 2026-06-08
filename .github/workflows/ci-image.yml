@@ -1,0 +1,57 @@
+name: ci-image
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/ci.Dockerfile"
+      - ".github/workflows/ci-image.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: set up docker buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      - name: log in to ghcr
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: set build time
+        id: version-bump
+        run: echo "buildtime=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      # Single source of truth: bun version lives in package.json's
+      # "packageManager" field (bun@x.y.z); the Dockerfile reads it via build-arg.
+      - name: resolve bun version
+        id: bun
+        run: echo "version=$(node -p "require('./package.json').packageManager.split('bun@')[1]")" >> "$GITHUB_OUTPUT"
+
+      - name: build and push
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: .github/ci.Dockerfile
+          push: true
+          tags: ghcr.io/xero/covcom/ci:latest
+          build-args: |
+            BUN_VERSION=${{ steps.bun.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          annotations: |
+            org.opencontainers.image.title=covcom/ci
+            org.opencontainers.image.description=cicd e2e testing toolchain for the covcom chat app
+            org.opencontainers.image.authors=https://github.com/xero/covcom/graphs/contributors
+            org.opencontainers.image.documentation=https://github.com/xero/covcom/wiki
+            org.opencontainers.image.url=https://github.com/xero/covcom/actions
+            org.opencontainers.image.source=https://github.com/xero/covcom/blob/main/.github/ci.Dockerfile
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.created=${{ steps.version-bump.outputs.buildtime }}
