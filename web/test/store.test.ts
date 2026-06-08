@@ -8,7 +8,7 @@ function fp(hex: string): FingerprintSurface {
 	return { hex, swatches: ['#101010', '#202020'], badge: '#303030' } as unknown as FingerprintSurface;
 }
 
-const room = (id = 'r'.repeat(32)): Room => ({ id, secret: new Uint8Array(16), dns: 'localhost:3000' });
+const room = (id = 'r'.repeat(32)): Room => ({ id, secret: new Uint8Array(16), dns: 'localhost:1337' });
 
 // The store is a module singleton; RESET returns it to the initial state and
 // rewinds the event-id counter, so every test starts from a known baseline.

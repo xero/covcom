@@ -20,8 +20,24 @@ XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-p
 >   - [development](#development)
 >   - [environment variables](#environment-variables)
 > - [web client](#web-client)
+>   - [running](#running)
+>   - [the interface](#the-interface)
+>     - [header controls](#header-controls)
+>     - [sidebar](#sidebar)
+>     - [verify panel](#verify-panel)
+>     - [event log](#event-log)
+>     - [file attachments](#file-attachments)
+>     - [commands](#commands)
+>   - [no config, nothing stored](#no-config-nothing-stored)
 > - [cli client](#cli-client)
+>   - [invocation](#invocation)
 >   - [configuration](#configuration)
+>     - [top-level fields](#top-level-fields)
+>     - [copyCmd](#copycmd)
+>     - [sidebar](#sidebar-1)
+>     - [icons](#icons)
+>     - [theme](#theme)
+>     - [example](#example)
 >   - [navigation](#navigation)
 > - [starting a session](#starting-a-session)
 > - [formatting messages](#formatting-messages)
@@ -208,7 +224,7 @@ bun start:server
 ```
 
 This invokes `bun run src/index.ts` in the `server/` workspace and listens
-on `localhost:$PORT` (default `3000`).
+on `localhost:$PORT` (default `1337`).
 
 > [!WARNING]
 > The bundled Caddy provides TLS termination and the `X-Frame-Options: DENY`
@@ -225,14 +241,14 @@ connect over `ws://`.
 bun dev:server
 ```
 
-The server starts on `localhost:3000` and reloads on source changes.
+The server starts on `localhost:1337` and reloads on source changes.
 
 ### environment variables
 
 | Variable        | Default  | Description                                                           |
 | --------------- | -------- | --------------------------------------------------------------------- |
 | `DOMAIN`        | required | Domain name for Caddy TLS                                             |
-| `PORT`          | `3000`   | Internal port the Bun server listens on                               |
+| `PORT`          | `1337`   | Internal port the Bun server listens on                               |
 | `ADMIN_TOKEN`   | unset    | Optional token required to create rooms                               |
 | `ROOM_TTL`      | `24`     | Hours of inactivity before an empty room is deleted. `0` disables TTL |
 | `MAX_ROOM_SIZE` | `20`     | Maximum participants per room. `0` is unlimited                       |
@@ -245,6 +261,13 @@ time. You do not need `ADMIN_TOKEN` set to run a private server; the
 ---
 
 ## web client
+
+The web client is a single-page app that runs entirely in the browser. It
+opens on a landing screen where you create or join a room, then moves through
+the lobby into the chat. The screen flow is the same as the CLI and is covered
+in [starting a session](#starting-a-session).
+
+### running
 
 **Development:**
 
@@ -276,6 +299,125 @@ bun run --cwd web preview
 
 Serves the contents of `web/dist/` locally for smoke-testing the bundled
 output.
+
+### the interface
+
+Once you are in a room, the chat fills the window and a row of controls sits
+in the header. Two of those controls open a sidebar on the right; the rest act
+on the chat directly. Everything below is per-session UI. None of it is saved.
+
+#### header controls
+
+Three buttons live in the top-right of the header. They appear only when they
+have something to act on.
+
+**Fingerprint badge.** Opens the [verify panel](#verify-panel). It shows from
+the lobby onward, and its background is the first swatch of your own
+fingerprint, so you carry a small splash of your identity color in the header.
+
+**Event log.** Toggles the [event log](#event-log) panel. It appears once the
+chat is open.
+
+**Hide system messages.** An eye that toggles the "joined", "left", and
+connection notices in the chat scroll. System messages show by default; click
+the eye to hide them and click again to bring them back. The icon flips between
+open and closed to show the current state. Hiding them in the chat does not
+remove them from the event log.
+
+#### sidebar
+
+The sidebar holds two panels, Verify and Event Log, each opened by its header
+button. Clicking a button while its panel is already open closes the sidebar.
+
+Drag the divider between the chat and the sidebar to resize it. Double-click
+the divider to snap back to the default. The width ranges from 10% to 70% of
+the window and starts at 30%. The width lasts for the session only.
+
+When the sidebar (or an item inside it) has keyboard focus, `+` / `-` resize it
+by 5% per press and `Esc` closes it and returns focus to the chat input. Tab
+into the sidebar to reach these: the event log's rows are focusable, and the
+verify panel is a single focus stop.
+
+#### verify panel
+
+The verify panel proves you are in the session you think you are in. It lists
+your own fingerprint under **You** and every peer under **Peers**. Each
+fingerprint is eight color swatches followed by a 16-character hex string;
+hover a swatch to read its hex value.
+
+Read your colors and hex aloud to the people you are talking to, over a channel
+the server does not control, and confirm theirs match what the panel shows. A
+mismatch means the session is not what one of you thinks it is. The derivation
+of these surfaces from the session signing key is described in
+[how it works](#how-it-works).
+
+#### event log
+
+The event log records every WebSocket frame and every local crypto action as
+it happens. Each row has four columns: a timestamp, a direction glyph for
+inbound or outbound, the event kind, and a one-line summary. Payload bytes are
+redacted, so the log never exposes plaintext or key material.
+
+Click any row to expand a key/value table with the frame's structural detail.
+The log holds the most recent 500 entries; older ones drop off as new frames
+arrive. It is not saved and clears on reload.
+
+#### file attachments
+
+Send a file with the **Attach** button, or drag one anywhere onto the page. On
+drag a "drop file to send" overlay appears across the window; release to send.
+There is no paste-to-attach.
+
+Files travel in signed, encrypted 64 KiB chunks over the same broadcast path as
+messages, so the server sees only opaque blobs. A received file lands in the
+chat as a card with its name and size and a **Download** button that saves it
+locally.
+
+**Sending and formatting messages:**
+
+| Key                 | Action                                |
+|---------------------|---------------------------------------|
+| `Enter`             | Send the message                      |
+| `Shift+Enter`       | Insert a newline                      |
+
+The **Rotate** button next to the input triggers a key rotation (ratchet step)
+on demand. Message bodies render the same small markdown subset as the CLI; see
+[formatting messages](#formatting-messages).
+
+#### commands
+
+Type a `/`-prefixed command in the chat input and press `Enter`. Anything after
+the command word is ignored, and unknown commands print a hint. These mirror the
+CLI's commands; the actions also have buttons in the header and next to the
+input.
+
+| Command                     | Action                          |
+|-----------------------------|---------------------------------|
+| `/exit` `/quit` `/q` `/part`| Leave the room, back to landing |
+| `/ratchet`                  | Rotate encryption keys          |
+| `/events`                   | Toggle the event-log panel      |
+| `/verify`                   | Toggle the verify panel         |
+| `/help` `/?`                | List the commands               |
+
+The web client has no `Ctrl`-key hotkeys for rotate, events, and verify
+(`Ctrl+R/E/V` are taken by the browser). Use the commands, the buttons, or the
+keys-display: press `Esc` while the message box is focused to swap it for a row
+of `R` ratchet / `E` events / `V` verify / `Esc` return units, then press the
+key (shift does not matter). Any action closes the display and returns to the
+message box; `Esc` returns without doing anything.
+
+### no config, nothing stored
+
+The web client has no config file and writes nothing to the browser. Your
+messages, peers, fingerprints, event log, sidebar width, and the hide-system
+toggle all live in memory and are wiped when you reload or close the tab. There
+is no theme, no settings panel, and no persisted history.
+
+You set the server address, your username, and an optional server password on
+the landing screen each time. The server field defaults to the host serving the
+page, which is the relay in the single-container deployment; edit it to target
+a separate relay. The CLI can persist these and more in an optional
+[config file](#configuration); the web client always starts fresh.
 
 ---
 
@@ -318,31 +460,212 @@ bun run --cwd cli build:win     # Windows x86_64      → cli/dist/covcom-win-x6
 bun build:cli:all
 ```
 
+### invocation
+
+```
+covcom [--clean] [--anon] [--join <path>]
+```
+
+all flags are optional and order-independent. unknown args are ignored.
+
+| flag            | argument | notes                                                                                          |
+|-----------------|----------|------------------------------------------------------------------------------------------------|
+| `--join`        | path     | path to a `.room` invite file. the file is read at startup and routes the user straight to `JoinView` with the invite prefilled, skipping `LoginView`. without it, the user starts on `LoginView`. a missing or dangling value (e.g. `--join --clean`) is ignored rather than treated as a path. |
+| `--clean`       | none     | disables config persistence entirely for the run. see [configuration](#configuration).         |
+| `--anon`        | none     | narrower variant of `--clean` scoped to `server` and `username`. see [configuration](#configuration). |
+
+`--join` pairs with the paranoia flags for a fully ephemeral session, e.g. `covcom --clean --join /path/to/invite.room` joins from a file without reading or writing any config.
+
 ### configuration
 
-Settings save to `~/.config/covcom/config.json` after a
-successful connection. The file is optional; all fields can be set
-interactively.
+config is read from `~/.config/covcom/config.json` at startup and written
+back by the CLI when the user changes a persisted setting (currently just
+the sidebar width). every field is optional; missing fields fall back to
+the documented default.
+
+two paranoia level flags are exposed to control how the config file is used.
+
+passing the `--clean` CLI flag disables config persistence entirely for that
+run: the file is neither read (nothing is prefilled into the login screen, all
+fields fall back to defaults) nor written (no `server`/`username` save after a
+successful create, no sidebar-width persistence).
+
+passing the `--anon` CLI flag is a narrower variant scoped to `server` and
+`username` only: those two are neither read (not prefilled into the login
+screen) nor written (no save after a successful create, and the on-disk values
+are left untouched). all other fields (`theme`, `copyCmd`, `showSystem`,
+`sidebar`, `icons`), read and persist exactly as normal. if both flags are
+passed, `--clean` takes precedence.
+
+#### top-level fields
+
+| field            | type                    | default | notes                                                                                       |
+|------------------|-------------------------|---------|---------------------------------------------------------------------------------------------|
+| `server`         | string                  | unset   | prefilled into the Server DNS input on the login screen. updated after a successful create. skipped under `--clean` and `--anon`. |
+| `username`       | string                  | unset   | prefilled into the Username input on the login screen. updated after a successful create. skipped under `--clean` and `--anon`.   |
+| `copyCmd`        | string                  | unset   | clipboard command for "Copy Code". whitespace-split into argv. see [copyCmd](#copycmd).     |
+| `showSystem`     | boolean                 | `true`  | when `false`, system messages (`<peer> joined`, server errors, etc.) are not appended to the chat scroll. event log still receives them. |
+| `sidebar`        | `{ width?: number }`    | `{}`    | see [sidebar](#sidebar-1).                                                                  |
+| `icons`          | `{ send?, attach?, ratchet?, keys?: string }` | `{}` | glyph overrides for the chat input bar and key-rotation status. see [icons](#icons). |
+| `theme`          | `Partial<Theme>`        | `{}`    | per-slot color overrides. see [theme](#theme).                                              |
+
+#### copyCmd
+
+the value is a single command string. covcom splits on whitespace and
+spawns the result with the armored invite piped to stdin.
+
+```json
+{ "copyCmd": "xsel -b" }
+{ "copyCmd": "xclip -selection clipboard" }
+{ "copyCmd": "wl-copy" }
+{ "copyCmd": "pbcopy" }
+```
+
+if unset, covcom probes `pbcopy`, `xclip -selection clipboard`, `xsel -b`,
+`wl-copy` in that order and uses the first one that succeeds.
+
+#### sidebar
+
+| field               | type   | default | range | notes                                          |
+|---------------------|--------|---------|-------|------------------------------------------------|
+| `sidebar.width`     | number | `30`    | 10-70 | percent of terminal width. clamped on read.    |
+
+stepping `+` / `-` from inside the sidebar adjusts this value by 5% per
+press and writes it back to disk immediately. the sidebar is force-hidden
+when `screen.w < 80` regardless of this value.
+
+#### icons
+
+| field           | type   | default | notes                                       |
+|-----------------|--------|---------|---------------------------------------------|
+| `icons.send`    | string | `">"`   | label for the send button.                  |
+| `icons.attach`  | string | `"+"`   | label for the attach button.                |
+| `icons.ratchet` | string | `"R"`   | label for the ratchet (key rotation) button. |
+| `icons.keys`    | string | `""`    | optional glyph shown before `keys rotated` in chat history when a ratchet occurs. empty (default) renders just `keys rotated`; a non-empty value renders `<icon> keys rotated` with one space between. emojis in terminals can mis-render width or break cursor positioning, which is why the default is unset. |
+| `icons.events`  | string | `""`    | optional glyph for the `events` unit in the keys-display. unset renders the unit with no leading glyph (and no bookend space). |
+| `icons.verify`  | string | `""`    | optional glyph for the `verify` unit in the keys-display. unset renders the unit with no leading glyph. |
+| `icons.escape`  | string | `""`    | optional glyph for the `return to chat` unit in the keys-display. unset renders the unit with no leading glyph. |
+
+labels can be any string, including multi-character text and Nerd Font /
+PUA glyphs. valid values include `">"`, `"send"`, `"❯"`, `">>"`,
+`"󰒊"`. each button is sized as `cellWidth(label) + 2`, giving exactly one
+column of background padding on each side. cell width is measured as the
+codepoint count, which is accurate for ASCII, BMP unicode, and the
+single-cell glyphs in the Nerd Font PUA ranges. labels containing
+combining marks or wide CJK characters render correctly but may not center
+visually.
+
+the three buttons render in this order from left to right: `send`,
+`attach`, `ratchet`. the rightmost button sits one column in from the
+right edge of the chat pane.
+
+pressing `Esc` while the chat input is focused replaces the input bar with the
+keys-display: a row of `ratchet`, `events`, `verify`, and `return to chat`
+units. each unit reads its leading glyph from the matching icon
+(`icons.ratchet`, `icons.events`, `icons.verify`, `icons.escape`); an unset icon
+renders nothing and skips the space that would bookend it, so a config without
+these glyphs shows just the key and label. unlike the bar buttons, these read
+the raw config value with no fallback, so the `ratchet` unit shows a glyph only
+when `icons.ratchet` is explicitly set.
+
+#### theme
+
+`theme` is a partial map of `Theme` slots. each slot accepts a
+`ColorValue`:
+
+```ts
+type ColorValue =
+  | { type: 'ansi16'; n: number }     // 0-15, the user's terminal palette
+  | { type: '256';    n: number }     // 0-255, xterm 256-color
+  | { type: 'hex';    value: string } // '#rrggbb' truecolor
+  | null                              // inherit terminal default (bg/fg only)
+```
+
+prefer `ansi16` for consistency with the user's shell theme. `256` and
+`hex` are escape hatches for users who want a specific color independent
+of the terminal palette.
+
+| slot                | default (ansi16 n) | role                                              |
+|---------------------|--------------------|---------------------------------------------------|
+| `bg`                | `null`             | screen background. `null` keeps the terminal default. |
+| `fg`                | `null`             | default text. `null` keeps the terminal default.  |
+| `inputBg`           | 0 (black)          | text input background.                            |
+| `inputFg`           | 15 (bright white)  | text input foreground.                            |
+| `btnBg`             | 8 (dark gray)      | unfocused button background.                      |
+| `btnFg`             | 15 (bright white)  | unfocused button foreground.                      |
+| `btnFocusBg`        | 4 (blue)           | focused button background.                        |
+| `btnFocusFg`        | 15 (bright white)  | focused button foreground.                        |
+| `btnDisabledBg`     | 8 (dark gray)      | disabled button background.                       |
+| `btnDisabledFg`     | 8 (dark gray)      | disabled button foreground (invisible label).     |
+| `barBg`             | 8 (dark gray)      | chat input bar and sidebar tab strip background.  |
+| `barFg`             | 15 (bright white)  | chat input bar foreground.                        |
+| `barBtnBg`          | 8 (dark gray)      | unfocused background of the bar action buttons (send / attach / ratchet / attach-mode cancel). Defaults to `btnBg`. |
+| `barBtnFg`          | 15 (bright white)  | unfocused foreground of the bar action buttons. Defaults to `btnFg`. |
+| `barBtnFocusBg`     | 4 (blue)           | focused background of the bar action buttons. Defaults to `btnFocusBg`. |
+| `barBtnFocusFg`     | 15 (bright white)  | focused foreground of the bar action buttons. Defaults to `btnFocusFg`. |
+| `peer0`             | 14 (bright cyan)   | **your own** username prefix in the chat scroll. Reserved for self; peers never use it, so no peer can wear your color. |
+| `peer1`             | 10 (bright green)  | peer username prefix in the chat scroll (and verify panel). Each peer is assigned one of `peer1`-`peer7` by join order, wrapping after 7 (so a peer never lands on `peer0` or the system color). |
+| `peer2`             | 12 (bright blue)   | peer username color, slot 2 (see `peer1`).        |
+| `peer3`             | 13 (bright magenta)| peer username color, slot 3.                      |
+| `peer4`             | 11 (bright yellow) | peer username color, slot 4.                      |
+| `peer5`             | 9 (bright red)     | peer username color, slot 5.                      |
+| `peer6`             | 5 (magenta)        | peer username color, slot 6.                      |
+| `peer7`             | 2 (green)          | peer username color, slot 7.                      |
+| `yourMsg`           | 7 (white)          | own message body.                                 |
+| `peerMsg`           | 15 (bright white)  | peer message body.                                |
+| `codeFg`            | 15 (bright white)  | inline code and fenced-block foreground.          |
+| `codeBg`            | 8 (dark gray)      | fenced-block background fill.                      |
+| `keyFg`             | 3 (yellow)         | `icons.keys` glyph in the in-chat "keys rotated" ratchet notice (any user). |
+| `ratchetTxtFg`      | 8 (dark gray)      | "keys rotated" label text in the in-chat ratchet notice (any user). |
+| `attachBg`          | 6 (cyan)           | attachment chip background.                       |
+| `attachFg`          | 0 (black)          | attachment chip foreground.                       |
+| `attachSelectedBg`  | 2 (green)          | attachment chip background when keyboard-selected. |
+| `attachSelectedFg`  | 0 (black)          | attachment chip foreground when keyboard-selected. |
+| `barAttach`         | 6 (cyan)           | attach-mode icon prefacing the input box (foreground on `barBg`). Defaults to `attachBg`. |
+| `calloutBg`         | 3 (yellow)         | callout strip background in WaitingView.          |
+| `calloutFg`         | 0 (black)          | callout strip foreground.                         |
+| `modalBg`           | 0 (black)          | modal body background.                            |
+| `modalFg`           | 15 (bright white)  | modal body foreground.                            |
+| `modalBorder`       | 6 (cyan)           | modal border ring.                                |
+| `modalTitle`        | 14 (bright cyan)   | modal title row.                                  |
+| `disabled`          | 8 (dark gray)      | secondary or muted UI text (status lines, attachment size, fingerprint hex, scroll bar). |
+| `system`            | 256-color 250 (light gray) | in-chat system notices and `/help` output (the `system:` name prefix and body). Distinct from `disabled` so it can be recolored on its own. |
+| `error`             | 9 (bright red)     | error text (parse errors, server errors, etc.).   |
+| `evtTime`           | 8 (dark gray)      | event-log timestamp column.                       |
+| `evtArrow`          | 15 (bright white)  | event-log direction glyph (`→`, `←`, `·`).        |
+| `evtMsg`            | 15 (bright white)  | event-log summary body text.                      |
+| `evtKey`            | 8 (dark gray)      | event-log expanded-detail key label.              |
+| `evtVal`            | 15 (bright white)  | event-log expanded-detail value.                  |
+| `evtSelf`           | 5 (magenta)        | event-log username prefix when the user is you.   |
+| `evtPeer`           | 6 (cyan)           | event-log username prefix when the user is a peer. |
+| `evtKindDefault`    | 4 (blue)           | event-log kind column for uncategorized kinds.    |
+| `evtKindError`      | 1 (red)            | event-log kind column for `error`, `fatal`, `message-fail`, `claim-reject`, `decrypt-fail`, `send-fail`. |
+| `evtKindMember`     | 2 (green)          | event-log kind column for `join`, `rejoin`, `part`, `peer_joined`, `peer_left`. |
+| `evtKindRatchet`    | 3 (yellow)         | event-log kind column for `ratchet`, `ratchet-step`, `ratchet-step-fwd`, `ratchet_step`, `ratchet_step_fwd`. |
+
+#### example
 
 ```json
 {
-  "server": "chat.example.com",
-  "username": "xero",
-  "copyCmd": "xsel -b",
-  "showSystem": true,
-  "theme": {
-    "btnFocusBg": { "type": "256", "n": 33 },
-    "peer0":      { "type": "hex", "value": "#ff8800" }
-  }
+	"server": "chat.example.com",
+		"username": "xero",
+		"copyCmd": "xsel -b",
+		"showSystem": true,
+		"sidebar": { "width": 35 },
+		"icons": {
+			"send": "󰒊",
+			"attach": "",
+			"ratchet": "󰒓",
+			"keys": "󱕵"
+		},
+		"theme": {
+			"btnFocusBg":     { "type": "256",    "n":33 },
+			"peer0":          { "type": "hex",    "value": "#ff8800" },
+			"peer1":          { "type": "ansi16", "n":13 },
+			"evtKindRatchet": { "type": "ansi16", "n":5 }
+		}
 }
 ```
-
-`copyCmd` sets the clipboard binary used on the lobby screen. If unset, the
-CLI probes for `pbcopy`, `xclip`, `xsel`, and `wl-copy` in that order.
-
-`theme` accepts any subset of the theme type. Each slot takes one of:
-`{ "type": "ansi16", "n": 0-15 }`, `{ "type": "256", "n": 0-255 }`, or
-`{ "type": "hex", "value": "#rrggbb" }`.
 
 ### navigation
 
@@ -350,10 +673,17 @@ CLI probes for `pbcopy`, `xclip`, `xsel`, and `wl-copy` in that order.
 |---------------------|---------------------------------------|
 | `Tab` / `Shift+Tab` | Cycle focus                           |
 | `Enter`             | Send message / confirm                |
-| `Ctrl+R`            | Rotate encryption keys (ratchet step) |
-| `Ctrl+E`            | Toggle event-log sidebar              |
-| `Ctrl+V`            | Toggle fingerprint-verify sidebar     |
-| `Ctrl+C`            | Quit and wipe session                 |
+| `Ctrl+C`            | Confirm-quit prompt; press again to quit and wipe session |
+| `Esc` (in input)    | Open the modal keys-display over the input bar |
+
+Ratchet, event log, and verify are reached through the keys-display: press `Esc`
+while the chat input is focused and the input bar is replaced by the keys row.
+From there `R` ratchets, `E` toggles the event log, and `V` toggles verify (shift
+does not matter). Any action closes the display: ratchet returns to the input,
+`E`/`V` defer to the toggle's own focus move (sidebar on open, input on close),
+and `Esc` just returns to the input. The `/ratchet`, `/events`, and `/verify`
+commands do the same from the message box. This is the web client's hotkey path
+too, since `Ctrl`-key chords are taken by the browser.
 
 When the sidebar has focus, `↑/↓` move selection in the event log, `PgUp/PgDn`
 page through, `Enter` expands the selected entry's details, and `+`/`-` step

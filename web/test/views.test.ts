@@ -32,7 +32,7 @@ function armoredInvite(): string {
 		version: INVITE_VERSION,
 		roomId: 'r'.repeat(32),
 		roomSecret: btoa(String.fromCharCode(...new Uint8Array(16).fill(7))),
-		dns: 'localhost:3000',
+		dns: 'localhost:1337',
 	}));
 }
 
@@ -64,12 +64,12 @@ describe('landing form', () => {
 	test('Create Room calls session.create with the typed values', () => {
 		const { session, calls } = fakeSession();
 		mountLanding(app, session, { name: 'landing' });
-		(app.querySelector('#server') as HTMLInputElement).value = 'localhost:3000';
+		(app.querySelector('#server') as HTMLInputElement).value = 'localhost:1337';
 		(app.querySelector('#username') as HTMLInputElement).value = 'alice';
 		const create = [...app.querySelectorAll('button')].find(b => b.textContent === 'Create Room')!;
 		create.click();
 		expect(calls.create).toHaveLength(1);
-		expect(calls.create[0]).toMatchObject({ server: 'localhost:3000', username: 'alice' });
+		expect(calls.create[0]).toMatchObject({ server: 'localhost:1337', username: 'alice' });
 	});
 
 	test('Create Room with empty fields shows an error and does not connect', () => {

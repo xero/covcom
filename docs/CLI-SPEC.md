@@ -11,6 +11,10 @@ XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-p
 
 cli app design doc. covers architecture, rendering, input, widgets, views, and color system.
 
+> [!NOTE]
+> This is an internals deep-dive. Installing, running, the invocation flags, and
+> the config file all live in [USAGE](./USAGE.md).
+
 ---
 
 ## goals
@@ -23,24 +27,6 @@ cli app design doc. covers architecture, rendering, input, widgets, views, and c
 - exception: the crypto info table in WaitingView uses box drawing. it is the only
   place in the app where box drawing chars appear.
 - lean and app-specific. not a framework.
-
----
-
-## invocation
-
-```
-covcom [--clean] [--anon] [--join <path>]
-```
-
-all flags are optional and order-independent. unknown args are ignored.
-
-| flag            | argument | notes                                                                                          |
-|-----------------|----------|------------------------------------------------------------------------------------------------|
-| `--join`        | path     | path to a `.room` invite file. the file is read at startup and routes the user straight to `JoinView` with the invite prefilled, skipping `LoginView`. without it, the user starts on `LoginView`. a missing or dangling value (e.g. `--join --clean`) is ignored rather than treated as a path. |
-| `--clean`       | none     | disables config persistence entirely for the run. see [config](#config).                       |
-| `--anon`        | none     | narrower variant of `--clean` scoped to `server` and `username`. see [config](#config).        |
-
-`--join` pairs with the paranoia flags for a fully ephemeral session, e.g. `covcom --clean --join /path/to/invite.room` joins from a file without reading or writing any config.
 
 ---
 
@@ -463,9 +449,10 @@ each peer in the same shape with their username heading. no `[verified]`
 marker; verification is out-of-band, matching the web.
 
 **toggling and keybindings (handled in `renderChat`):**
-- `Ctrl+E` toggles `event-log`. open/switch/close semantics: closed → open in
+- the keys-display (`E`/`V`) and the `/events` / `/verify` commands toggle the
+  panel via `toggleMode`. open/switch/close semantics: closed → open in
   event-log; open in verify → switch to event-log; open in event-log → close.
-- `Ctrl+V` toggles `verify`, same semantics.
+  `verify` is the same with the modes swapped.
 - when sidebar is focused: `↑/↓` move selection, `PgUp/PgDn` page, `Home/End`
   jump, `Enter` expand/collapse the selected entry's details, `Esc` close.
 - when sidebar is focused: `+` widens by `SIDEBAR_WIDTH_STEP` (5%), `-` narrows
@@ -475,11 +462,38 @@ marker; verification is out-of-band, matching the web.
 - mouse wheel over the sidebar scrolls the event log (line-by-line, 3 lines
   per tick), regardless of focus.
 
-**min-width fallback:** when `screen.w < SIDEBAR_MIN_COLS` (80), the sidebar
-is force-hidden even if `sidebar.isOpen()` is true. `Ctrl+E` / `Ctrl+V` still
-toggle the mode; on a subsequent resize past the threshold the sidebar
-re-appears. this keeps the chat usable on small terminals without losing the
-user's preference.
+**narrow-terminal takeover:** when `screen.w < SIDEBAR_MIN_COLS` (80), there is
+no room for a split, so an open sidebar takes the full screen width and the chat
+is hidden behind it (rather than the sidebar silently never opening). the
+keys-display or the `/events` / `/verify` commands open it, `Esc` and `Tab` both
+close it and return focus to the chat input, and resizing past the threshold
+snaps back to the side-by-side layout with focus intact. while full-width the
+focus ring holds only the sidebar.
+
+### keys-display (modal)
+
+a vim-style modal entered by pressing `Esc` while the chat input is focused. it
+replaces the input bar (the row, not the message scroll) with a row of action
+units and is the keyboard path to ratchet / events / verify. scope is the chat
+input only: the `Esc` that opens it is gated on `chatInput` focus, so it does
+not collide with the sidebar/msgArea `Esc` handlers.
+
+units, left to right: `R` ratchet, `E` events, `V` verify, `ESC` return to chat.
+each unit is `space icon space [ KEY ] space Label space` painted on `barBtnBg`,
+the icon in `barBtnFg`, the ` KEY ` block in `barBtnFocusBg`/`barBtnFocusFg`, and
+the label in `barBtnFg` with a bold capitalized first letter; units are
+separated by a single `barBg` space. the icon comes from the matching
+`config.icons` entry read raw (no default): an unset icon renders nothing and
+skips its bookend space, so `icons.ratchet` shows here only when explicitly set
+(distinct from the bar button, which falls back to `R`). `keyHints()` builds the
+unit list and is unit-tested.
+
+while shown only the action keys and `Esc` are live (shift-insensitive); every
+other key is swallowed. every action closes the modal: `R` ratchets and returns
+focus to the input, `E`/`V` toggle the panel via `toggleMode` and defer to its
+focus move (sidebar on open, input on close), and `Esc` just returns to the
+input. `Ctrl+C` still quits. the modal is also dropped when focus leaves the
+input (Tab, click) or the layout collapses to full-width.
 
 ### `FilePicker`
 
@@ -656,38 +670,43 @@ layout (sidebar closed, full screen):
     xSend    = xAttach - cellW(send) - 2
     inputW   = max(1, xSend - 3)   // leaves a 1-col gap before sendBtn
 
-  labels come from `config.icons` (see [config](#config)); cellW counts
+  labels come from `config.icons` (see [configuration](./USAGE.md#configuration)); cellW counts
   unicode codepoints so Nerd Font glyphs in supplementary plane render
   in a single cell.
 
-layout (sidebar open):
+layout (sidebar open, screen.w >= 80):
   sideW = floor(screen.w * sidebar.width / 100), clamped to [10, screen.w-24]
   chatW = screen.w - sideW - 1
   msgArea / separator / input bar use chatW instead of screen.w
   vertical separator column @ x=chatW+1 (1 col, full height, barBg)
   sidebar   [Sidebar]    @ (chatW+2, 1)         w=sideW   h=screen.h
 
+layout (sidebar open, screen.w < 80):
+  sidebar   [Sidebar]    @ (1, 1)               w=screen.w   h=screen.h
+  chat is not drawn; the sidebar owns the whole screen
+
 tab order: chatInput → sendBtn → attachBtn → rotateBtn → msgArea → sidebar
-  (sidebar is only registered when open and width > 0)
+  (sidebar is registered only when the sidebar is open; when full-width the ring
+  holds only the sidebar and Tab closes it back to the chat)
 ```
 
 **chat input special behavior:**
 - enter → sends message (calls send action), does not Tab to next widget
 - Tab → normal focus cycle
+- Esc → opens the modal keys-display (see above), gated on chatInput focus
 - a value starting with `/` is dispatched as a slash command instead of
   being sent. recognized commands: `/exit` (`/quit`, `/q`, `/part`) quit,
-  `/ratchet` rotate keys (Ctrl+R equivalent), `/events` toggle event log
-  (Ctrl+E equivalent), `/verify` toggle verify pane (Ctrl+V equivalent),
-  `/help` (`/?`) print the list. unknown slash inputs surface a system
+  `/ratchet` rotate keys, `/events` toggle event log, `/verify` toggle verify
+  pane, `/help` (`/?`) print the list. unknown slash inputs surface a system
   message; the text is not transmitted.
 
 **scrollView focus:**
 - when msgArea is focused, up/down/pgup/pgdn scroll the chat
 - mouse wheel over msgArea scrolls regardless of focus
 
-**sidebar toggles (always active in chat mode):**
-- `Ctrl+E` toggles event-log mode
-- `Ctrl+V` toggles verify mode
+**sidebar toggles:**
+- the keys-display (`E`/`V`) and the `/events` / `/verify` commands toggle the
+  event-log and verify modes
 - when sidebar is open, focus jumps to it; closing returns focus to chatInput
 - see the `Sidebar` widget section above for in-pane bindings
 
@@ -873,191 +892,10 @@ const defaultTheme: Theme = {
 
 ### config extension
 
-see [config](#config) for the canonical list of every field, every theme
-slot, and an example file. the theme loader runs at startup as
+see [configuration](./USAGE.md#configuration) for the canonical list of every
+field, every theme slot, and an example file. the theme loader runs at startup as
 `const theme = { ...defaultTheme, ...config.theme }`, so any subset of
 slots can be overridden without restating the defaults.
-
----
-
-## config
-
-config is read from `~/.config/covcom/config.json` at startup and written
-back by the CLI when the user changes a persisted setting (currently just
-the sidebar width). every field is optional; missing fields fall back to
-the documented default.
-
-two paranoia level flags are exposed to control how the config file is used.
-
-passing the `--clean` CLI flag disables config persistence entirely for that
-run: the file is neither read (nothing is prefilled into the login screen, all
-fields fall back to defaults) nor written (no `server`/`username` save after a
-successful create, no sidebar-width persistence).
-
-passing the `--anon` CLI flag is a narrower variant scoped to `server` and
-`username` only: those two are neither read (not prefilled into the login
-screen) nor written (no save after a successful create, and the on-disk values
-are left untouched). all other fields (`theme`, `copyCmd`, `showSystem`,
-`sidebar`, `icons`), read and persist exactly as normal. if both flags are
-passed, `--clean` takes precedence.
-
-### top-level fields
-
-| field            | type                    | default | notes                                                                                       |
-|------------------|-------------------------|---------|---------------------------------------------------------------------------------------------|
-| `server`         | string                  | unset   | prefilled into the Server DNS input on the login screen. updated after a successful create. skipped under `--clean` and `--anon`. |
-| `username`       | string                  | unset   | prefilled into the Username input on the login screen. updated after a successful create. skipped under `--clean` and `--anon`.   |
-| `copyCmd`        | string                  | unset   | clipboard command for "Copy Code". whitespace-split into argv. see [copyCmd](#copycmd).     |
-| `showSystem`     | boolean                 | `true`  | when `false`, system messages (`<peer> joined`, server errors, etc.) are not appended to the chat scroll. event log still receives them. |
-| `sidebar`        | `{ width?: number }`    | `{}`    | see [sidebar](#sidebar-1).                                                                  |
-| `icons`          | `{ send?, attach?, ratchet?, keys?: string }` | `{}` | glyph overrides for the chat input bar and key-rotation status. see [icons](#icons). |
-| `theme`          | `Partial<Theme>`        | `{}`    | per-slot color overrides. see [theme](#theme).                                              |
-
-### copyCmd
-
-the value is a single command string. covcom splits on whitespace and
-spawns the result with the armored invite piped to stdin.
-
-```json
-{ "copyCmd": "xsel -b" }
-{ "copyCmd": "xclip -selection clipboard" }
-{ "copyCmd": "wl-copy" }
-{ "copyCmd": "pbcopy" }
-```
-
-if unset, covcom probes `pbcopy`, `xclip -selection clipboard`, `xsel -b`,
-`wl-copy` in that order and uses the first one that succeeds.
-
-### sidebar
-
-| field               | type   | default | range | notes                                          |
-|---------------------|--------|---------|-------|------------------------------------------------|
-| `sidebar.width`     | number | `30`    | 10-70 | percent of terminal width. clamped on read.    |
-
-stepping `+` / `-` from inside the sidebar adjusts this value by 5% per
-press and writes it back to disk immediately. the sidebar is force-hidden
-when `screen.w < 80` regardless of this value.
-
-### icons
-
-| field           | type   | default | notes                                       |
-|-----------------|--------|---------|---------------------------------------------|
-| `icons.send`    | string | `">"`   | label for the send button.                  |
-| `icons.attach`  | string | `"+"`   | label for the attach button.                |
-| `icons.ratchet` | string | `"R"`   | label for the ratchet (key rotation) button. |
-| `icons.keys`    | string | `""`    | optional glyph shown before `keys rotated` in chat history when a ratchet occurs. empty (default) renders just `keys rotated`; a non-empty value renders `<icon> keys rotated` with one space between. emojis in terminals can mis-render width or break cursor positioning, which is why the default is unset. |
-
-labels can be any string, including multi-character text and Nerd Font /
-PUA glyphs. valid values include `">"`, `"send"`, `"❯"`, `">>"`,
-`"󰒊"`. each button is sized as `cellWidth(label) + 2`, giving exactly one
-column of background padding on each side. cell width is measured as the
-codepoint count, which is accurate for ASCII, BMP unicode, and the
-single-cell glyphs in the Nerd Font PUA ranges. labels containing
-combining marks or wide CJK characters render correctly but may not center
-visually.
-
-the three buttons render in this order from left to right: `send`,
-`attach`, `ratchet`. the rightmost button sits one column in from the
-right edge of the chat pane.
-
-### theme
-
-`theme` is a partial map of `Theme` slots. each slot accepts a
-`ColorValue`:
-
-```ts
-type ColorValue =
-  | { type: 'ansi16'; n: number }     // 0-15, the user's terminal palette
-  | { type: '256';    n: number }     // 0-255, xterm 256-color
-  | { type: 'hex';    value: string } // '#rrggbb' truecolor
-  | null                              // inherit terminal default (bg/fg only)
-```
-
-prefer `ansi16` for consistency with the user's shell theme. `256` and
-`hex` are escape hatches for users who want a specific color independent
-of the terminal palette.
-
-| slot                | default (ansi16 n) | role                                              |
-|---------------------|--------------------|---------------------------------------------------|
-| `bg`                | `null`             | screen background. `null` keeps the terminal default. |
-| `fg`                | `null`             | default text. `null` keeps the terminal default.  |
-| `inputBg`           | 0 (black)          | text input background.                            |
-| `inputFg`           | 15 (bright white)  | text input foreground.                            |
-| `btnBg`             | 8 (dark gray)      | unfocused button background.                      |
-| `btnFg`             | 15 (bright white)  | unfocused button foreground.                      |
-| `btnFocusBg`        | 4 (blue)           | focused button background.                        |
-| `btnFocusFg`        | 15 (bright white)  | focused button foreground.                        |
-| `btnDisabledBg`     | 8 (dark gray)      | disabled button background.                       |
-| `btnDisabledFg`     | 8 (dark gray)      | disabled button foreground (invisible label).     |
-| `barBg`             | 8 (dark gray)      | chat input bar and sidebar tab strip background.  |
-| `barFg`             | 15 (bright white)  | chat input bar foreground.                        |
-| `barBtnBg`          | 8 (dark gray)      | unfocused background of the bar action buttons (send / attach / ratchet / attach-mode cancel). Defaults to `btnBg`. |
-| `barBtnFg`          | 15 (bright white)  | unfocused foreground of the bar action buttons. Defaults to `btnFg`. |
-| `barBtnFocusBg`     | 4 (blue)           | focused background of the bar action buttons. Defaults to `btnFocusBg`. |
-| `barBtnFocusFg`     | 15 (bright white)  | focused foreground of the bar action buttons. Defaults to `btnFocusFg`. |
-| `peer0`             | 14 (bright cyan)   | **your own** username prefix in the chat scroll. Reserved for self — peers never use it, so no peer can wear your color. |
-| `peer1`             | 10 (bright green)  | peer username prefix in the chat scroll (and verify panel). Each peer is assigned one of `peer1`–`peer7` by join order, wrapping after 7 (so a peer never lands on `peer0` or the system color). |
-| `peer2`             | 12 (bright blue)   | peer username color, slot 2 (see `peer1`).        |
-| `peer3`             | 13 (bright magenta)| peer username color, slot 3.                      |
-| `peer4`             | 11 (bright yellow) | peer username color, slot 4.                      |
-| `peer5`             | 9 (bright red)     | peer username color, slot 5.                      |
-| `peer6`             | 5 (magenta)        | peer username color, slot 6.                      |
-| `peer7`             | 2 (green)          | peer username color, slot 7.                      |
-| `yourMsg`           | 7 (white)          | own message body.                                 |
-| `peerMsg`           | 15 (bright white)  | peer message body.                                |
-| `codeFg`            | 15 (bright white)  | inline code and fenced-block foreground.          |
-| `codeBg`            | 8 (dark gray)      | fenced-block background fill.                      |
-| `keyFg`             | 3 (yellow)         | `icons.keys` glyph in the in-chat "keys rotated" ratchet notice (any user). |
-| `ratchetTxtFg`      | 8 (dark gray)      | "keys rotated" label text in the in-chat ratchet notice (any user). |
-| `attachBg`          | 6 (cyan)           | attachment chip background.                       |
-| `attachFg`          | 0 (black)          | attachment chip foreground.                       |
-| `attachSelectedBg`  | 2 (green)          | attachment chip background when keyboard-selected. |
-| `attachSelectedFg`  | 0 (black)          | attachment chip foreground when keyboard-selected. |
-| `barAttach`         | 6 (cyan)           | attach-mode icon prefacing the input box (foreground on `barBg`). Defaults to `attachBg`. |
-| `calloutBg`         | 3 (yellow)         | callout strip background in WaitingView.          |
-| `calloutFg`         | 0 (black)          | callout strip foreground.                         |
-| `modalBg`           | 0 (black)          | modal body background.                            |
-| `modalFg`           | 15 (bright white)  | modal body foreground.                            |
-| `modalBorder`       | 6 (cyan)           | modal border ring.                                |
-| `modalTitle`        | 14 (bright cyan)   | modal title row.                                  |
-| `disabled`          | 8 (dark gray)      | secondary or muted UI text (status lines, attachment size, fingerprint hex, scroll bar). |
-| `system`            | 256-color 250 (light gray) | in-chat system notices and `/help` output (the `system:` name prefix and body). Distinct from `disabled` so it can be recolored on its own. |
-| `error`             | 9 (bright red)     | error text (parse errors, server errors, etc.).   |
-| `evtTime`           | 8 (dark gray)      | event-log timestamp column.                       |
-| `evtArrow`          | 15 (bright white)  | event-log direction glyph (`→`, `←`, `·`).        |
-| `evtMsg`            | 15 (bright white)  | event-log summary body text.                      |
-| `evtKey`            | 8 (dark gray)      | event-log expanded-detail key label.              |
-| `evtVal`            | 15 (bright white)  | event-log expanded-detail value.                  |
-| `evtSelf`           | 5 (magenta)        | event-log username prefix when the user is you.   |
-| `evtPeer`           | 6 (cyan)           | event-log username prefix when the user is a peer. |
-| `evtKindDefault`    | 4 (blue)           | event-log kind column for uncategorized kinds.    |
-| `evtKindError`      | 1 (red)            | event-log kind column for `error`, `fatal`, `message-fail`, `claim-reject`, `decrypt-fail`, `send-fail`. |
-| `evtKindMember`     | 2 (green)          | event-log kind column for `join`, `rejoin`, `part`, `peer_joined`, `peer_left`. |
-| `evtKindRatchet`    | 3 (yellow)         | event-log kind column for `ratchet`, `ratchet-step`, `ratchet-step-fwd`, `ratchet_step`, `ratchet_step_fwd`. |
-
-### example
-
-```json
-{
-	"server": "chat.example.com",
-		"username": "xero",
-		"copyCmd": "xsel -b",
-		"showSystem": true,
-		"sidebar": { "width": 35 },
-		"icons": {
-			"send": "󰒊",
-			"attach": "",
-			"ratchet": "󰒓",
-			"keys": "󱕵"
-		},
-		"theme": {
-			"btnFocusBg":     { "type": "256",    "n":33 },
-			"peer0":          { "type": "hex",    "value": "#ff8800" },
-			"peer1":          { "type": "ansi16", "n":13 },
-			"evtKindRatchet": { "type": "ansi16", "n":5 }
-		}
-}
-```
 
 ---
 
@@ -1100,6 +938,44 @@ called with the computed cursor position of that input. no other widget shows a 
 
 ---
 
+## exit and teardown
+
+every way the app can quit routes through one teardown. `main.ts` registers
+`SIGINT`, `SIGTERM`, and `exit` handlers that all call `doCleanup()` from
+`lifecycle.ts`. the fatal-error catch and its `process.exit(1)` reach the same
+place through the `exit` event. ctrl+c and the `/exit` family (`/quit`, `/q`,
+`/part`) emit `SIGINT` rather than exiting on their own, so they land on that
+single path too.
+
+`state.ts` registers the one cleanup function in `mount()`, before any view
+renders. it reads the module-level `current` phase, so it covers landing, join,
+waiting, and chat without re-registering per phase. the cleanup runs in order:
+
+1. **mark shutdown:** sets a `_shuttingDown` flag so the intentional
+   `ws.close()` below does not trip the reconnect path and print a spurious
+   "Connection lost. Reconnecting" notice on the way out.
+2. **wipe crypto state:** disposes all inbound receivers, and when a session
+   exists (the `waiting` or `ready` phase) disposes the session and closes the
+   socket.
+3. **restore the terminal:** calls `screen.destroy()`, which leaves the
+   alternate buffer, re-shows the cursor, disables mouse and bracketed-paste
+   reporting, and drops raw mode.
+
+leaving the alternate buffer restores whatever filled the screen before covcom
+launched, so the exit is clean with no leftover frame and the user's scrollback
+stays intact. a full `\x1bc` reset is deliberately avoided because it would also
+wipe that scrollback.
+
+> [!IMPORTANT]
+> Every exit call site must funnel through this path. Do not call
+> `process.exit()` directly from a view, widget, or event handler, and do not
+> tear the terminal down inline. Emit `SIGINT` (ctrl+c and the `/exit` family
+> already do this) or let the error propagate to the `exit` handler. A direct
+> exit skips the crypto wipe and the terminal restore, leaving key material in
+> memory and the shell stuck in the alternate buffer with raw mode still on.
+
+---
+
 ## open / deferred
 
 - **word wrap:** split on spaces, accumulate until the line exceeds the width,
@@ -1112,8 +988,6 @@ called with the computed cursor position of that input. no other widget shows a 
   revisit bash-style longest-common-prefix later once it's usable.
 - **resize handling:** SIGWINCH → `screen.measure()` → `screen.markDirty()`.
   views recompute layout from `screen.w/h` on every render so resize is free.
-- **ctrl+c vs alt buffer:** `screen.destroy()` must fire on ctrl+c, unhandled
-  exceptions, and SIGTERM to ensure the terminal is always restored cleanly.
 - **mouse in tmux over ssh:** mouse events work but the user cannot hold shift to
   select text with the terminal's native selection while mouse mode is on.
   consider a toggle (e.g. ctrl+m) to disable/re-enable mouse reporting.

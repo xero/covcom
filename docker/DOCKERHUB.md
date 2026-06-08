@@ -73,7 +73,7 @@ Open https://chat.example.com in a browser. Create a room, share the invite, & c
 | Variable        | Default  | Description                                    |
 | --------------- | -------- | ---------------------------------------------- |
 | `DOMAIN`        | required | Domain name for Caddy TLS                      |
-| `PORT`          | `3000`   | Internal port the Bun server listens on        |
+| `PORT`          | `1337`   | Internal port the Bun server listens on        |
 | `ADMIN_TOKEN`   | unset    | Optional token gating room creation            |
 | `ROOM_TTL`      | `24`     | Hours before empty rooms expire (`0` disables) |
 | `MAX_ROOM_SIZE` | `20`     | Max participants per room (`0` is unlimited)   |

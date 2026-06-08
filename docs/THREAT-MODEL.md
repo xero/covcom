@@ -276,6 +276,17 @@ defeating Trojan-Source text reordering and homoglyph handle spoofing. This is
 client hardening rather than a cryptographic property, and it holds regardless
 of adversary tier.
 
+**Clean teardown.** Session key material lives only in process memory. A single
+teardown routine wipes it on every exit path, not just a graceful disconnect:
+`Ctrl+C`, the `/exit` family, `SIGTERM`, and fatal errors all dispose the inbound
+chains and the session (`KDFChain` instances, the skipped-key store, and the
+ephemeral keypairs) before the process exits, so an abrupt exit cannot leave key
+material behind. The CLI additionally exits the terminal's alternate screen
+buffer on the way out, so the chat transcript is not left on the terminal or in
+scrollback after the client closes. This is client hygiene, not a cryptographic
+property, and does not defend against an endpoint adversary with live access to
+process memory (see non-goals).
+
 ---
 
 ## non-goals

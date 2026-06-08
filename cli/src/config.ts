@@ -10,7 +10,7 @@ export interface Config {
 	theme?:      Partial<Theme>
 	showSystem?: boolean
 	sidebar?:    { width?: number }
-	icons?:      { send?: string; attach?: string; ratchet?: string; keys?: string }
+	icons?:      { send?: string; attach?: string; ratchet?: string; keys?: string; events?: string; verify?: string; escape?: string }
 }
 
 export const SIDEBAR_WIDTH_DEFAULT = 30;

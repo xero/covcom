@@ -108,7 +108,7 @@ bun run test            # server, lib, web, and cli
 
 The Playwright suite lives in `web/test/e2e/` and uses a `.e2e.ts` suffix so
 Bun's runner never picks it up as a unit test. `playwright.config.ts` starts the
-relay on port 3000 and serves the built client on port 4173 before any test runs.
+relay on port 1337 and serves the built client on port 4173 before any test runs.
 
 - **`two-party-chat.e2e.ts`** is the happy path. Alice creates a room, Bob joins,
   both exchange encrypted messages, and their fingerprints agree.
@@ -192,7 +192,7 @@ exactly as they do for a user. A plain pipe would crash the CLI on startup. The
 session's working directory is the test's temp directory, so any file the CLI
 saves on receive lands there and is removed in teardown, never in the repo.
 
-**Relay and static host.** `beforeAll` spawns the relay on port 3000 and serves
+**Relay and static host.** `beforeAll` spawns the relay on port 1337 and serves
 the built web client on port 4173, then waits for both health endpoints.
 `afterAll` tears down the browser, the CLI, both servers, and the temp directory.
 
@@ -235,8 +235,8 @@ that carries a username routes straight to the join view. The prefill auto-parse
 does not repaint, so the test clicks the Load button and waits for the parsed
 `Room:` status line before tabbing to Connect.
 
-**The verify pane steals focus.** Opening it with Ctrl+V moves focus to the
-sidebar. The test toggles it back off before typing the reply.
+**The verify pane steals focus.** Opening it (the keys-display `V`, or `/verify`)
+moves focus to the sidebar. The test toggles it back off before typing the reply.
 
 **Readiness has a signal.** The CLI renders `keys rotated` from its post-connect
 auto-ratchet once it reaches the ready phase. The test gates the first web to CLI

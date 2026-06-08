@@ -438,7 +438,7 @@ rendered as the user's ambient badge. The web client tints the
 fingerprint button in the header with the ambient color; clicking it
 opens a Verify sidebar panel that lists the swatch row and hex for you
 and every peer side by side. The CLI opens an equivalent Verify pane in
-its sidebar with `Ctrl+V`. Users compare their colors with peers
+its sidebar with the keys-display (`Esc` then `V`) or `/verify`. Users compare their colors with peers
 out-of-band. A mismatch means one of you is looking at a different
 session than the other thinks.
 

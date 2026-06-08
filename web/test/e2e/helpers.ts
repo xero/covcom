@@ -74,7 +74,7 @@ export async function timeStep<T>(label: string, fn: () => Promise<T>): Promise<
 
 // The relay broker; the web client points at it via the landing "Server" field.
 // localhost maps to plaintext ws:// in the client, so no TLS is needed.
-export const SERVER = 'localhost:3000';
+export const SERVER = 'localhost:1337';
 
 // alice's path: fill the landing form, create a room, wait for the lobby, and
 // return the armored invite text others paste to join.

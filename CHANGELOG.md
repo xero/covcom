@@ -76,6 +76,18 @@ name always uses `peer0`, a slot reserved for self. Peers never draw from it,
 and they never draw the system-message color, so no peer can paint their name to
 look like you or like a server notice.
 
+**Modal keys-display on both clients.** Pressing `Esc` while the message input
+is focused swaps the input bar for a row of action units: `R` ratchet, `E`
+events, `V` verify, and `Esc` return to chat. Pressing the key fires the action
+(shift-insensitive) and closes the display: ratchet returns to the input, events
+and verify defer to the panel toggle's own focus move, and `Esc` just returns to
+typing. This unifies the keyboard model across clients: it replaces the CLI's
+old `Ctrl+R/E/V` chords (now removed) and gives the web a discoverable hotkey
+path it never had, since the browser owns those chords. The slash commands
+(`/ratchet`, `/events`, `/verify`) still do the same. The CLI units take
+optional leading glyphs from three new icon settings, `icons.events`,
+`icons.verify`, and `icons.escape`; an unset icon renders nothing.
+
 **More themeable CLI slots.** The send, attach, and ratchet bar buttons take
 their own colors (`barBtnBg`, `barBtnFg`, `barBtnFocusBg`, `barBtnFocusFg`),
 defaulting to the generic button colors. The attach-mode icon that prefaces the
@@ -127,6 +139,10 @@ peer can no longer wrap onto your color or the system color. A config that still
 sets `yourName` or `peerName*` falls back to the defaults for those slots;
 update `~/.config/covcom/config.json` to keep a custom palette.
 
+**Confirm-quit on Ctrl+C in the CLI.** A first Ctrl+C now pops a "quit covcom?"
+prompt; a second exits and any other key cancels. The `/exit` family still quits
+immediately.
+
 **Web message rendering.** User messages render through the shared token model:
 fenced blocks become a `<pre>`, and paragraphs preserve their original line
 breaks.
@@ -154,6 +170,23 @@ message-size cap. Multi-hundred-megabyte files now transfer end to end.
 socket scheme from the page it loaded, so an HTTPS page connects over `wss://`
 instead of attempting a `ws://` connection that the CSP and mixed-content rules
 block.
+
+**Clean terminal restore on every CLI exit.** All quit paths (Ctrl+C, the
+`/exit` family, `SIGTERM`, a fatal error) now funnel through one `doCleanup`
+routine that wipes crypto state and then restores the terminal. The CLI no
+longer leaves a stuck alternate-buffer frame, a hidden cursor, or raw mode
+behind, and an intentional socket close on the way out no longer prints a
+spurious "Connection lost. Reconnecting" notice.
+
+**Web chat input focused on start.** Reaching the chat now focuses the message
+box automatically (on first entry and when returning from the lobby), so you can
+type straight away without clicking into it first.
+
+**CLI config no longer clobbered on room create.** Creating a room remembered
+the server and username with a bare write that overwrote the whole config file,
+wiping any saved theme, icons, sidebar width, and `showSystem` on disk. It now
+read-merges, so only `server` and `username` are updated and the rest of the
+config survives.
 
 ---
 

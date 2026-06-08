@@ -20,10 +20,10 @@ export default defineConfig({
 	],
 	webServer: [{
 		command: 'bun dev:server',
-		url: 'http://localhost:3000/health_check',
+		url: 'http://localhost:1337/health_check',
 		reuseExistingServer: true,
 		timeout: 30_000,
-		env: { PORT: '3000', MAX_ROOM_SIZE: '20' },
+		env: { PORT: '1337', MAX_ROOM_SIZE: '20' },
 	},{
 		command: 'bun run build:web && bunx serve web/dist -l 4173',
 		url: 'http://localhost:4173',

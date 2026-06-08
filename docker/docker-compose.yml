@@ -8,7 +8,7 @@ services:
       - "80:80"
     environment:
       - DOMAIN=${DOMAIN}
-      - PORT=${PORT:-3000}
+      - PORT=${PORT:-1337}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
       - ROOM_TTL=${ROOM_TTL:-24}
       - MAX_ROOM_SIZE=${MAX_ROOM_SIZE:-20}

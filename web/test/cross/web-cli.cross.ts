@@ -22,9 +22,9 @@ import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { startCliSession, type CliSession } from './tui-runner.ts';
 
-const SERVER   = 'localhost:3000';
+const SERVER   = 'localhost:1337';
 const WEB_URL  = 'http://localhost:4173';
-const HEALTH   = 'http://localhost:3000/health_check';
+const HEALTH   = 'http://localhost:1337/health_check';
 const ROOT     = process.cwd();
 const CLI_BIN  = resolve(ROOT, 'cli/dist/covcom');
 const WEB_DIST = resolve(ROOT, 'web/dist/index.html');
@@ -66,7 +66,7 @@ beforeAll(async () => {
 
 	relay = Bun.spawn(['bun', 'run', 'start:server'], {
 		cwd: ROOT,
-		env: { ...process.env, PORT: '3000', MAX_ROOM_SIZE: '20' },
+		env: { ...process.env, PORT: '1337', MAX_ROOM_SIZE: '20' },
 		stdout: 'ignore', stderr: 'ignore',
 	});
 	webSrv = Bun.spawn(['bunx', 'serve', 'web/dist', '-l', '4173'], {

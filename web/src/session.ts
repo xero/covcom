@@ -130,7 +130,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 
 	async join(invite: InvitePayload, username: string): Promise<void> {
 		this._teardown();
-		const dns         = invite.dns ?? 'localhost:3000';
+		const dns         = invite.dns ?? 'localhost:1337';
 		this._server      = dns;
 		this._username    = username;
 		this._room        = { id: invite.roomId, secret: b64dec(invite.roomSecret), dns };

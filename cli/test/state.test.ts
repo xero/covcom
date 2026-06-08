@@ -41,7 +41,9 @@ beforeAll(async () => {
 	doCleanup = (await import('../src/lifecycle.ts')).doCleanup;
 });
 
-const screen = {} as Parameters<Mount>[0];
+// doCleanup() calls _screen.destroy() to restore the terminal; the render
+// façades are mocked, so a destroy stub is the only Screen method exercised here.
+const screen = { destroy() { /* noop */ } } as Parameters<Mount>[0];
 let ws: ReturnType<typeof installFakeWebSocket>;
 
 beforeEach(() => {
@@ -60,7 +62,7 @@ describe('create flow', () => {
 	test('emits create → join → identify and enters waiting', () => {
 		mount(screen, {});
 		expect(renderLanding).toHaveBeenCalled();
-		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:3000', 'alice');
+		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:1337', 'alice');
 
 		const sock = ws.last();
 		sock.open();                                                     // ws.onOpen → create
@@ -78,7 +80,7 @@ describe('join flow', () => {
 		mount(screen, { username: 'bob' }, '/tmp/covcom-room2.room');
 		expect(renderJoin).toHaveBeenCalled();
 		(opts(renderJoin).onConnect as (inv: unknown) => void)({
-			version: INVITE_VERSION, roomId: ROOM, roomSecret: SECRET, dns: 'localhost:3000',
+			version: INVITE_VERSION, roomId: ROOM, roomSecret: SECRET, dns: 'localhost:1337',
 		});
 
 		const sock = ws.last();
@@ -96,7 +98,7 @@ describe('version mismatch', () => {
 
 	test('older server (no serverVersion) kicks back to landing, no identify', () => {
 		mount(screen, {});
-		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:3000', 'alice');
+		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:1337', 'alice');
 		const sock = ws.last();
 		sock.open();
 		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET }); // serverVersion omitted
@@ -109,7 +111,7 @@ describe('version mismatch', () => {
 
 	test('server version_mismatch error kicks back to landing', () => {
 		mount(screen, {});
-		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:3000', 'alice');
+		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:1337', 'alice');
 		const sock = ws.last();
 		sock.open();
 		sock.emit({ type: 'error', reason: 'version_mismatch', serverVersion: PROTOCOL_VERSION });
@@ -119,10 +121,32 @@ describe('version mismatch', () => {
 	});
 });
 
+describe('username taken', () => {
+	// last options as a loose record (error is a string, config a plain object)
+	const rawOpts = (m: typeof renderLanding) =>
+		m.mock.calls[m.mock.calls.length - 1][1] as Record<string, unknown>;
+
+	test('returns to landing with the error and prefilled inputs', () => {
+		mount(screen, { username: 'bob' }, '/tmp/covcom-room2.room');
+		(opts(renderJoin).onConnect as (inv: unknown) => void)({
+			version: INVITE_VERSION, roomId: ROOM, roomSecret: SECRET, dns: 'localhost:1337',
+		});
+		const sock = ws.last();
+		sock.open();
+		sock.emit({ type: 'joined', members: [], serverVersion: PROTOCOL_VERSION }); // → doConnect, sends identify
+		sock.emit({ type: 'error', reason: 'username_taken' });
+
+		expect(sock.closed).toBe(true);                                    // ghost connection torn down
+		const o = rawOpts(renderLanding);
+		expect(o.error).toBe('That username is taken in this room.');
+		expect(o.config).toEqual({ server: 'localhost:1337', username: 'bob' });
+	});
+});
+
 describe('handshake → ready', () => {
 	test('reaches ready, fires the welcome ratchet once, sends and tears down', () => {
 		mount(screen, {});
-		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:3000', 'alice');
+		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:1337', 'alice');
 		const sock = ws.last();
 		sock.open();
 		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET, serverVersion: PROTOCOL_VERSION });
@@ -165,7 +189,7 @@ describe('streamed file send', () => {
 	// Reach ready (mirrors the handshake test), then drive the chat view's onFile.
 	function toReady(): ReturnType<ReturnType<typeof installFakeWebSocket>['last']> {
 		mount(screen, {});
-		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:3000', 'alice');
+		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:1337', 'alice');
 		const sock = ws.last();
 		sock.open();
 		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET, serverVersion: PROTOCOL_VERSION });

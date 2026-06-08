@@ -23,11 +23,11 @@ describe('b64enc / b64dec', () => {
 
 describe('wsUrl', () => {
 	test('localhost uses ws://', () => {
-		expect(wsUrl('localhost:3000')).toBe('ws://localhost:3000/ws');
+		expect(wsUrl('localhost:1337')).toBe('ws://localhost:1337/ws');
 	});
 
 	test('127.x loopback uses ws://', () => {
-		expect(wsUrl('127.0.0.1:3000')).toBe('ws://127.0.0.1:3000/ws');
+		expect(wsUrl('127.0.0.1:1337')).toBe('ws://127.0.0.1:1337/ws');
 	});
 
 	test('public host uses wss://', () => {

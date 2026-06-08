@@ -45,7 +45,7 @@ up)
 		docker rm -f covcom >/dev/null 2>&1 || true
 		docker run -d -p 80:80 -p 443:443 \
 			-e DOMAIN="${DOMAIN}" \
-			-e PORT="${PORT:-3000}" \
+			-e PORT="${PORT:-1337}" \
 			-e ADMIN_TOKEN="${ADMIN_TOKEN:-}" \
 			-e ROOM_TTL="${ROOM_TTL:-24}" \
 			-e MAX_ROOM_SIZE="${MAX_ROOM_SIZE:-20}" \

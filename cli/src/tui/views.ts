@@ -8,6 +8,7 @@ import { FocusRing } from './focus.js';
 import { TextInput, TextArea, Button, ScrollView, Sidebar, Widget, drawModal } from './widgets.js';
 import type { SidebarMode, ModalOpts } from './widgets.js';
 import { readConfig, readSidebarWidth, writeSidebarWidth, SIDEBAR_MIN_COLS } from '../config.js';
+import type { Config } from '../config.js';
 import { resolveUniqueFilename } from '../util.js';
 import { BANNER } from './banner.js';
 
@@ -31,6 +32,73 @@ function drawBanner(scr: Screen, formY: number): void {
 	}
 }
 
+// ─── chat layout decision ────────────────────────────────────────────────────
+
+export type ChatLayoutMode = 'chat' | 'side' | 'full';
+export interface ChatLayout { mode: ChatLayoutMode; sideW: number; chatW: number }
+
+// Layout from sidebar state + terminal width. in 'full' (terminal too narrow)
+// the sidebar spans the whole screen and chat is hidden
+export function chatLayout(open: boolean, cols: number, sidebarPct: number): ChatLayout {
+	if (!open)                   return { mode: 'chat', sideW: 0,    chatW: cols };
+	if (cols < SIDEBAR_MIN_COLS) return { mode: 'full', sideW: cols, chatW: 0    };
+	const w = Math.max(10, Math.min(Math.floor(cols * sidebarPct / 100), cols - 24));
+	return { mode: 'side', sideW: w, chatW: cols - w - 1 };
+}
+
+// Focus-ring membership for a layout. `picking` (file picker) takes precedence.
+// In 'full' only the sidebar is reachable; chat widgets are hidden, thus skipped
+export function chatFocusIds(mode: ChatLayoutMode, picking: boolean): string[] {
+	if (picking)         return ['pathInput', 'cancelBtn'];
+	if (mode === 'full') return ['sidebar'];
+	const ids = ['chatInput', 'sendBtn', 'attachBtn', 'rotateBtn', 'msgArea'];
+	if (mode === 'side') ids.push('sidebar');
+	return ids;
+}
+
+export interface KeyHint { key: string; label: string; icon?: string }
+
+// The modal keys-display units, in render order. The icon comes straight from
+// the raw config (no defaults): unset renders nothing and skips its bookend
+// space, so a config without these glyphs shows just the key + label.
+export function keyHints(cfg: Config): KeyHint[] {
+	const ic = (v?: string): string | undefined => {
+		const t = (v ?? '').trim();
+		return t === '' ? undefined : t;
+	};
+	return [
+		{ key: 'R',   label: 'ratchet',         icon: ic(cfg.icons?.ratchet) },
+		{ key: 'E',   label: 'events',          icon: ic(cfg.icons?.events)  },
+		{ key: 'V',   label: 'verify',          icon: ic(cfg.icons?.verify)  },
+		{ key: 'ESC', label: 'return to chat',  icon: ic(cfg.icons?.escape)  },
+	];
+}
+
+function capFirst(s: string): string {
+	return s.length ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+// Paint the modal keys-display across the input bar (single row). Colors follow
+// the bar palette: btnBg per unit, barBtnFg for icon/label, focus colors for the
+// ` KEY ` block, barBg for the single space between units. The icon (and its
+// trailing space) is omitted when a hint carries none.
+function renderKeysBar(scr: Screen, x: number, y: number, theme: Theme, hints: KeyHint[]): void {
+	const btn  = colorBg(theme.barBtnBg)      + colorFg(theme.barBtnFg);
+	const keyc = colorBg(theme.barBtnFocusBg) + colorFg(theme.barBtnFocusFg);
+	const gap  = colorBg(theme.barBg);
+	let out = '';
+	hints.forEach((h, i) => {
+		if (i > 0) out += gap + ' ';
+		const label = capFirst(h.label);
+		out += btn + ' ';
+		if (h.icon) out += h.icon + ' ';
+		out += keyc + ' ' + h.key + ' ' + btn + ' ';
+		out += ansi.bold + label[0] + ansi.reset + btn + label.slice(1) + ' ';
+	});
+	scr.moveTo(x, y);
+	scr.write(out + ansi.reset);
+}
+
 // ─── module-level state for appendMessage / appendFile ───────────────────────
 
 let viewGen  = 0;
@@ -44,7 +112,24 @@ let _focusRing:     FocusRing  | null  = null;
 
 interface ModalState { title: string; body: string; accent?: ColorValue }
 let _modal:      ModalState | null = null;
+let _quitConfirm = false;
 let _activeView: { gen: number; scr: Screen; render: () => void; theme: Theme } | null = null;
+
+function doQuit(): void {
+	process.emit('SIGINT');
+}
+
+// Ctrl+C guard: first press shows a confirm modal, second press exits.
+function requestQuit(): void {
+	if (_quitConfirm) {
+		doQuit(); return;
+	}
+	_quitConfirm = true;
+	showModal({
+		title: 'quit covcom?',
+		body: 'press ctrl+c again to exit or any key to cancel',
+	});
+}
 
 function disposeSidebar(): void {
 	if (_sidebar) {
@@ -79,18 +164,19 @@ function setupView(scr: Screen, theme: Theme, render: () => void, onEv: (ev: Inp
 	};
 
 	_modal = null;
+	_quitConfirm = false;
 	_activeView = { gen, scr, render: renderAll, theme };
 
 	const handle = (ev: InputEvent) => {
 		if (_modal) {
 			if (ev.kind === 'key') {
 				if (ev.key.ctrl && ev.key.name === 'c') {
-					process.emit('SIGINT'); return;
+					requestQuit(); return;
 				}
-				_modal = null; scr.markDirty(); return;
+				_modal = null; _quitConfirm = false; scr.markDirty(); return;
 			}
 			if (ev.kind === 'mouse' && ev.mouse.type === 'click') {
-				_modal = null; scr.markDirty(); return;
+				_modal = null; _quitConfirm = false; scr.markDirty(); return;
 			}
 			return;
 		}
@@ -243,7 +329,7 @@ export function renderLanding(
 	setupView(scr, theme, render, ev => {
 		if (ev.kind === 'key') {
 			if (ev.key.ctrl && ev.key.name === 'c') {
-				process.emit('SIGINT'); return;
+				requestQuit(); return;
 			}
 			if (ev.key.name === 'tab' && !ev.key.shift) {
 				ring.next(); scr.markDirty(); return;
@@ -344,7 +430,7 @@ export function renderWaiting(
 	setupView(scr, theme, render, ev => {
 		if (ev.kind === 'key') {
 			if (ev.key.ctrl && ev.key.name === 'c') {
-				process.emit('SIGINT'); return;
+				requestQuit(); return;
 			}
 			if (ev.key.name === 'tab' && !ev.key.shift) {
 				ring.next(); scr.markDirty(); return;
@@ -417,7 +503,7 @@ export function renderJoin(
 		try {
 			parsedInvite    = parseArmoredInvite(text);
 			connectBtn.disabled = false;
-			statusLine      = `Server: ${parsedInvite.dns ?? 'localhost:3000'}  Room: ${parsedInvite.roomId}`;
+			statusLine      = `Server: ${parsedInvite.dns ?? 'localhost:1337'}  Room: ${parsedInvite.roomId}`;
 			errorLine       = '';
 			return true;
 		} catch (e) {
@@ -504,7 +590,7 @@ export function renderJoin(
 	setupView(scr, theme, render, ev => {
 		if (ev.kind === 'key') {
 			if (ev.key.ctrl && ev.key.name === 'c') {
-				process.emit('SIGINT'); return;
+				requestQuit(); return;
 			}
 			if (ev.key.name === 'tab' && !ev.key.shift) {
 				ring.next(); scr.markDirty(); return;
@@ -570,9 +656,8 @@ export function renderChat(
 	const rotateBtn = new Button('rotateBtn', lblRatchet, () => opts.onRotate());
 	sendBtn.bar = attachBtn.bar = rotateBtn.bar = true;
 
-	// Sidebar mirrors the web's two-mode pane. Hidden by default; toggled with
-	// Ctrl+E (event log) and Ctrl+V (verify). Width is read from / persisted to
-	// the user's config.
+	// Sidebar two-mode pane. Hidden by default; toggled from the keys-display
+	// (Esc, then E/V) or the /events and /verify commands.
 	disposeSidebar();
 	const sidebar = new Sidebar(readSidebarWidth(cfg), opts.getFingerprints, opts.username);
 	_sidebar = sidebar;
@@ -584,14 +669,13 @@ export function renderChat(
 	const ring = new FocusRing();
 	_focusRing = ring;
 	function rebuildRing() {
+		// Preserve the focused id across the rebuild; when it no longer exists
+		// (e.g. chatInput after entering full-width) setById is a no-op and idx
+		// falls back to 0 (the sidebar).
+		const cur = ring.current();
 		ring.clear();
-		if (picking) {
-			ring.register('pathInput'); ring.register('cancelBtn');
-		} else {
-			ring.register('chatInput'); ring.register('sendBtn');
-			ring.register('attachBtn'); ring.register('rotateBtn'); ring.register('msgArea');
-			if (sidebar.isOpen() && sidebarLayoutWidth() > 0) ring.register('sidebar');
-		}
+		for (const id of chatFocusIds(layout().mode, picking)) ring.register(id);
+		ring.setById(cur);
 	}
 
 	// Landing on msgArea arms the attachment cursor; landing anywhere else
@@ -605,6 +689,11 @@ export function renderChat(
 
 	const baseWidgets: Widget[] = [chatInput, sendBtn, rotateBtn, attachBtn, scrollView, sidebar];
 
+	// Modal keys-display: shown when the chat input is focused and Escape is
+	// pressed. Only ever true while chatInput holds focus (reset when focus
+	// leaves or the layout collapses to full-width).
+	let keysMode = false;
+
 	// FilePicker state
 	let picking        = false;
 	let pathInput: TextInput | null = null;
@@ -613,15 +702,19 @@ export function renderChat(
 	let tabIdx         = -1;
 	let tabCycled      = '';
 
+	// last layout class rendered; crossing a class boundary (resize, toggle)
+	// rebuilds the focus ring so it never points at a hidden widget.
+	let lastLayoutSig = '';
+
 	rebuildRing();
 
 	function showHelp(): void {
 		const text = [
 			'available commands:',
 			'  /exit (/quit, /q, /part)  quit covcom',
-			'  /ratchet                  rotate keys (Ctrl+R)',
-			'  /events                   toggle event log (Ctrl+E)',
-			'  /verify                   toggle verify pane (Ctrl+V)',
+			'  /ratchet                  rotate keys',
+			'  /events                   toggle event log',
+			'  /verify                   toggle verify pane',
 			'  /help (/?)                show this list',
 		].join('\n');
 		appendMessage({ sender: 'system', text, isSelf: false, system: true });
@@ -704,35 +797,60 @@ export function renderChat(
 		pathInput.cursor = tabCycled.length;
 	}
 
-	// Compute the actual sidebar column width given the current screen size.
-	// Returns 0 when the sidebar should not be drawn (closed, or terminal too
-	// narrow). Reserves 1 col for the separator.
-	function sidebarLayoutWidth(): number {
-		if (!sidebar.isOpen()) return 0;
-		if (scr.w < SIDEBAR_MIN_COLS) return 0;
-		const w = Math.floor(scr.w * sidebar.width / 100);
-		return Math.max(10, Math.min(w, scr.w - 24));
+	// Thin wrappers feeding live screen/sidebar state into the pure layout
+	// decision (chatLayout/chatFocusIds at module scope).
+	function layout(): ChatLayout {
+		return chatLayout(sidebar.isOpen(), scr.w, sidebar.width);
+	}
+	function sidebarFullWidth(): boolean {
+		return layout().mode === 'full';
+	}
+
+	// Flip the sidebar panel without touching focus. Wrapped by toggleMode, which
+	// adds the focus move (sidebar on open, input on close).
+	function setSidebarMode(target: SidebarMode) {
+		if (target === null) return;
+		if (sidebar.mode === target) sidebar.setMode(null);
+		else                         sidebar.setMode(target);
+		rebuildRing();
+		scr.markDirty();
 	}
 
 	function toggleMode(target: SidebarMode) {
 		if (target === null) return;
 		const prev = sidebar.mode;
-		if (prev === target)      sidebar.setMode(null);
-		else                      sidebar.setMode(target);
-		rebuildRing();
+		setSidebarMode(target);
 		// When opening from closed, jump focus to the sidebar so keyboard nav works.
 		if (prev === null && sidebar.mode !== null) ring.setById('sidebar');
 		// When closing, drop focus back onto chatInput.
 		if (sidebar.mode === null) ring.setById('chatInput');
 		afterFocusChange();
-		scr.markDirty();
 	}
 
 	function render() {
 		scr.hideCursor();
-		const sideW   = sidebarLayoutWidth();
-		const sideOn  = sideW > 0;
-		const chatW   = sideOn ? scr.w - sideW - 1 : scr.w;
+		const lo = layout();
+
+		// Rebuild the focus ring when the layout class changes (resize across the
+		// 80-col threshold, or a sidebar toggle). Idempotent with the explicit
+		// rebuildRing() calls elsewhere, which leave the sig unchanged.
+		const sig = `${picking}|${lo.mode}`;
+		if (sig !== lastLayoutSig) {
+			lastLayoutSig = sig; rebuildRing();
+		}
+
+		// Terminal too narrow for a split: the sidebar takes the whole screen and
+		// the chat is hidden until it is closed (Tab/Esc). The input (and so the
+		// keys-display) is gone, so drop the modal.
+		if (lo.mode === 'full') {
+			keysMode = false;
+			sidebar.render(scr, { x: 1, y: 1, w: scr.w, h: scr.h }, true, theme);
+			return;
+		}
+
+		const sideW   = lo.sideW;
+		const sideOn  = lo.mode === 'side';
+		const chatW   = lo.chatW;
 		const sepY    = scr.h - 1;
 		const barY    = scr.h;
 		const msgH    = scr.h - 2;
@@ -754,6 +872,8 @@ export function renderChat(
 
 			pathInput.render(scr, { x: inputX,    y: barY, w: inputW, h: 1 }, ring.isFocused('pathInput'), theme);
 			cancelBtn.render(scr, { x: chatW - 3, y: barY, w: 3,      h: 1 }, ring.isFocused('cancelBtn'), theme);
+		} else if (keysMode) {
+			renderKeysBar(scr, 2, barY, theme, keyHints(cfg));
 		} else {
 			const wSend    = [...lblSend].length    + 2;
 			const wAttach  = [...lblAttach].length  + 2;
@@ -779,7 +899,7 @@ export function renderChat(
 		const fid = ring.current();
 		if (picking && pathInput && fid === 'pathInput') {
 			const p = pathInput.getCursorPos(); scr.showCursor(p.x, p.y);
-		} else if (!picking && fid === 'chatInput') {
+		} else if (!picking && !keysMode && fid === 'chatInput') {
 			const p = chatInput.getCursorPos(); scr.showCursor(p.x, p.y);
 		}
 	}
@@ -790,7 +910,7 @@ export function renderChat(
 		if (ev.kind === 'key') {
 			const key = ev.key;
 			if (key.ctrl && key.name === 'c') {
-				process.emit('SIGINT'); return;
+				requestQuit(); return;
 			}
 
 			if (picking && pathInput) {
@@ -830,15 +950,32 @@ export function renderChat(
 				return;
 			}
 
-			// normal chat mode
-			if (key.ctrl && key.name === 'r') {
-				opts.onRotate(); return;
+			// modal keys-display: while shown, only the action keys and Escape are
+			// live; every other key is swallowed (shift-insensitive). Ctrl+C still
+			// quits (handled above). Every action closes the modal: ratchet returns
+			// focus to the input, e/v defer to toggleMode's focus move (sidebar on
+			// open, input on close), and Escape just returns to the input.
+			if (keysMode) {
+				const n = key.name.toLowerCase();
+				if (n === 'r')      {
+					keysMode = false; opts.onRotate(); ring.setById('chatInput'); scr.markDirty(); return;
+				}
+				if (n === 'e')      {
+					keysMode = false; toggleMode('event-log'); return;
+				}
+				if (n === 'v')      {
+					keysMode = false; toggleMode('verify'); return;
+				}
+				if (n === 'escape') {
+					keysMode = false; scr.markDirty(); return;
+				}
+				return;
 			}
-			if (key.ctrl && key.name === 'e') {
-				toggleMode('event-log'); return;
-			}
-			if (key.ctrl && key.name === 'v') {
-				toggleMode('verify'); return;
+
+			// normal chat mode. Escape from the chat input opens the modal
+			// keys-display (ratchet / events / verify also have slash commands).
+			if (key.name === 'escape' && ring.isFocused('chatInput')) {
+				keysMode = true; scr.markDirty(); return;
 			}
 			if (key.name === 'escape' && sidebar.isOpen() && ring.isFocused('sidebar')) {
 				sidebar.setMode(null);
@@ -860,6 +997,15 @@ export function renderChat(
 			}
 			if (ring.isFocused('sidebar') && key.ch === '-') {
 				writeSidebarWidth(sidebar.stepWidth(-1));
+				scr.markDirty(); return;
+			}
+			// Full-width sidebar: chat is hidden, so Tab has nothing else to
+			// cycle. Treat it as the close-and-return exit (same path as Esc).
+			if (key.name === 'tab' && sidebarFullWidth()) {
+				sidebar.setMode(null);
+				rebuildRing();
+				ring.setById('chatInput');
+				afterFocusChange();
 				scr.markDirty(); return;
 			}
 			if (key.name === 'tab' && !key.shift) {
@@ -884,6 +1030,16 @@ export function renderChat(
 
 		} else if (ev.kind === 'mouse') {
 			const m = ev.mouse;
+			// Full-width sidebar: chat widgets are not drawn but keep stale rects,
+			// so route every event to the sidebar and ignore clicks (no widget to
+			// focus). The sidebar fills the screen, so any scroll is over it.
+			if (sidebarFullWidth()) {
+				if (m.type === 'scroll') {
+					sidebar.scrollByLines(m.button === 64 ? -3 : +3);
+					scr.markDirty();
+				}
+				return;
+			}
 			if (m.type === 'scroll') {
 				// scroll over msgArea regardless of focus
 				if (m.x >= scrollView.rect.x && m.x < scrollView.rect.x + scrollView.rect.w &&
@@ -911,6 +1067,7 @@ export function renderChat(
 					? ([pathInput, cancelBtn] as (Widget | null)[]).filter((w): w is Widget => w !== null).find(w => m.x >= w.rect.x && m.x < w.rect.x + w.rect.w && m.y >= w.rect.y && m.y < w.rect.y + w.rect.h)
 					: clickHit(baseWidgets, m.x, m.y);
 				if (aw) {
+					keysMode = false;
 					ring.setById(aw.id);
 					afterFocusChange();
 					aw.onClick?.();
@@ -921,7 +1078,7 @@ export function renderChat(
 			// paste
 			if (picking && pathInput && ring.isFocused('pathInput')) {
 				pathInput.onPaste(ev.text); scr.markDirty();
-			} else if (!picking && ring.isFocused('chatInput')) {
+			} else if (!picking && !keysMode && ring.isFocused('chatInput')) {
 				chatInput.onPaste(ev.text); scr.markDirty();
 			}
 		}

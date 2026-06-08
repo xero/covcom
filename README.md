@@ -207,7 +207,7 @@ bun start:server
 ```
 
 This invokes `bun run src/index.ts` in the `server/` workspace and listens
-on `localhost:$PORT` (default `3000`).
+on `localhost:$PORT` (default `1337`).
 
 ### Development
 
@@ -218,14 +218,14 @@ connect over `ws://`.
 bun dev:server
 ```
 
-The server starts on `localhost:3000` and reloads on source changes.
+The server starts on `localhost:1337` and reloads on source changes.
 
 ### Environment Variables
 
 | Variable        | Default  | Description                                                           |
 | --------------- | -------- | --------------------------------------------------------------------- |
 | `DOMAIN`        | required | Domain name for Caddy TLS                                             |
-| `PORT`          | `3000`   | Internal port the Bun server listens on                               |
+| `PORT`          | `1337`   | Internal port the Bun server listens on                               |
 | `ADMIN_TOKEN`   | unset    | Optional token required to create rooms                               |
 | `ROOM_TTL`      | `24`     | Hours of inactivity before an empty room is deleted. `0` disables TTL |
 | `MAX_ROOM_SIZE` | `20`     | Maximum participants per room. `0` is unlimited                       |
@@ -277,7 +277,9 @@ frame and crypto action, with redacted payloads and expandable detail rows.
 Drag the divider between the chat and sidebar to resize, or double-click it
 to reset. The eye button in the header hides or shows system messages
 (joins, leaves, ratchets). Drag a file anywhere onto an open chat to send
-it; drop a `.room` file on the lobby to load an invite.
+it; drop a `.room` file on the lobby to load an invite. Press `Esc` in the
+message box to open the keys-display (`R` ratchet, `E` events, `V` verify,
+`Esc` return); the `/ratchet`, `/events`, and `/verify` commands work too.
 
 ---
 
@@ -354,9 +356,11 @@ The file is optional
   "username": "xero",
   "copyCmd": "xsel -b",
   "showSystem": true,
+  "sidebar": { "width": 30 },
+  "icons": { "send": ">", "attach": "+", "ratchet": "R" },
   "theme": {
     "btnFocusBg": { "type": "256", "n": 33 },
-    "yourName":   { "type": "hex", "value": "#ff8800" }
+    "yourMsg":    { "type": "hex", "value": "#ff8800" }
   }
 }
 ```
@@ -371,6 +375,11 @@ events) appear in the transcript. It defaults to `true`.
 `{ "type": "ansi16", "n": 0-15 }`, `{ "type": "256", "n": 0-255 }`, or
 `{ "type": "hex", "value": "#rrggbb" }`.
 
+`sidebar.width` is the sidebar width as a percent (clamped 10-70). `icons`
+overrides the glyphs for the bar buttons (`send`, `attach`, `ratchet`), the
+in-chat `keys` rotated notice, and the keys-display units (`events`, `verify`,
+`escape`); any unset entry falls back to its default or renders nothing.
+
 > [!TIP]
 > The full list of config settings and color theme names are defined in the [CLI-SPEC](https://github.com/xero/covcom/wiki/CLI-SPEC#defaults)
 
@@ -380,10 +389,15 @@ events) appear in the transcript. It defaults to `true`.
 |---------------------|---------------------------------------|
 | `Tab` / `Shift+Tab` | Cycle focus                           |
 | `Enter`             | Send message / confirm                |
-| `Ctrl+R`            | Rotate encryption keys (ratchet step) |
-| `Ctrl+E`            | Toggle event-log sidebar              |
-| `Ctrl+V`            | Toggle fingerprint-verify sidebar     |
-| `Ctrl+C`            | Quit and wipe session                 |
+| `Ctrl+C`            | Confirm-quit prompt; press again to quit and wipe session |
+| `Esc` (in input)    | Open the keys-display over the input bar |
+
+Ratchet, the event log, and verify are reached from the keys-display: press
+`Esc` while the message input is focused and the input bar becomes a row of `R`
+ratchet / `E` events / `V` verify / `Esc` return units. Press the key (shift
+does not matter); the action runs and the display closes back to the input.
+`Esc` returns without doing anything. The `/ratchet`, `/events`, and `/verify`
+commands do the same.
 
 When the sidebar has focus, `↑/↓` move selection in the event log, `PgUp/PgDn`
 page through, `Enter` expands the selected entry's details, and `+`/`-` step
@@ -396,9 +410,9 @@ everything else is sent as a message. `/help` (or `/?`) lists them.
 |---------------------------------|-----------------------------------------|
 | `/help`, `/?`                   | Show the command list                   |
 | `/exit`, `/quit`, `/q`, `/part` | Quit and wipe the session               |
-| `/ratchet`                      | Rotate keys (same as `Ctrl+R`)          |
-| `/events`                       | Toggle the event-log sidebar (`Ctrl+E`) |
-| `/verify`                       | Toggle the verify sidebar (`Ctrl+V`)    |
+| `/ratchet`                      | Rotate keys                             |
+| `/events`                       | Toggle the event-log sidebar            |
+| `/verify`                       | Toggle the verify sidebar               |
 
 An unrecognized command prints `unknown command: <name>. type /help for a list`.
 

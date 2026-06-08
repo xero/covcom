@@ -5,12 +5,12 @@ import {
 	serializeInvite,
 } from '@covcom/lib';
 import type { CovcomSession } from '../session.js';
-import { getState, subscribe } from '../store.js';
+import { dispatch, getState, subscribe } from '../store.js';
 import type { ChatItem, PeerView, Room } from '../store.js';
 import { parseMarkup } from '@covcom/lib';
 import { el, clear, formatBytes, peerColor } from '../util.js';
 import { renderRich, renderDoc } from '../rich.js';
-import { ICON_COG, ICON_SEND, ICON_ATTACH } from '../icons.js';
+import { ICON_COG, ICON_SEND, ICON_ATTACH, ICON_LOG, ICON_FP, ICON_ESC } from '../icons.js';
 import { setHtml } from '../safehtml.js';
 import { mountSidebar } from './sidebar.js';
 import { mountEventLog } from './event-log.js';
@@ -128,9 +128,55 @@ function buildRegularBar(session: CovcomSession): RegularBar {
 	fileInput.id             = 'file-input';
 	fileInput.style.display  = 'none';
 
+	// Mirror of the CLI slash dispatcher (cli/src/tui/views.ts). The three actions
+	// have no web hotkey (Ctrl+R/E/V collide with the browser), so the typed command
+	// is the keyboard path to them here.
+	function leave(): void {
+		session.dispose();
+		dispatch({ type: 'RESET' });
+		dispatch({ type: 'GOTO_LANDING' });
+	}
+
+	function showHelp(): void {
+		const lines = [
+			'available commands:',
+			'  /exit (/quit, /q, /part)  leave the room',
+			'  /ratchet                  rotate keys',
+			'  /events                   toggle event log',
+			'  /verify                   toggle verify pane',
+			'  /help (/?)                show this list',
+			'sidebar: +/- resize, Esc close (when the sidebar is focused)',
+		];
+		for (const line of lines) dispatch({ type: 'SYSTEM_APPENDED', text: line });
+	}
+
+	const commands: Record<string, () => void> = {
+		exit: leave,
+		quit: leave,
+		q: leave,
+		part: leave,
+		ratchet: () => session.rotate(),
+		events: () => dispatch({ type: 'SIDEBAR_TOGGLE', section: 'event-log' }),
+		verify: () => dispatch({ type: 'SIDEBAR_TOGGLE', section: 'verify' }),
+		help: showHelp,
+		'?': showHelp,
+	};
+
+	function dispatchCommand(raw: string): void {
+		const name = raw.slice(1).split(/\s+/)[0].toLowerCase();
+		const fn   = commands[name];
+		if (fn) {
+			fn(); return;
+		}
+		dispatch({ type: 'SYSTEM_APPENDED', text: `unknown command: ${raw}. type /help for a list` });
+	}
+
 	function sendCurrent(): void {
 		const text = textarea.value.trim();
 		if (!text) return;
+		if (text.startsWith('/')) {
+			dispatchCommand(text); textarea.value = ''; return;
+		}
 		if (session.sendMessage(text)) textarea.value = '';
 	}
 
@@ -194,6 +240,54 @@ function buildLobbyBar(room: Room): HTMLDivElement {
 	return bar;
 }
 
+// Modal keys-display: the web counterpart to the CLI keys bar. Reached by
+// pressing Escape in the message input; mirrors the CLI's r/e/v actions plus
+// Escape to return. Every action closes the display and returns to the input:
+// r ratchets, e/v toggle a sidebar panel, Escape just returns. Keyboard-only
+// (no click handlers by design).
+function buildKeysBar(session: CovcomSession, onExit: () => void): HTMLUListElement {
+	const ul = el('ul', 'chat-bar') as HTMLUListElement;
+	ul.id = 'keys';
+	// Focusable so it receives keydown the moment we swap it in and focus it.
+	ul.tabIndex = 0;
+
+	const units: { key: string; icon: typeof ICON_COG; label: string }[] = [
+		{ key: 'R',   icon: ICON_COG, label: 'Ratchet' },
+		{ key: 'E',   icon: ICON_LOG, label: 'Events' },
+		{ key: 'V',   icon: ICON_FP,  label: 'Verify' },
+		{ key: 'ESC', icon: ICON_ESC, label: 'return to chat' },
+	];
+
+	for (const u of units) {
+		const li      = el('li');
+		const iconEl  = el('span', 'key-icon');
+		setHtml(iconEl, u.icon);
+		const kbd     = el('kbd', undefined, u.key);
+		const p       = el('p');
+		p.append(el('strong', undefined, u.label[0]), document.createTextNode(u.label.slice(1)));
+		li.append(iconEl, kbd, p);
+		ul.append(li);
+	}
+
+	ul.addEventListener('keydown', (e) => {
+		const k = e.key.toLowerCase();
+		if (k === 'escape') {
+			e.preventDefault(); onExit(); return;
+		}
+		if (k === 'r')      {
+			e.preventDefault(); session.rotate(); onExit(); return;
+		}
+		if (k === 'e')      {
+			e.preventDefault(); dispatch({ type: 'SIDEBAR_TOGGLE', section: 'event-log' }); onExit(); return;
+		}
+		if (k === 'v')      {
+			e.preventDefault(); dispatch({ type: 'SIDEBAR_TOGGLE', section: 'verify' }); onExit(); return;
+		}
+	});
+
+	return ul;
+}
+
 // ── mount ──────────────────────────────────────────────────────────────────
 
 export function mountChat(app: Element, session: CovcomSession): () => void {
@@ -244,19 +338,56 @@ export function mountChat(app: Element, session: CovcomSession): () => void {
 	let lastScreenName  = '';
 	let lastHideSystem: boolean | null = null;
 
+	// The three bottom-bar variants (regular input, lobby invite, keys-display)
+	// all swap through this one node tracker. The regular node stays alive in
+	// memory while swapped out so the textarea draft survives a round-trip.
+	let bottomNode: HTMLElement = regular.root;
+	function setBottom(next: HTMLElement): void {
+		if (next === bottomNode) return;
+		bottomNode.replaceWith(next);
+		bottomNode = next;
+	}
+
+	let keysMode = false;
+	const keysBar = buildKeysBar(session, () => exitKeysMode());
+	function enterKeysMode(): void {
+		if (keysMode) return;
+		keysMode = true;
+		setBottom(keysBar);
+		keysBar.focus();
+	}
+	function exitKeysMode(): void {
+		if (!keysMode) return;
+		keysMode = false;
+		setBottom(regular.root);
+		focusInput();
+	}
+	function focusInput(): void {
+		regular.textarea.focus();
+	}
+	// Escape from the input opens the modal keys-display (Enter is handled inside
+	// buildRegularBar). Only fires while the regular bar is mounted.
+	const onInputEsc = (e: KeyboardEvent): void => {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			enterKeysMode();
+		}
+	};
+	regular.textarea.addEventListener('keydown', onInputEsc);
+
 	let currentLobby: HTMLDivElement | null = null;
 
 	function swapBar(toLobby: boolean): void {
 		if (toLobby) {
 			const s = getState().screen;
 			if (s.name !== 'waiting') return;
+			keysMode = false;            // the modal can't survive into the lobby
 			currentLobby = buildLobbyBar(s.room);
-			regular.root.replaceWith(currentLobby);
-			// Keep the regular bar node alive in memory so the textarea draft
-			// survives a lobby round-trip.
-		} else if (currentLobby) {
-			currentLobby.replaceWith(regular.root);
+			setBottom(currentLobby);
+		} else {
+			setBottom(regular.root);
 			currentLobby = null;
+			focusInput();
 		}
 	}
 
@@ -300,11 +431,13 @@ export function mountChat(app: Element, session: CovcomSession): () => void {
 		history.classList.toggle('hide-system', s.ui.hideSystem);
 		lastScreenName  = s.screen.name;
 		if (s.screen.name === 'waiting') swapBar(true);
+		else                             focusInput();
 		scrollHistory();
 	}
 
 	return (): void => {
 		off();
+		regular.textarea.removeEventListener('keydown', onInputEsc);
 		document.removeEventListener('dragenter', onDragEnter);
 		document.removeEventListener('dragleave', onDragLeave);
 		document.removeEventListener('dragover',  onDragOver);

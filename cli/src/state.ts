@@ -30,7 +30,7 @@ import type {
 import { WS } from './ws.js';
 import type { InboundMsg, OutboundMsg } from './ws.js';
 import { b64enc, b64dec, wsUrl, resolveUniqueFilename } from './util.js';
-import { writeConfig } from './config.js';
+import { readConfig, writeConfig } from './config.js';
 import { registerCleanup } from './lifecycle.js';
 import { renderLanding } from './tui/landing.js';
 import { renderWaiting } from './tui/waiting.js';
@@ -88,6 +88,9 @@ let _screen: Screen;
 let _showSystem = true;
 let _keysIcon = '';
 let _connectionLostAt = 0;
+// Set once we begin tearing down on exit. Suppresses the reconnect path that
+// an intentional ws.close() would otherwise trigger during shutdown.
+let _shuttingDown = false;
 
 // In-chat ratchet notice. The key icon and this label are colored independently
 // (theme.keyFg / theme.ratchetTxtFg) by the ScrollView, so they're passed to
@@ -210,6 +213,19 @@ export function mount(
 	_screen = screen;
 	_showSystem = config.showSystem !== false;
 	_keysIcon = (config.icons?.keys ?? '').trim();
+
+	// Single teardown for every exit path (Ctrl+C, /exit, SIGTERM, fatal). Reads
+	// the module-level `current` so it covers whatever phase we're in, then
+	// restores the terminal (leaves alt-screen, re-shows cursor, raw mode off).
+	registerCleanup(() => {
+		_shuttingDown = true;
+		disposeAllInbound();
+		if (current.phase === 'waiting' || current.phase === 'ready') {
+			current.session.dispose();
+			current.ws.close();
+		}
+		_screen.destroy();
+	});
 	if (joinArg && config.username) {
 		const { username } = config;
 		renderJoin(_screen, {
@@ -248,7 +264,9 @@ function doCreate(server: string, username: string, adminToken?: string): void {
 	});
 
 	ws.onOpen = () => {
-		writeConfig({ server: dns, username });
+		// Persist only server + username; read-merge so theme, icons, sidebar, and
+		// showSystem on disk survive (a bare write here clobbered them).
+		writeConfig({ ...readConfig(), server: dns, username });
 		ws.send({ type: 'create', adminToken, protocolVersion: PROTOCOL_VERSION });
 	};
 
@@ -308,7 +326,7 @@ function doJoin(
 	username: string,
 	isReconnect = false,
 ): void {
-	const dns = invite.dns ?? 'localhost:3000';
+	const dns = invite.dns ?? 'localhost:1337';
 	if (!isReconnect) resetEvents();
 	const ws = new WS(wsUrl(dns));
 	attachWireTaps(ws);
@@ -483,14 +501,6 @@ function doConnect(
 			roomId,
 		});
 	}
-
-	registerCleanup(() => {
-		disposeAllInbound();
-		if (current.phase === 'waiting' || current.phase === 'ready') {
-			current.session.dispose();
-			current.ws.close();
-		}
-	});
 
 	function doLobbyTransition(): void {
 		if (current.phase !== 'ready') return;
@@ -868,16 +878,7 @@ function doConnect(
 				disposeAllInbound();
 				session.dispose();
 				ws.close();
-				current = { phase: 'landing' };
-				renderLanding(_screen, {
-					config: {},
-					onCreate: doCreate,
-					onJoinClick: (u) =>
-						renderJoin(_screen, {
-							username: u,
-							onConnect: (inv) => doJoin(inv, u),
-						}),
-				});
+				returnToLanding(USERNAME_TAKEN_MSG, { server: dns, username });
 			} else {
 				logEvent({
 					direction: 'local',
@@ -897,6 +898,7 @@ function doConnect(
 	};
 
 	ws.onClose = () => {
+		if (_shuttingDown) return;
 		if (current.phase !== 'ready' && current.phase !== 'waiting') return;
 		disposeAllInbound();
 		current.session.dispose();
@@ -926,6 +928,7 @@ function startReconnect(
 ): void {
 	let delay = 1000;
 	const attempt = async () => {
+		if (_shuttingDown) return;
 		try {
 			const res = await fetch(`${httpUrl(dns)}/health_check`);
 			if (res.ok) {
@@ -948,11 +951,15 @@ function startReconnect(
 // Generic on-screen copy: no version numbers (the event-log sidebar isn't
 // available at landing anyway). Exact numbers go to stderr for debugging.
 const VERSION_MISMATCH_MSG = 'This server is running a different version.';
+const USERNAME_TAKEN_MSG = 'That username is taken in this room.';
 
-function returnToLanding(error: string): void {
+function returnToLanding(
+	error: string,
+	config: { server?: string; username?: string } = {},
+): void {
 	current = { phase: 'landing' };
 	renderLanding(_screen, {
-		config: {},
+		config,
 		error,
 		onCreate: doCreate,
 		onJoinClick: (u) =>

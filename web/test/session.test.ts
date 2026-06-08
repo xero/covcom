@@ -6,7 +6,7 @@ import type { SessionEvents } from '../src/session.ts';
 import type { Room } from '../src/store.ts';
 import { broker, installMockWebSocket, uninstallMockWebSocket, waitUntil } from './mock-ws.ts';
 
-const SERVER = 'localhost:3000';
+const SERVER = 'localhost:1337';
 
 function b64(bytes: Uint8Array): string {
 	let s = '';

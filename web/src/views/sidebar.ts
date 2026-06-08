@@ -26,6 +26,10 @@ export function mountSidebar(view: Element, _session: CovcomSession): () => void
 
 	const verifyBody = el('section', 'sidebar-section fp-section');
 	verifyBody.dataset.section = 'verify';
+	// Event-log rows are <button>s (already tab stops); the verify pane is inert
+	// content, so make its section focusable too. Hidden when inactive, so it drops
+	// out of the tab order on its own.
+	verifyBody.setAttribute('tabindex', '0');
 
 	aside.append(eventLogBody, verifyBody);
 
@@ -77,6 +81,28 @@ export function mountSidebar(view: Element, _session: CovcomSession): () => void
 	dragbar.addEventListener('pointerup',     onUp);
 	dragbar.addEventListener('pointercancel', onUp);
 	dragbar.addEventListener('dblclick',      onDblClick);
+
+	// Keyboard control, scoped to the sidebar by bubbling: this fires only when a
+	// focused descendant (an event-log row button, or the focused verify pane) is
+	// the keydown target. +/- resize (clamped like the drag handler); Esc closes the
+	// active section and returns focus to the chat input.
+	const STEP_PCT = 5;
+	aside.addEventListener('keydown', (e) => {
+		if (e.key === '+' || e.key === '=') {
+			const pct = Math.min(SIDEBAR_DEFAULTS.MAX_PCT, getState().ui.sidebarWidthPct + STEP_PCT);
+			dispatch({ type: 'SIDEBAR_RESIZE', pct });
+			e.preventDefault();
+		} else if (e.key === '-' || e.key === '_') {
+			const pct = Math.max(SIDEBAR_DEFAULTS.MIN_PCT, getState().ui.sidebarWidthPct - STEP_PCT);
+			dispatch({ type: 'SIDEBAR_RESIZE', pct });
+			e.preventDefault();
+		} else if (e.key === 'Escape') {
+			const sec = getState().ui.activeSection;
+			if (sec) dispatch({ type: 'SIDEBAR_TOGGLE', section: sec });
+			document.getElementById('chat-input')?.focus();
+			e.preventDefault();
+		}
+	});
 
 	// initial apply
 	host.style.setProperty('--sidebar-pct', String(getState().ui.sidebarWidthPct));

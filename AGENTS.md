@@ -277,16 +277,21 @@ expected chain seeds have been received. It does not fire anywhere else.
   its `EventLogEntry` shape mirrors `web/src/store.ts` so the two clients
   surface the same data. Mutate it only via `logEvent` and reset on
   session teardown.
+- `cli/src/lifecycle.ts` is another top-level CLI module. It exposes
+  `registerCleanup`/`doCleanup`: the single teardown path that wipes session
+  state and restores the terminal. `state.ts` registers session/socket
+  teardown via `registerCleanup`, and `main.ts` runs `doCleanup` from its
+  exit-signal handlers.
 - The public interface between `cli/src/state.ts` and the TUI is fixed.
   `state.ts` imports through the per-screen façades:
   - `renderLanding` from `tui/landing.ts`
   - `renderWaiting` from `tui/waiting.ts`
   - `renderJoin` from `tui/join.ts`
-  - `renderChat`, `appendMessage`, `appendFile` from `tui/chat.ts`
+  - `renderChat`, `appendMessage`, `appendFile`, `showModal` from `tui/chat.ts`
 
-  `cli/src/main.ts` imports `createScreen()` from `tui/screen.ts`. Do not
-  change these signatures or relocate exports without flagging it as a
-  deviation.
+  `cli/src/main.ts` imports `createScreen()` from `tui/screen.ts` and
+  `doCleanup()` from `lifecycle.ts`. Do not change these signatures or
+  relocate exports without flagging it as a deviation.
 - Config is stored at `~/.config/covcom/config.json`. Fields: `server`,
   `username`, `copyCmd`, `theme`, `showSystem`, `sidebar`, `icons`. No key
   material.
@@ -358,7 +363,7 @@ still performs no crypto and stores nothing.
 | Variable | Default | Description |
 |---|---|---|
 | `DOMAIN` | required | FQDN passed to Caddy |
-| `PORT` | `3000` | Internal port the Bun server listens on |
+| `PORT` | `1337` | Internal port the Bun server listens on |
 | `ADMIN_TOKEN` | unset | Optional creation-only auth gate |
 | `ROOM_TTL` | `24` | Hours of inactivity before room deletion; `0` = never |
 | `MAX_ROOM_SIZE` | `20` | Max participants per room; `0` = unlimited |

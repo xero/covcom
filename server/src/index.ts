@@ -25,7 +25,7 @@ export interface ServerConfig {
 }
 
 export function startServer(config: ServerConfig = {}) {
-	const port        = config.port ?? parseInt(process.env.PORT ?? '3000', 10);
+	const port        = config.port ?? parseInt(process.env.PORT ?? '1337', 10);
 	const maxRoomSize = config.maxRoomSize ?? parseMaxRoomSize();
 	const adminToken  = 'adminToken' in config ? config.adminToken : process.env.ADMIN_TOKEN;
 	const hostname    = config.hostname ?? 'localhost';

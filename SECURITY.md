@@ -136,6 +136,8 @@ Keys group messaging model.
 
 **Untrusted-content rendering.** Peer-controlled display text (usernames, message bodies, filenames) never becomes markup in the web client or terminal escapes in the CLI. This defeats XSS, terminal escape injection, and bidi or homoglyph display-name spoofing.
 
+**Clean teardown.** Session keys live only in memory and are wiped on every exit path (`Ctrl+C`, `/exit`, `SIGTERM`, and fatal errors), not just a graceful disconnect. The CLI also restores the terminal on the way out, leaving no chat transcript on screen or in scrollback.
+
 ### The protocol does not protect against
 
 **Endpoint compromise.** Malware or physical device access defeats any transport security.

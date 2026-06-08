@@ -753,6 +753,39 @@ label {
 	}
 }
 
+/* Modal keys-display. Reuses .chat-bar for the grid slot + frame; rough styling
+   is intentional, tweak freely. */
+#keys {
+	list-style: none;
+	margin: 0;
+	align-items: stretch;
+	gap: var(--gap);
+
+	li {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.4rem 0.8rem;
+		border: 1px solid var(--border);
+		background: color-mix(in srgb, var(--bg) 60%, var(--poseidon) 40%);
+	}
+	.key-icon svg {
+		fill: var(--ocean);
+		width: 1.4em;
+		height: 1.4em;
+	}
+	kbd {
+		font-family: monospace;
+		padding: 0.1rem 0.45rem;
+		border: 1px solid var(--accent);
+		background: color-mix(in srgb, var(--bg) 70%, var(--accent) 30%);
+	}
+	p {
+		margin: 0;
+		strong { font-weight: 800; }
+	}
+}
+
 .spin {
 	transform-box: fill-box;
 	transform-origin: center;

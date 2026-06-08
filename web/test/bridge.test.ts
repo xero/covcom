@@ -20,7 +20,7 @@ function fp(hex: string): FingerprintSurface {
 	return { hex, swatches: ['#111111'], badge: '#222222' } as unknown as FingerprintSurface;
 }
 
-const room = (): Room => ({ id: 'r'.repeat(32), secret: new Uint8Array(16), dns: 'localhost:3000' });
+const room = (): Room => ({ id: 'r'.repeat(32), secret: new Uint8Array(16), dns: 'localhost:1337' });
 
 const last = <T>(a: readonly T[]): T => a[a.length - 1];
 
