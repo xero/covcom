@@ -9,13 +9,11 @@
 		"test":    "bun test"
 	},
 	"dependencies": {
-		"@covcom/lib": "workspace:*",
-		"qrcode": "^1.5.4"
+		"@covcom/lib": "workspace:*"
 	},
 	"devDependencies": {
 		"@happy-dom/global-registrator": "^20.9.0",
 		"@types/bun": "latest",
-		"@types/qrcode": "*",
 		"vite": "^8.0.14",
 		"vite-plugin-singlefile": "^2.3.3"
 	}

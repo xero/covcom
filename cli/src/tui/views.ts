@@ -1,11 +1,12 @@
 import { join, resolve } from 'path';
 import { readdirSync, existsSync, statSync } from 'fs';
-import { parseArmoredInvite, inviteFilename, PROTOCOL } from '@covcom/lib';
+import { parseArmoredInvite, inviteFilename, CRYPTO_TABLE, qrMatrix } from '@covcom/lib';
 import type { InvitePayload, FingerprintSurface } from '@covcom/lib';
 import { Screen, Theme, ColorValue, loadTheme, colorFg, colorBg, ansi } from './screen.js';
 import { parseInput, InputEvent } from './keys.js';
 import { FocusRing } from './focus.js';
 import { TextInput, TextArea, Button, ScrollView, Sidebar, Widget, drawModal } from './widgets.js';
+import { qrHalfBlock } from './qr.js';
 import type { SidebarMode, ModalOpts } from './widgets.js';
 import { readConfig, readSidebarWidth, writeSidebarWidth, SIDEBAR_MIN_COLS } from '../config.js';
 import type { Config } from '../config.js';
@@ -510,28 +511,52 @@ export function renderWaiting(
 	ring.register('copy'); ring.register('download');
 	const widgets: Widget[] = [copyBtn, downloadBtn];
 
-	// Rows from lib's PROTOCOL manifest (lowercase labels stay cli house style).
-	// LCOL/RCOL are the inner cell widths; the box-drawing chars are the only
-	// ones in the codebase, per PROTOCOL.md, so they stay confined here.
-	const LCOL = 8;
-	const RCOL = 23;
-	const bar  = (l: string, m: string, r: string): string =>
+	// Rows from lib's CRYPTO_TABLE (shared with the web client so the two can't
+	// drift). LCOL/RCOL are the inner cell widths, sized to the longest label and
+	// value; the box-drawing chars are the only ones in the codebase, per
+	// PROTOCOL.md, so they stay confined here.
+	const LCOL = 23;
+	const RCOL = 20;
+	const bar = (l: string, m: string, r: string): string =>
 		l + '─'.repeat(LCOL) + m + '─'.repeat(RCOL) + r;
-	const rows: [string, string][] = [
-		['cipher', PROTOCOL.cipherName],
-		['kem',    PROTOCOL.kemName],
-		['format', PROTOCOL.cipherFormatHex],
-	];
+	const cell = (k: string, v: string): string =>
+		'│' + (' ' + k).padEnd(LCOL) + '│' + (' ' + v).padEnd(RCOL) + '│';
 	const TABLE = [
 		bar('┌', '┬', '┐'),
-		...rows.map(([k, v]) => '│' + (' ' + k).padEnd(LCOL) + '│' + ('  ' + v).padEnd(RCOL) + '│'),
+		cell('COMPONENT', 'PRIMITIVE'),
+		bar('├', '┼', '┤'),
+		...CRYPTO_TABLE.map(([k, v]) => cell(k, v)),
 		bar('└', '┴', '┘'),
 	];
 
+	// A scannable QR of the same armored invite the web client encodes. Each
+	// text row packs two module rows via half-block glyphs. Built once; stays
+	// null (and is simply omitted) when the invite is too large to encode,
+	// mirroring the web client hiding its canvas on error.
+	let qrRows: string[] | null;
+	try {
+		qrRows = qrHalfBlock(qrMatrix(opts.armoredInvite));
+	} catch {
+		qrRows = null;
+	}
+
 	function render() {
 		scr.hideCursor();
-		const ox     = Math.floor((scr.w - 52) / 2);
-		const oy     = Math.max(1, Math.floor((scr.h - 11) / 2));
+		const tableW = TABLE[0].length;
+		const ox  = Math.floor((scr.w - tableW) / 2);
+		const qrH = qrRows ? qrRows.length : 0;
+		const qrW = qrRows ? qrRows[0].length : 0;
+
+		// The QR sits directly below the table (qrTop rows below the heading).
+		// Center the whole block including it; fall back to the table-only layout
+		// when the QR can't fit the terminal.
+		const qrTop = 5 + TABLE.length;
+		let showQr = qrRows !== null && qrW <= scr.w;
+		let oy     = Math.max(1, Math.floor((scr.h - (showQr ? qrTop + qrH : qrTop + 1)) / 2));
+		if (showQr && oy + qrTop - 1 + qrH > scr.h) {
+			showQr = false;
+			oy     = Math.max(1, Math.floor((scr.h - (qrTop + 1)) / 2));
+		}
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
 
@@ -546,6 +571,15 @@ export function renderWaiting(
 		for (let i = 0; i < TABLE.length; i++) {
 			scr.moveTo(ox, oy + 5 + i);
 			scr.write(colorFg(theme.fg) + TABLE[i] + ansi.reset);
+		}
+
+		// Forced black-on-white regardless of theme, for scanner contrast.
+		if (showQr && qrRows) {
+			const qx = Math.floor((scr.w - qrW) / 2);
+			for (let i = 0; i < qrRows.length; i++) {
+				scr.moveTo(qx, oy + qrTop + i);
+				scr.write(ansi.bgHex('#ffffff') + ansi.fgHex('#000000') + qrRows[i] + ansi.reset);
+			}
 		}
 	}
 

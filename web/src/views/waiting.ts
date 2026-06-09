@@ -1,14 +1,14 @@
-import QRCode from 'qrcode';
 import {
 	armorInvite,
 	inviteFilename,
 	INVITE_VERSION,
-	PROTOCOL,
+	CRYPTO_TABLE,
 	serializeInvite,
 } from '@covcom/lib';
 import type { CovcomSession } from '../session.js';
 import type { Screen } from '../store.js';
 import { el, clear } from '../util.js';
+import { qrToSvg } from '../qr.js';
 
 function b64enc(bytes: Uint8Array): string {
 	let s = '';
@@ -69,27 +69,25 @@ export function mountWaiting(
 	const btnRow = el('div', 'btn-row');
 	btnRow.append(btnCopy, btnDl);
 
-	const canvas = document.createElement('canvas');
-	canvas.className = 'invite-qr';
-	canvas.id        = 'invite-qr';
-	void QRCode.toCanvas(canvas, armoredInvite, { errorCorrectionLevel: 'L', margin: 1 })
-		.catch(() => {
-			canvas.style.display = 'none';
-		});
+	let qr: SVGSVGElement | null = null;
+	try {
+		qr = qrToSvg(armoredInvite);
+		qr.classList.add('invite-qr');
+		qr.id = 'invite-qr';
+	} catch { /* invite too large to encode: omit the QR */ }
 
-	// Values come from lib's PROTOCOL manifest so they can't drift from the cli.
+	// Rows come from lib's CRYPTO_TABLE so they can't drift from the cli. The
+	// COMPONENT/PRIMITIVE header is the dl's first row, styled apart from the
+	// facts beneath it.
 	const dl = el('dl', 'crypto-summary');
-	const entries: [string, string][] = [
-		['cipher', PROTOCOL.cipherName],
-		['KEM',    PROTOCOL.kemName],
-		['format', PROTOCOL.cipherFormatHex],
-	];
-	for (const [term, def] of entries) {
+	dl.appendChild(el('dt', 'crypto-head', 'COMPONENT'));
+	dl.appendChild(el('dd', 'crypto-head', 'PRIMITIVE'));
+	for (const [term, def] of CRYPTO_TABLE) {
 		dl.appendChild(el('dt', undefined, term));
 		dl.appendChild(el('dd', undefined, def));
 	}
 
-	view.append(status, pre, btnRow, canvas, dl);
+	view.append(status, pre, btnRow, ...(qr ? [qr] : []), dl);
 	app.appendChild(view);
 
 	return (): void => {

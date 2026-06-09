@@ -293,6 +293,9 @@ label {
 .invite-qr {
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
+	display: block;
+	width: 100%;
+	height: auto;
 	max-width: 100%;
 }
 
@@ -305,6 +308,16 @@ label {
 
 	dt {
 		font-weight: bold;
+	}
+
+	.crypto-head {
+		font-weight: bold;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--text);
+		padding-bottom: 0.2rem;
+		margin-bottom: 0.2rem;
+		border-bottom: 1px solid var(--border);
 	}
 }
 
