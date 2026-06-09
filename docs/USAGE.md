@@ -275,7 +275,20 @@ in [starting a session](#starting-a-session).
 bun dev:web
 ```
 
-Open `http://localhost:5173`.
+Open `http://localhost:5173`. In dev the create screen prefills the server with
+Vite's own host, not the relay, so edit it to `localhost:1337` or use the
+combined launcher below.
+
+**Both at once:**
+
+```sh
+bun dev
+```
+
+Starts the relay and the web client together. `PORT` (default `1337`) drives the
+relay and is handed to the web client as the prefilled server address, so the
+create screen targets the right relay with no edit. Ctrl+C, or either process
+exiting, shuts both down.
 
 **Static build:**
 

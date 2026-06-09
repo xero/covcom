@@ -101,8 +101,10 @@ function buildCreateForm(opts: CreateFormOpts): HTMLElement {
 	serverInput.placeholder = 'example.com or localhost:1337';
 	// Default to the host serving this page: in the single container Caddy serves
 	// the SPA and proxies /ws on the same origin, so this is the relay. Editable
-	// for a decoupled relay (and the Vite dev port, where the relay is :1337).
-	serverInput.value = opts.server ?? location.host;
+	// for a decoupled relay. VITE_DEFAULT_SERVER, set only by the `bun dev` launcher,
+	// points the dev SPA (served on Vite's port) at the separate relay; it is undefined
+	// in any production build, so deployments fall back to location.host.
+	serverInput.value = opts.server ?? import.meta.env.VITE_DEFAULT_SERVER ?? location.host;
 	serverField.append(serverLabel, serverInput);
 
 	const advancedToggle = el('a', 'advanced-toggle', 'Advanced');

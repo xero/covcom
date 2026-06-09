@@ -8,5 +8,5 @@
 		"lib": ["ES2022"],
 		"types": ["bun-types", "node"]
 	},
-	"include": ["cicd.ts"]
+	"include": ["cicd.ts", "dev.ts"]
 }

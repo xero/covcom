@@ -98,7 +98,9 @@ export function startServer(config: ServerConfig = {}) {
 					}
 				} catch { /* drop malformed messages silently */ }
 			},
-			close(ws) { handleClose(ws, rooms) },
+			close(ws) {
+				handleClose(ws, rooms);
+			},
 		},
 	});
 

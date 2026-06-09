@@ -123,6 +123,11 @@ identity claims still protect against a hostile server.
 the host that served the page, which is the relay in the single-container
 deployment. Edit it to point at a decoupled relay.
 
+**`VITE_DEFAULT_SERVER` override.** Set this build-time env var to prefill the web
+client's create screen with a specific relay address instead of the host that
+served the page. It is unset in production builds, which keep the autofill
+behavior above.
+
 **CLI paranoia flags.** `--clean` ignores the config file entirely, so the
 session never reads or writes `~/.config/covcom/config.json`. `--anon` skips
 only the saved server and username, leaving them untouched on disk while every

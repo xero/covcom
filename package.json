@@ -13,6 +13,7 @@
 		"lib"
 	],
 	"scripts": {
+		"dev": "bun run dev.ts",
 		"dev:server": "bun run --cwd server dev",
 		"dev:web": "bun run --cwd web dev",
 		"start:server": "bun run --cwd server start",

@@ -11,10 +11,7 @@ import { createHash } from 'node:crypto';
 // The load-bearing facts:
 //  - 'wasm-unsafe-eval' permits WebAssembly.{compile,instantiate} but not
 //    eval/new Function. All crypto, messages and streamed file transfer alike,
-//    runs as WASM on the main thread. No worker is spawned, so no worker-src is
-//    needed and `default-src 'none'` blocks workers outright; the app is a true
-//    single-file SPA. (File transfer formerly used a same-origin pool worker to
-//    dodge WebKit's blob:-worker CSP refusal; SealStream/OpenStream replaced it.)
+//    runs as WASM on the main thread.
 //  - connect-src: 'self' covers the same-origin container (wss://DOMAIN/ws via
 //    Caddy); wss: covers a decoupled remote relay; ws://localhost|127.* covers
 //    plaintext self-host. The client makes no http(s) fetch at runtime.
