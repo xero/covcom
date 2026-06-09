@@ -77,7 +77,7 @@ class TestWS {
 }
 
 async function connect(port: number): Promise<TestWS> {
-	const ws = new WebSocket(`ws://localhost:${port}/ws`);
+	const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
 	await new Promise<void>((resolve, reject) => {
 		ws.onopen = () => resolve();
 		ws.onerror = () => reject(new Error('WebSocket connection failed'));
@@ -488,7 +488,7 @@ describe('server: default config', () => {
 	});
 
 	test('19. health_check returns 200', async () => {
-		const res = await fetch(`http://localhost:${port}/health_check`);
+		const res = await fetch(`http://127.0.0.1:${port}/health_check`);
 		expect(res.status).toBe(200);
 		expect(await res.text()).toBe('OK');
 	});

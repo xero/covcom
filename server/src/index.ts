@@ -28,7 +28,11 @@ export function startServer(config: ServerConfig = {}) {
 	const port        = config.port ?? parseInt(process.env.PORT ?? '1337', 10);
 	const maxRoomSize = config.maxRoomSize ?? parseMaxRoomSize();
 	const adminToken  = 'adminToken' in config ? config.adminToken : process.env.ADMIN_TOKEN;
-	const hostname    = config.hostname ?? 'localhost';
+	// Bind the IPv4 wildcard, not the "localhost" name. Resolving "localhost"
+	// yields both 127.0.0.1 and ::1, and Bun.serve binds only the first the
+	// resolver returns (::1 on hosts with IPv6); clients reaching the broker over
+	// 127.0.0.1 then hit a closed port. 0.0.0.0 covers IPv4 loopback either way.
+	const hostname    = config.hostname ?? '0.0.0.0';
 	const rooms       = new Map<string, Room>();
 
 	const ROOM_TTL_HOURS = parseInt(process.env.ROOM_TTL ?? '24', 10);

@@ -10,7 +10,7 @@ export default defineConfig({
 	timeout:   120_000,
 	expect:    { timeout: 15_000 },
 	use: {
-		baseURL: 'http://localhost:4173',
+		baseURL: 'http://127.0.0.1:4173',
 		trace:   'retain-on-failure',
 	},
 	projects: [
@@ -20,13 +20,13 @@ export default defineConfig({
 	],
 	webServer: [{
 		command: 'bun dev:server',
-		url: 'http://localhost:1337/health_check',
+		url: 'http://127.0.0.1:1337/health_check',
 		reuseExistingServer: true,
 		timeout: 30_000,
 		env: { PORT: '1337', MAX_ROOM_SIZE: '20' },
 	},{
 		command: 'bun run build:web && bunx serve web/dist -l 4173',
-		url: 'http://localhost:4173',
+		url: 'http://127.0.0.1:4173',
 		reuseExistingServer: true,
 		timeout: 120_000,
 	}],

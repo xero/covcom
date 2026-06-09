@@ -22,9 +22,9 @@ import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { startCliSession, type CliSession } from './tui-runner.ts';
 
-const SERVER   = 'localhost:1337';
-const WEB_URL  = 'http://localhost:4173';
-const HEALTH   = 'http://localhost:1337/health_check';
+const SERVER   = '127.0.0.1:1337';
+const WEB_URL  = 'http://127.0.0.1:4173';
+const HEALTH   = 'http://127.0.0.1:1337/health_check';
 const ROOT     = process.cwd();
 const CLI_BIN  = resolve(ROOT, 'cli/dist/covcom');
 const WEB_DIST = resolve(ROOT, 'web/dist/index.html');
@@ -144,7 +144,8 @@ test('web and CLI clients exchange end-to-end encrypted messages through the rel
 	const webPeer = norm((await webHex.nth(1).textContent()) ?? '');
 
 	const vMark = cli.rawLen();
-	await cli.write('\x16');                      // Ctrl+V: open verify pane
+	await cli.write('/verify');                   // open verify pane via slash command
+	await cli.write('\r');
 	await cli.waitFor(/[0-9a-f]{16}[\s\S]*?[0-9a-f]{16}/, 15_000, vMark);
 	const cliHexes = cli.screenFrom(vMark).match(hex16) ?? [];
 	const cliSelf  = norm(cliHexes[cliHexes.length - 2] ?? '');
@@ -162,11 +163,12 @@ test('web and CLI clients exchange end-to-end encrypted messages through the rel
 	await page.locator('#chat-input').press('Enter');
 	await cli.waitFor(fromWeb, 20_000);
 
-	// ── CLI -> web. Opening the verify pane moved focus to the sidebar, so close
-	// it (Ctrl+V toggles off and returns focus to chatInput). Multi-char text
-	// arrives as one paste event; Enter must be a separate keystroke to submit. ──
+	// ── CLI -> web. Opening the verify pane moved focus to the sidebar; Escape
+	// from the focused-open sidebar closes the pane and returns focus to
+	// chatInput. Multi-char text arrives as one paste event; Enter must be a
+	// separate keystroke to submit. ──
 	const fromCli = `pong-from-cli-${nonce()}`;
-	await cli.write('\x16');                      // close verify pane -> focus chatInput
+	await cli.write('\x1b');                      // Escape: close verify pane -> focus chatInput
 	await cli.write(fromCli);
 	await cli.write('\r');
 	await page.locator('#chat-history li.msg.peer:not(.ratchet) .msg-text')

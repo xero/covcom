@@ -16,14 +16,14 @@ afterAll(() => server.stop(true));
 
 describe('HTTP routes', () => {
 	test('GET /health_check → 200 OK with permissive CORS', async () => {
-		const res = await fetch(`http://localhost:${port}/health_check`);
+		const res = await fetch(`http://127.0.0.1:${port}/health_check`);
 		expect(res.status).toBe(200);
 		expect(await res.text()).toBe('OK');
 		expect(res.headers.get('access-control-allow-origin')).toBe('*');
 	});
 
 	test('unknown path → 404', async () => {
-		const res = await fetch(`http://localhost:${port}/nope`);
+		const res = await fetch(`http://127.0.0.1:${port}/nope`);
 		expect(res.status).toBe(404);
 		expect(await res.text()).toBe('Not found');
 	});
@@ -31,7 +31,7 @@ describe('HTTP routes', () => {
 	test('GET /ws without upgrade headers → 500', async () => {
 		// A plain GET cannot complete the WebSocket upgrade, so the handler reports
 		// the failed upgrade rather than hanging.
-		const res = await fetch(`http://localhost:${port}/ws`);
+		const res = await fetch(`http://127.0.0.1:${port}/ws`);
 		expect(res.status).toBe(500);
 		expect(await res.text()).toBe('Upgrade failed');
 	});

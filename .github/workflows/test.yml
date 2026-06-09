@@ -46,9 +46,7 @@ jobs:
     timeout-minutes: 25
     container:
       image: ghcr.io/xero/covcom/ci:latest
-      # --privileged so the swap-headroom step below can swapon inside the
-      # container (swapon needs CAP_SYS_ADMIN, absent from other jobs).
-      options: --user root --privileged
+      options: --user root
     env:
       HOME: /root
     strategy:
@@ -59,14 +57,6 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: install
         run: bun i
-      # headroom for the file-stress tests running alongside the rest of the
-      # suite. swap absorbs a transient peak so a spike doesn't OOM the job.
-      - name: add swap headroom
-        run: |
-          sudo fallocate -l 8G /mnt/swapfile
-          sudo chmod 600 /mnt/swapfile
-          sudo mkswap /mnt/swapfile
-          sudo swapon /mnt/swapfile
       - name: e2e tests (${{ matrix.browser }})
         run: bunx playwright test --project=${{ matrix.browser }}
       - name: upload timing
@@ -145,5 +135,7 @@ jobs:
           platforms: linux/amd64
           push: false
           load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # This job is a from-scratch build smoke test: every layer must run so a
+          # broken Dockerfile step can't hide behind a cache hit. No cache in,
+          # nothing written out.
+          no-cache: true

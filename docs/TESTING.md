@@ -272,12 +272,16 @@ bunx playwright install chromium
 ## Continuous integration
 
 `.github/workflows/test.yml` runs on every push to `main` and on every pull
-request. Each job runs on Ubuntu with Bun.
+request. Every job except `docker` runs inside the `ghcr.io/xero/covcom/ci:latest`
+container (built from `.github/ci.Dockerfile`: a Playwright image with Bun and
+the browser toolchain baked in), rebuilt by the `ci-image` workflow whenever that
+Dockerfile changes on `main`. The `docker` job runs on the bare runner, since it
+builds the production image itself.
 
 - **`quality`** runs the linter and the typechecker.
 - **`unit`** runs every package's unit suite.
 - **`e2e`** runs the Playwright suite across a Chromium, Firefox, and WebKit
-  matrix, adds swap headroom for the file-stress sweep, and uploads timing data.
+  matrix and uploads timing data.
 - **`e2e-timing-summary`** parses the timing artifacts into a job summary.
 - **`cross-client`** installs Chromium, builds the web client and the CLI binary,
   then runs the cross-client test.

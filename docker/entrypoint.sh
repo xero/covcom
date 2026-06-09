@@ -24,7 +24,7 @@ ${SITE_ADDR} {
 	header X-Frame-Options "DENY"
 	@ws path /ws
 	handle @ws {
-		reverse_proxy localhost:${PORT:-1337}
+		reverse_proxy 127.0.0.1:${PORT:-1337}
 	}
 	handle {
 		root * /app/web/dist
