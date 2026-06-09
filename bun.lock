@@ -19,7 +19,6 @@
       "name": "@covcom/cli",
       "dependencies": {
         "@covcom/lib": "workspace:*",
-        "leviathan-crypto": "3.0.1",
       },
       "devDependencies": {
         "@types/node": "^25.9.1",

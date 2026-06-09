@@ -2,8 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, spy
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { FILE_CHUNK_SIZE, INVITE_VERSION, PROTOCOL_VERSION, Session, WINDOW, encodeFileAck } from '@covcom/lib';
-import { initCrypto } from '../src/init.ts';
+import { FILE_CHUNK_SIZE, initCrypto, INVITE_VERSION, PROTOCOL_VERSION, Session, WINDOW, encodeFileAck } from '@covcom/lib';
 import { b64enc } from '../src/util.ts';
 import { installFakeWebSocket, makePeer } from './helpers.ts';
 import type { OutboundMsg } from '../src/ws.ts';

@@ -15,8 +15,7 @@
 		"build:win": "bun build src/main.ts --compile --target bun-windows-x64   --outfile dist/covcom-win-x64.exe"
 	},
 	"dependencies": {
-		"@covcom/lib": "workspace:*",
-		"leviathan-crypto": "3.0.1"
+		"@covcom/lib": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "^25.9.1",

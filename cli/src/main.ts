@@ -1,6 +1,6 @@
 import { createScreen } from './tui/screen.js';
 import { readConfig, setCleanMode, setAnonMode } from './config.js';
-import { initCrypto } from './init.js';
+import { initCrypto } from '@covcom/lib';
 import { mount } from './state.js';
 import { doCleanup } from './lifecycle.js';
 

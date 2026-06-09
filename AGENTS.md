@@ -214,19 +214,18 @@ expected chain seeds have been received. It does not fire anywhere else.
 
 **Shared crypto layer (`lib/`)**
 
-- `lib/` is the primary crypto layer. `web/` imports only from `@covcom/lib`.
-  `cli/` additionally imports `leviathan-crypto` directly in `cli/src/init.ts`
-  to perform Bun-safe WASM module compilation (`Bun.gunzipSync` +
-  `WebAssembly.compile`). All session operations still go through `lib/`.
+- `lib/` is the primary crypto layer and the single source of the
+  `leviathan-crypto` dependency. Both `web/` and `cli/` import only from
+  `@covcom/lib` and never name `leviathan-crypto` directly, so the pinned
+  version stays single-sourced and the two clients cannot drift onto separate
+  WASM instances. `cli/test/crypto-source.test.ts` enforces this: it fails if
+  the cli regrows a direct dependency or import.
 - `lib/` exposes a session API, not a raw crypto API. Callers should not need
   to touch `KDFChain` or `Seal` directly.
-- WASM modules are loaded once at session start. `cli/src/init.ts` calls
-  `init()` on both the lib re-export and its own direct `leviathan-crypto`
-  import. Since `leviathan-crypto` is a registry dependency, Bun deduplicates
-  it to a single shared instance, so both calls initialize the same module;
-  `init()` is idempotent, so the second call is a harmless no-op. `web/` does
-  not call `init()` directly; the lib's own `initCrypto` handles it in browser
-  contexts.
+- WASM modules are loaded once at session start via `lib/`'s `initCrypto`,
+  which both clients call (`web/src/main.ts`, `cli/src/main.ts`) and which is
+  idempotent. The compiled cli binary initializes through this same path; the
+  cross-client test exercises it end to end.
 
 **Web client**
 
@@ -435,10 +434,9 @@ far more valuable than a completed task built on a guess.
 ## When Stuck (Before Raising an Issue)
 
 - **leviathan-crypto API mismatch**: check `lib/` imports against the actual
-  TypeScript `.d.ts` declarations in
-  `cli/node_modules/leviathan-crypto/dist/` or
-  `lib/node_modules/leviathan-crypto/dist/`. These are extracted at `bun i`
-  time and are the ground truth.
+  TypeScript `.d.ts` declarations in `lib/node_modules/leviathan-crypto/dist/`
+  (lib owns the dependency). These are extracted at `bun i` time and are the
+  ground truth.
 - **WebSocket message not arriving**: verify the server's relay/broadcast
   logic against `server/src/types.ts`. Check that `type` field casing matches
   exactly. The server routes on `type` string equality.
