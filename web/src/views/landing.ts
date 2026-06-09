@@ -218,13 +218,15 @@ export function mountLanding(
 	app.appendChild(current);
 
 	// On a fatal error, restore the sub-screen the attempt came from with its
-	// entries and the error; otherwise the main form already stands.
+	// entries and the error; otherwise the main form already stands. pendingForm
+	// is left intact here so it survives the transient RESET remount that
+	// precedes the error-bearing GOTO_LANDING; showMain clears it on an explicit
+	// return to the main form, and every attempt overwrites it.
 	if (screen.error && pendingForm?.mode === 'create') {
 		showCreate(pendingForm.username, pendingForm.server, screen.error);
 	} else if (screen.error && pendingForm?.mode === 'join') {
 		showJoin(pendingForm.username, pendingForm.inviteText, screen.error);
 	} else {
-		pendingForm = null;
 		(current.querySelector('#username') as HTMLInputElement | null)?.focus();
 	}
 

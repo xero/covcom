@@ -118,6 +118,22 @@ describe('create form', () => {
 		expect((app.querySelector('#server') as HTMLInputElement).value).toBe('relay.example:9000');
 		expect((app.querySelector('.error') as HTMLElement).textContent).toBe('Room is full.');
 	});
+
+	test('the fatal error survives the transient RESET remount that precedes GOTO_LANDING', () => {
+		const { session } = fakeSession();
+		mountLanding(app, session, { name: 'landing' });
+		(app.querySelector('#username') as HTMLInputElement).value = 'alice';
+		clickButton('Create Room');
+		(app.querySelector('#server') as HTMLInputElement).value = 'relay.example:9000';
+		clickButton('Create Room');  // sets pendingForm, calls session.create
+		// bridge's fatal handler dispatches RESET (error-less landing) then
+		// GOTO_LANDING (carrying the error); the transient RESET remount must not
+		// drop pendingForm, or the error never reaches the restored sub-screen.
+		mountLanding(app, session, { name: 'landing' });
+		mountLanding(app, session, { name: 'landing', error: 'Could not reach the server.' });
+		expect((app.querySelector('#server') as HTMLInputElement).value).toBe('relay.example:9000');
+		expect((app.querySelector('.error') as HTMLElement).textContent).toBe('Could not reach the server.');
+	});
 });
 
 describe('join form', () => {
@@ -153,5 +169,20 @@ describe('join form', () => {
 		const err = app.querySelector('.error') as HTMLElement;
 		expect(err.style.display).not.toBe('none');
 		expect(err.textContent).toContain('Parse error');
+	});
+
+	test('a username collision restores the join form with the invite and message intact', () => {
+		gotoJoin();
+		const invite = armoredInvite();
+		(app.querySelector('textarea') as HTMLTextAreaElement).value = invite;
+		clickButton('Join Room');  // parses, sets pendingForm, calls session.join
+		const { session } = fakeSession();
+		// RESET remount then the error-bearing GOTO_LANDING (the username_taken path).
+		mountLanding(app, session, { name: 'landing' });
+		mountLanding(app, session, { name: 'landing', error: 'That username is taken in this room.' });
+		expect(app.querySelector('.view-join')).not.toBeNull();
+		// the connect handler trims before stashing, so the restore is the trimmed invite
+		expect((app.querySelector('textarea') as HTMLTextAreaElement).value).toBe(invite.trim());
+		expect((app.querySelector('.error') as HTMLElement).textContent).toBe('That username is taken in this room.');
 	});
 });

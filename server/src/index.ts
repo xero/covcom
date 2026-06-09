@@ -96,13 +96,9 @@ export function startServer(config: ServerConfig = {}) {
 						handleRekey(ws, msg, rooms);
 						break;
 					}
-				} catch {
-					// drop malformed messages silently
-				}
+				} catch { /* drop malformed messages silently */ }
 			},
-			close(ws) {
-				handleClose(ws, rooms);
-			},
+			close(ws) { handleClose(ws, rooms) },
 		},
 	});
 
