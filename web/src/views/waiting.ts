@@ -7,6 +7,7 @@ import {
 } from '@covcom/lib';
 import type { CovcomSession } from '../session.js';
 import type { Screen } from '../store.js';
+import { dispatch } from '../store.js';
 import { el, clear } from '../util.js';
 import { qrToSvg } from '../qr.js';
 
@@ -28,9 +29,9 @@ function makeArmoredInvite(roomId: string, secret: Uint8Array, dns?: string): st
 }
 
 export function mountWaiting(
-	app:      Element,
-	_session: CovcomSession,
-	screen:   Screen & { name: 'waiting' },
+	app:     Element,
+	session: CovcomSession,
+	screen:  Screen & { name: 'waiting' },
 ): () => void {
 	clear(app);
 	const { room } = screen;
@@ -66,8 +67,19 @@ export function mountWaiting(
 		URL.revokeObjectURL(url);
 	});
 
+	// Abandons the freshly created room: tear the connection down and return to
+	// landing with the username carried forward, mirroring the fatal path in
+	// bridge.ts. dispose() nulls the ws handlers before closing, so no stray
+	// reconnect or fatal event fires.
+	const btnCancel = el('button', 'btn-secondary', 'Cancel');
+	btnCancel.addEventListener('click', () => {
+		session.dispose();
+		dispatch({ type: 'RESET' });
+		dispatch({ type: 'GOTO_LANDING', prefill: { username: screen.username } });
+	});
+
 	const btnRow = el('div', 'btn-row');
-	btnRow.append(btnCopy, btnDl);
+	btnRow.append(btnCopy, btnDl, btnCancel);
 
 	let qr: SVGSVGElement | null = null;
 	try {

@@ -85,6 +85,9 @@ type AppState =
 
 let current: AppState = { phase: 'landing' };
 let _screen: Screen;
+// Set in mount() so the module-level connect path (doConnect) can return to
+// landing on cancel without threading the navigator through every callback.
+let _navLanding: ((username?: string) => void) | undefined;
 let _showSystem = true;
 let _keysIcon = '';
 let _connectionLostAt = 0;
@@ -236,6 +239,7 @@ export function mount(
 			onJoinClick: (u) => goJoin(u),
 		});
 	};
+	_navLanding = goLanding;
 	const goCreate = (username: string): void => {
 		renderCreate(_screen, {
 			config,
@@ -258,6 +262,20 @@ export function mount(
 	} else {
 		goLanding();
 	}
+}
+
+// Cancel from the waiting screen: tear the connection down and return to landing
+// with the username carried forward. _authSettled marks the close intentional so
+// doConnect's onClose skips the reconnect path (same guard as username_taken).
+function leaveWaiting(): void {
+	if (current.phase !== 'waiting') return;
+	const username = current.username;
+	_authSettled = true;
+	disposeAllInbound();
+	current.session.dispose();
+	current.ws.close();
+	current = { phase: 'landing' };
+	_navLanding?.(username);
 }
 
 function doCreate(server: string, username: string, adminToken?: string): void {
@@ -515,6 +533,7 @@ function doConnect(
 		renderWaiting(_screen, {
 			armoredInvite: makeArmoredInvite(roomId, roomSecret, dns),
 			roomId,
+			onCancel: leaveWaiting,
 		});
 	}
 
@@ -569,6 +588,7 @@ function doConnect(
 			renderWaiting(_screen, {
 				armoredInvite: makeArmoredInvite(roomId, roomSecret, dns),
 				roomId,
+				onCancel: leaveWaiting,
 			});
 			return;
 		}

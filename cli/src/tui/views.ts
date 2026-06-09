@@ -198,6 +198,11 @@ function setupView(scr: Screen, theme: Theme, render: () => void, onEv: (ev: Inp
 	process.stdout.on('resize', onResize);
 	_resizeCleanup = () => process.stdout.removeListener('resize', onResize);
 
+	// Re-measure before the first paint: at process start stdout may not yet
+	// report a size, leaving the screen on its 80x24 defaults until the first
+	// resize event. Width-capped views hide that, but the wide invite QR gets
+	// gated out (qrW > 80) and only appears once a resize delivers real dims.
+	scr.measure();
 	scr.beginRender(); scr.clear(); renderAll(); scr.endRender();
 }
 
@@ -486,7 +491,7 @@ export function renderCreate(
 
 export function renderWaiting(
 	scr: Screen,
-	opts: { armoredInvite: string; roomId: string },
+	opts: { armoredInvite: string; roomId: string; onCancel: () => void },
 ): void {
 	disposeSidebar();
 	_scrollView = null; _chatScreen = null; _chatRender = null; _errorDisplay = null;
@@ -507,9 +512,11 @@ export function renderWaiting(
 		});
 	});
 
+	const cancelBtn = new Button('cancel', 'Cancel', () => opts.onCancel());
+
 	const ring    = new FocusRing();
-	ring.register('copy'); ring.register('download');
-	const widgets: Widget[] = [copyBtn, downloadBtn];
+	ring.register('copy'); ring.register('download'); ring.register('cancel');
+	const widgets: Widget[] = [copyBtn, downloadBtn, cancelBtn];
 
 	// Rows from lib's CRYPTO_TABLE (shared with the web client so the two can't
 	// drift). LCOL/RCOL are the inner cell widths, sized to the longest label and
@@ -547,15 +554,15 @@ export function renderWaiting(
 		const qrH = qrRows ? qrRows.length : 0;
 		const qrW = qrRows ? qrRows[0].length : 0;
 
-		// The QR sits directly below the table (qrTop rows below the heading).
-		// Center the whole block including it; fall back to the table-only layout
-		// when the QR can't fit the terminal.
-		const qrTop = 5 + TABLE.length;
-		let showQr = qrRows !== null && qrW <= scr.w;
-		let oy     = Math.max(1, Math.floor((scr.h - (showQr ? qrTop + qrH : qrTop + 1)) / 2));
-		if (showQr && oy + qrTop - 1 + qrH > scr.h) {
+		// The QR sits above the table (one blank row between). Center the whole
+		// block including it; fall back to the table-only layout when the QR can't
+		// fit the terminal.
+		let showQr   = qrRows !== null && qrW <= scr.w;
+		const blockH = showQr ? 5 + qrH + 1 + TABLE.length : 5 + TABLE.length;
+		let oy       = Math.max(1, Math.floor((scr.h - blockH) / 2));
+		if (showQr && oy + blockH - 1 > scr.h) {
 			showQr = false;
-			oy     = Math.max(1, Math.floor((scr.h - (qrTop + 1)) / 2));
+			oy     = Math.max(1, Math.floor((scr.h - (5 + TABLE.length)) / 2));
 		}
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
@@ -567,19 +574,21 @@ export function renderWaiting(
 
 		copyBtn.render(scr,     { x: ox,      y: oy + 3, w: 14, h: 1 }, ring.isFocused('copy'),     theme);
 		downloadBtn.render(scr, { x: ox + 16, y: oy + 3, w: 14, h: 1 }, ring.isFocused('download'), theme);
-
-		for (let i = 0; i < TABLE.length; i++) {
-			scr.moveTo(ox, oy + 5 + i);
-			scr.write(colorFg(theme.fg) + TABLE[i] + ansi.reset);
-		}
+		cancelBtn.render(scr,   { x: ox + 32, y: oy + 3, w: 10, h: 1 }, ring.isFocused('cancel'),   theme);
 
 		// Forced black-on-white regardless of theme, for scanner contrast.
 		if (showQr && qrRows) {
 			const qx = Math.floor((scr.w - qrW) / 2);
 			for (let i = 0; i < qrRows.length; i++) {
-				scr.moveTo(qx, oy + qrTop + i);
+				scr.moveTo(qx, oy + 5 + i);
 				scr.write(ansi.bgHex('#ffffff') + ansi.fgHex('#000000') + qrRows[i] + ansi.reset);
 			}
+		}
+
+		const tableTop = showQr ? 5 + qrH + 1 : 5;
+		for (let i = 0; i < TABLE.length; i++) {
+			scr.moveTo(ox, oy + tableTop + i);
+			scr.write(colorFg(theme.fg) + TABLE[i] + ansi.reset);
 		}
 	}
 
