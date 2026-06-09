@@ -3,15 +3,29 @@ import type { InvitePayload } from '@covcom/lib';
 import { el } from '../util.js';
 
 export interface JoinFormOpts {
-	username:  string;
-	onConnect: (invite: InvitePayload) => void;
-	onBack:    () => void;
+	username:    string;
+	inviteText?: string;
+	error?:      string;
+	onConnect:   (invite: InvitePayload, text: string, username: string) => void;
+	onBack:      (username: string) => void;
 }
 
 // Returns the rooted form element; caller (landing) decides when to swap it in.
-// No store subscription; parse errors are local UI state.
+// No store subscription; parse errors are local UI state. There is no separate
+// parse step: Join Room parses and either errors inline or connects.
 export function buildJoinForm(opts: JoinFormOpts): HTMLElement {
 	const view = el('section', 'view-join');
+
+	const usernameField = el('div', 'field');
+	const usernameLabel = el('label', undefined, 'Username');
+	usernameLabel.htmlFor = 'username';
+	const usernameInput   = el('input');
+	usernameInput.type = 'text';
+	usernameInput.id   = 'username';
+	usernameInput.placeholder = 'handle';
+	usernameInput.maxLength = 64;
+	usernameInput.value = opts.username;
+	usernameField.append(usernameLabel, usernameInput);
 
 	const fileHidden = document.createElement('input');
 	fileHidden.type   = 'file';
@@ -38,60 +52,69 @@ export function buildJoinForm(opts: JoinFormOpts): HTMLElement {
 		e.preventDefault();
 		dropZone.classList.remove('dragover');
 		const file = e.dataTransfer?.files[0];
-		if (file) readFileAsText(file);
+		if (file) readFileIntoTextarea(file);
 	});
 	fileHidden.addEventListener('change', () => {
 		const file = fileHidden.files?.[0];
-		if (file) readFileAsText(file);
+		if (file) readFileIntoTextarea(file);
 	});
 
 	const pasteLabel = el('p', 'paste-label', 'or paste invite text:');
 	const textarea   = document.createElement('textarea');
 	textarea.rows        = 5;
 	textarea.placeholder = '-----BEGIN COVCOM INVITE-----…';
-	const btnParse = el('button', 'btn-secondary', 'Parse');
+	if (opts.inviteText) textarea.value = opts.inviteText;
 
 	const errorEl = el('p', 'error');
-	errorEl.style.display = 'none';
-
-	const summaryEl = el('div', 'invite-summary');
-	summaryEl.style.display = 'none';
-	const summaryText = el('p');
-	const btnConnect  = el('button', undefined, 'Connect');
-	summaryEl.append(summaryText, btnConnect);
-
-	const btnBack = el('button', 'btn-secondary', 'Back');
-	btnBack.addEventListener('click', opts.onBack);
-
-	let parsedInvite: InvitePayload | null = null;
-
-	function handleText(text: string): void {
+	if (opts.error) {
+		errorEl.textContent   = opts.error;
+		errorEl.style.display = '';
+	} else {
 		errorEl.style.display = 'none';
-		try {
-			parsedInvite = parseArmoredInvite(text);
-			summaryText.textContent = `room: ${parsedInvite.roomId}${parsedInvite.dns ? ` · server: ${parsedInvite.dns}` : ''}`;
-			summaryEl.style.display = '';
-		} catch (err) {
-			errorEl.textContent     = `Parse error: ${err instanceof Error ? err.message : String(err)}`;
-			errorEl.style.display   = '';
-			summaryEl.style.display = 'none';
-			parsedInvite = null;
-		}
+	}
+	function showError(msg: string): void {
+		errorEl.textContent   = msg;
+		errorEl.style.display = '';
 	}
 
-	function readFileAsText(file: File): void {
+	// A dropped or browsed file populates the textarea, so the textarea is the
+	// single source Join Room parses.
+	function readFileIntoTextarea(file: File): void {
 		const reader  = new FileReader();
 		reader.onload = (): void => {
-			handleText(reader.result as string);
+			textarea.value = reader.result as string;
 		};
 		reader.readAsText(file);
 	}
 
-	btnParse.addEventListener('click', () => handleText(textarea.value));
-	btnConnect.addEventListener('click', () => {
-		if (parsedInvite) opts.onConnect(parsedInvite);
-	});
+	const btnRow  = el('div', 'btn-row');
+	const btnJoin = el('button', undefined, 'Join Room');
+	const btnBack = el('button', 'btn-secondary', 'Cancel');
 
-	view.append(dropZone, pasteLabel, textarea, btnParse, errorEl, summaryEl, btnBack);
+	btnJoin.addEventListener('click', () => {
+		const username = usernameInput.value.trim();
+		if (!username) {
+			showError('Username is required');
+			return;
+		}
+		const text = textarea.value.trim();
+		if (!text) {
+			showError('Paste an invite or drop a .room file first');
+			return;
+		}
+		let invite: InvitePayload;
+		try {
+			invite = parseArmoredInvite(text);
+		} catch (err) {
+			showError(`Parse error: ${err instanceof Error ? err.message : String(err)}`);
+			return;
+		}
+		errorEl.style.display = 'none';
+		opts.onConnect(invite, text, username);
+	});
+	btnBack.addEventListener('click', () => opts.onBack(usernameInput.value.trim()));
+
+	btnRow.append(btnJoin, btnBack);
+	view.append(usernameField, dropZone, pasteLabel, textarea, errorEl, btnRow);
 	return view;
 }

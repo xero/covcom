@@ -48,6 +48,7 @@ body {
 	*,
 	*::before,
 	*::after {
+		outline: none;
 		box-sizing: border-box;
 		margin: 0;
 		padding: 0;
@@ -105,19 +106,23 @@ header {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-	}
-
-	nav button svg {
-		fill: var(--ocean);
-		stroke-width: 0;
-		height: 26px;
-		width: 26px;
-		filter: drop-shadow(2px 2px 0px var(--depths));
-	}
-
-	nav button:hover svg,
-	nav button.active svg {
-		fill: var(--mist);
+		&:focus,
+		&:focus-within,
+		&:hover {
+			svg {
+				fill: var(--mist);
+			}
+		}
+		&.active:focus svg {
+			fill: var(--peer6);
+		}
+		svg {
+			fill: var(--ocean);
+			stroke-width: 0;
+			height: 26px;
+			width: 26px;
+			filter: drop-shadow(2px 2px 0px var(--depths));
+		}
 	}
 }
 
@@ -152,8 +157,10 @@ button {
 	font-size: inherit;
 	height: 30px;
 
+	&:focus:not(:disabled),
+	&:focus-visible:not(:disabled),
 	&:hover:not(:disabled) {
-		filter: brightness(1.2);
+		filter: brightness(1.5);
 	}
 
 	&:disabled {
@@ -166,6 +173,8 @@ button {
 		border: 1px solid var(--border);
 		color: var(--text);
 
+		&:focus:not(:disabled),
+		&:focus-visible:not(:disabled),
 		&:hover:not(:disabled) {
 			border-color: var(--accent);
 			color: var(--accent);
@@ -241,9 +250,14 @@ label {
 	text-decoration: none;
 	font-size: 0.85rem;
 	align-self: flex-start;
+	line-height: 1.2em;
+	border-bottom: 1px solid var(--bg);
 
+	&:focus:not(:disabled),
+	&:focus-visible:not(:disabled),
 	&:hover {
-		text-decoration: underline;
+		border-bottom: 1px solid var(--accent);
+		color: var(--mist);
 	}
 }
 
@@ -333,17 +347,6 @@ label {
 .paste-label {
 	font-size: 0.85rem;
 	color: color-mix(in srgb, var(--text) 60%, transparent);
-}
-
-.invite-summary {
-	background: color-mix(in srgb, var(--bg) 60%, var(--poseidon) 40%);
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	padding: var(--gap);
-	display: flex;
-	flex-direction: column;
-	gap: 0.5rem;
-	font-size: 0.85rem;
 }
 
 /* ── chat view ─────────────────────────────────────────────────────────── */
@@ -455,6 +458,8 @@ label {
 	font-size: inherit;
 }
 
+.event-log-summary:focus:not(:disabled),
+.event-log-summary:focus-within:not(:disabled),
 .event-log-summary:hover:not(:disabled) {
 	filter: none;
 	background: color-mix(in srgb, var(--poseidon) 50%, transparent);
@@ -743,6 +748,10 @@ label {
 		border: 0;
 		padding: 0.2rem 0.4rem;
 		align-self: center;
+		&:focus,
+		&:focus-within {
+			filter: brightness(1.5);
+		}
 		svg {
 			fill: var(--ocean);
 			stroke-width: 0;
@@ -753,13 +762,14 @@ label {
 	}
 }
 
-/* Modal keys-display. Reuses .chat-bar for the grid slot + frame; rough styling
-   is intentional, tweak freely. */
 #keys {
 	list-style: none;
 	margin: 0;
 	align-items: stretch;
 	gap: var(--gap);
+	&:focus-visible {
+		outline: none !important;
+	}
 
 	li {
 		display: flex;
@@ -777,8 +787,7 @@ label {
 	kbd {
 		font-family: monospace;
 		padding: 0.1rem 0.45rem;
-		border: 1px solid var(--accent);
-		background: color-mix(in srgb, var(--bg) 70%, var(--accent) 30%);
+		background: var(--accent);
 	}
 	p {
 		margin: 0;

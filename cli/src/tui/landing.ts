@@ -1,1 +1,1 @@
-export { renderLanding } from './views.js';
+export { renderLanding, renderCreate } from './views.js';

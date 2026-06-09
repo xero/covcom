@@ -32,7 +32,7 @@ import type { InboundMsg, OutboundMsg } from './ws.js';
 import { b64enc, b64dec, wsUrl, resolveUniqueFilename } from './util.js';
 import { readConfig, writeConfig } from './config.js';
 import { registerCleanup } from './lifecycle.js';
-import { renderLanding } from './tui/landing.js';
+import { renderLanding, renderCreate } from './tui/landing.js';
 import { renderWaiting } from './tui/waiting.js';
 import { renderJoin } from './tui/join.js';
 import {
@@ -226,30 +226,43 @@ export function mount(
 		}
 		_screen.destroy();
 	});
-	if (joinArg && config.username) {
-		const { username } = config;
-		renderJoin(_screen, {
-			prefillPath: joinArg,
-			username: username,
-			onConnect: (invite) => doJoin(invite, username),
-		});
-	} else {
+	// Three auth screens, swapped in place. Cancel from create/join returns here;
+	// each screen carries the current username forward so it persists.
+	const goLanding = (username?: string): void => {
+		current = { phase: 'landing' };
 		renderLanding(_screen, {
-			config,
-			onCreate: doCreate,
-			onJoinClick: (username) => {
-				renderJoin(_screen, {
-					prefillPath: joinArg,
-					username,
-					onConnect: (invite) => doJoin(invite, username),
-				});
-			},
+			config: { username: username ?? config.username },
+			onCreateClick: (u) => goCreate(u),
+			onJoinClick: (u) => goJoin(u),
 		});
+	};
+	const goCreate = (username: string): void => {
+		renderCreate(_screen, {
+			config,
+			username,
+			onCreate: doCreate,
+			onCancel: (u) => goLanding(u),
+		});
+	};
+	const goJoin = (username: string, prefillPath?: string): void => {
+		renderJoin(_screen, {
+			prefillPath,
+			username,
+			onConnect: (invite, u) => doJoin(invite, u),
+			onCancel: (u) => goLanding(u),
+		});
+	};
+
+	if (joinArg && config.username) {
+		goJoin(config.username, joinArg);
+	} else {
+		goLanding();
 	}
 }
 
 function doCreate(server: string, username: string, adminToken?: string): void {
 	resetEvents();
+	_authSettled = false;
 	const ws = new WS(wsUrl(server));
 	attachWireTaps(ws);
 	const dns = server;
@@ -304,6 +317,7 @@ function doCreate(server: string, username: string, adminToken?: string): void {
 	};
 
 	ws.onClose = () => {
+		if (_authSettled) return;
 		if (current.phase === 'joining' || current.phase === 'landing') {
 			logEvent({
 				direction: 'local',
@@ -328,6 +342,7 @@ function doJoin(
 ): void {
 	const dns = invite.dns ?? 'localhost:1337';
 	if (!isReconnect) resetEvents();
+	_authSettled = false;
 	const ws = new WS(wsUrl(dns));
 	attachWireTaps(ws);
 	current = {
@@ -395,6 +410,7 @@ function doJoin(
 	};
 
 	ws.onClose = () => {
+		if (_authSettled) return;
 		if (current.phase === 'joining') {
 			logEvent({
 				direction: 'local',
@@ -874,11 +890,13 @@ function doConnect(
 					summary: 'username_taken',
 					details: { reason: msg.reason },
 				});
-				// dispose and close the ghost connection before going back to landing
+				// dispose and close the ghost connection, then surface the error on
+				// the join screen so the user can pick a new name without re-pasting.
+				_authSettled = true;
 				disposeAllInbound();
 				session.dispose();
 				ws.close();
-				returnToLanding(USERNAME_TAKEN_MSG, { server: dns, username });
+				reportAuthFatal(USERNAME_TAKEN_MSG);
 			} else {
 				logEvent({
 					direction: 'local',
@@ -898,7 +916,7 @@ function doConnect(
 	};
 
 	ws.onClose = () => {
-		if (_shuttingDown) return;
+		if (_shuttingDown || _authSettled) return;
 		if (current.phase !== 'ready' && current.phase !== 'waiting') return;
 		disposeAllInbound();
 		current.session.dispose();
@@ -953,26 +971,22 @@ function startReconnect(
 const VERSION_MISMATCH_MSG = 'This server is running a different version.';
 const USERNAME_TAKEN_MSG = 'That username is taken in this room.';
 
-function returnToLanding(
-	error: string,
-	config: { server?: string; username?: string } = {},
-): void {
+// Auth-phase fatal (username taken, version mismatch). Route the message to the
+// active create/join screen through the system-message channel (appendMessage
+// surfaces it via the screen's _errorDisplay), so the user stays put with their
+// entries. _authSettled marks the attempt closed so the deliberate socket close
+// does not also report "connection failed".
+let _authSettled = false;
+function reportAuthFatal(message: string): void {
+	_authSettled = true;
 	current = { phase: 'landing' };
-	renderLanding(_screen, {
-		config,
-		error,
-		onCreate: doCreate,
-		onJoinClick: (u) =>
-			renderJoin(_screen, {
-				username: u,
-				onConnect: (inv) => doJoin(inv, u),
-			}),
-	});
+	appendMessage({ sender: 'system', text: message, isSelf: false, system: true });
 }
 
 // Fires on a version_mismatch error from the server (old client to new server)
 // or a failed serverVersion check (new client to old server). The connection is
-// unusable either way; close it and bail to landing with a generic message.
+// unusable either way; close it and surface a generic message on the active
+// auth screen.
 function handleVersionMismatch(ws: WS, got: number | undefined): void {
 	process.stderr.write(`covcom: server protocol version mismatch (expected ${PROTOCOL_VERSION}, got ${got ?? 'none'})\n`);
 	logEvent({
@@ -981,8 +995,9 @@ function handleVersionMismatch(ws: WS, got: number | undefined): void {
 		summary: 'version_mismatch',
 		details: { expected: PROTOCOL_VERSION, got: got ?? null },
 	});
+	_authSettled = true;
 	ws.close();
-	returnToLanding(VERSION_MISMATCH_MSG);
+	reportAuthFatal(VERSION_MISMATCH_MSG);
 }
 
 function doSendMessage(text: string): void {

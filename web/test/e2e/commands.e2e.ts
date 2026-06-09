@@ -183,8 +183,7 @@ test('/exit leaves the room, and the session is reusable without a reload', asyn
 		await bob.fill('#username', 'bob');
 		await bob.getByRole('button', { name: 'Join Room' }).click();
 		await bob.locator('.view-join textarea').fill(invite);
-		await bob.getByRole('button', { name: 'Parse' }).click();
-		await bob.locator('.invite-summary').getByRole('button', { name: 'Connect' }).click();
+		await bob.locator('.view-join').getByRole('button', { name: 'Join Room' }).click();
 		await expect(bob.locator('.view-chat #chat-input')).toBeVisible();
 	} finally {
 		await ctxA.close();

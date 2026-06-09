@@ -19,6 +19,7 @@ const SECRET = b64enc(new Uint8Array(16));         // decodes to 16 bytes
 // Replace the TUI façades with spies so the state machine's render calls are
 // captured (and their option callbacks are reachable) without a real terminal.
 const renderLanding = mock((_s: unknown, _o: unknown) => { /* noop */ });
+const renderCreate  = mock((_s: unknown, _o: unknown) => { /* noop */ });
 const renderWaiting = mock((_s: unknown, _o: unknown) => { /* noop */ });
 const renderJoin    = mock((_s: unknown, _o: unknown) => { /* noop */ });
 const renderChat    = mock((_s: unknown, _o: unknown) => { /* noop */ });
@@ -26,7 +27,7 @@ const appendMessage = mock((_o: unknown) => { /* noop */ });
 const appendFile    = mock((_o: unknown) => { /* noop */ });
 const showModal     = mock((_o: unknown) => { /* noop */ });
 
-mock.module('../src/tui/landing.ts', () => ({ renderLanding }));
+mock.module('../src/tui/landing.ts', () => ({ renderLanding, renderCreate }));
 mock.module('../src/tui/waiting.ts', () => ({ renderWaiting }));
 mock.module('../src/tui/join.ts',    () => ({ renderJoin }));
 mock.module('../src/tui/chat.ts',    () => ({ renderChat, appendMessage, appendFile, showModal }));
@@ -47,7 +48,7 @@ const screen = { destroy() { /* noop */ } } as Parameters<Mount>[0];
 let ws: ReturnType<typeof installFakeWebSocket>;
 
 beforeEach(() => {
-	for (const m of [renderLanding, renderWaiting, renderJoin, renderChat, appendMessage, appendFile, showModal]) m.mockClear();
+	for (const m of [renderLanding, renderCreate, renderWaiting, renderJoin, renderChat, appendMessage, appendFile, showModal]) m.mockClear();
 	ws = installFakeWebSocket();
 });
 afterEach(() => ws.restore());
@@ -57,12 +58,22 @@ const opts = (m: typeof renderLanding) => m.mock.calls[m.mock.calls.length - 1][
 const types = (sent: OutboundMsg[]) => sent.map(s => s.type);
 const find = <T extends OutboundMsg['type']>(sent: OutboundMsg[], t: T) =>
 	sent.find(s => s.type === t) as Extract<OutboundMsg, { type: T }> | undefined;
+// system messages appended (auth-phase errors route here via _errorDisplay)
+const systemMsgs = () =>
+	appendMessage.mock.calls.map(c => c[0] as { sender: string; text: string }).filter(m => m.sender === 'system');
+
+// Landing → Create screen → submit. Mirrors the user clicking Create Room on the
+// landing, then Create Room again on the create sub-screen.
+function doCreateFlow(server = 'localhost:1337', username = 'alice'): void {
+	(opts(renderLanding).onCreateClick as (u: string) => void)(username);
+	(opts(renderCreate).onCreate as (s: string, u: string) => void)(server, username);
+}
 
 describe('create flow', () => {
 	test('emits create → join → identify and enters waiting', () => {
 		mount(screen, {});
 		expect(renderLanding).toHaveBeenCalled();
-		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:1337', 'alice');
+		doCreateFlow();
 
 		const sock = ws.last();
 		sock.open();                                                     // ws.onOpen → create
@@ -79,26 +90,23 @@ describe('join flow', () => {
 	test('emits join → identify from the join view callback', () => {
 		mount(screen, { username: 'bob' }, '/tmp/covcom-room2.room');
 		expect(renderJoin).toHaveBeenCalled();
-		(opts(renderJoin).onConnect as (inv: unknown) => void)({
+		(opts(renderJoin).onConnect as (inv: unknown, u: string) => void)({
 			version: INVITE_VERSION, roomId: ROOM, roomSecret: SECRET, dns: 'localhost:1337',
-		});
+		}, 'bob');
 
 		const sock = ws.last();
 		sock.open();
 		sock.emit({ type: 'joined', members: [], serverVersion: PROTOCOL_VERSION });
 
 		expect(types(sock.sent)).toEqual(['join', 'identify']);
+		expect(find(sock.sent, 'identify')?.username).toBe('bob');
 	});
 });
 
 describe('version mismatch', () => {
-	// last options object as a loose record (error is a string, not a callback)
-	const rawOpts = (m: typeof renderLanding) =>
-		m.mock.calls[m.mock.calls.length - 1][1] as Record<string, unknown>;
-
-	test('older server (no serverVersion) kicks back to landing, no identify', () => {
+	test('older server (no serverVersion) surfaces the error inline, no identify', () => {
 		mount(screen, {});
-		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:1337', 'alice');
+		doCreateFlow();
 		const sock = ws.last();
 		sock.open();
 		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET }); // serverVersion omitted
@@ -106,47 +114,44 @@ describe('version mismatch', () => {
 		expect(types(sock.sent)).toEqual(['create']);          // bailed before join/identify
 		expect(find(sock.sent, 'identify')).toBeUndefined();
 		expect(renderWaiting).not.toHaveBeenCalled();
-		expect(typeof rawOpts(renderLanding).error).toBe('string'); // generic message shown
+		// stays on the create screen (never re-rendered to landing); message inline
+		expect(systemMsgs().map(m => m.text)).toContain('This server is running a different version.');
 	});
 
-	test('server version_mismatch error kicks back to landing', () => {
+	test('server version_mismatch error surfaces the error inline', () => {
 		mount(screen, {});
-		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:1337', 'alice');
+		doCreateFlow();
 		const sock = ws.last();
 		sock.open();
 		sock.emit({ type: 'error', reason: 'version_mismatch', serverVersion: PROTOCOL_VERSION });
 
 		expect(renderWaiting).not.toHaveBeenCalled();
-		expect(typeof rawOpts(renderLanding).error).toBe('string');
+		expect(systemMsgs().map(m => m.text)).toContain('This server is running a different version.');
 	});
 });
 
 describe('username taken', () => {
-	// last options as a loose record (error is a string, config a plain object)
-	const rawOpts = (m: typeof renderLanding) =>
-		m.mock.calls[m.mock.calls.length - 1][1] as Record<string, unknown>;
-
-	test('returns to landing with the error and prefilled inputs', () => {
+	test('tears down the ghost connection and surfaces the error on the join screen', () => {
 		mount(screen, { username: 'bob' }, '/tmp/covcom-room2.room');
-		(opts(renderJoin).onConnect as (inv: unknown) => void)({
+		(opts(renderJoin).onConnect as (inv: unknown, u: string) => void)({
 			version: INVITE_VERSION, roomId: ROOM, roomSecret: SECRET, dns: 'localhost:1337',
-		});
+		}, 'bob');
 		const sock = ws.last();
 		sock.open();
 		sock.emit({ type: 'joined', members: [], serverVersion: PROTOCOL_VERSION }); // → doConnect, sends identify
 		sock.emit({ type: 'error', reason: 'username_taken' });
 
 		expect(sock.closed).toBe(true);                                    // ghost connection torn down
-		const o = rawOpts(renderLanding);
-		expect(o.error).toBe('That username is taken in this room.');
-		expect(o.config).toEqual({ server: 'localhost:1337', username: 'bob' });
+		// the join screen stays mounted (no bounce to landing); message inline
+		expect(renderLanding).not.toHaveBeenCalled();
+		expect(systemMsgs().map(m => m.text)).toContain('That username is taken in this room.');
 	});
 });
 
 describe('handshake → ready', () => {
 	test('reaches ready, fires the welcome ratchet once, sends and tears down', () => {
 		mount(screen, {});
-		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:1337', 'alice');
+		doCreateFlow();
 		const sock = ws.last();
 		sock.open();
 		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET, serverVersion: PROTOCOL_VERSION });
@@ -189,7 +194,7 @@ describe('streamed file send', () => {
 	// Reach ready (mirrors the handshake test), then drive the chat view's onFile.
 	function toReady(): ReturnType<ReturnType<typeof installFakeWebSocket>['last']> {
 		mount(screen, {});
-		(opts(renderLanding).onCreate as (s: string, u: string) => void)('localhost:1337', 'alice');
+		doCreateFlow();
 		const sock = ws.last();
 		sock.open();
 		sock.emit({ type: 'room_created', roomId: ROOM, roomSecret: SECRET, serverVersion: PROTOCOL_VERSION });

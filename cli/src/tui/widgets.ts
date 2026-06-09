@@ -341,12 +341,14 @@ export class TextInput implements Widget {
 	value:         string;
 	cursor:        number;
 	displayOffset: number;
+	mask:          boolean;
 
-	constructor(id: string, initial = '') {
+	constructor(id: string, initial = '', mask = false) {
 		this.id            = id;
 		this.value         = initial;
 		this.cursor        = initial.length;
 		this.displayOffset = 0;
+		this.mask          = mask;
 	}
 
 	setValue(v: string) {
@@ -368,7 +370,8 @@ export class TextInput implements Widget {
 		if (this.cursor > this.displayOffset + rect.w - 1)
 			this.displayOffset = this.cursor - rect.w + 1;
 
-		const visible   = this.value.slice(this.displayOffset, this.displayOffset + rect.w);
+		const raw       = this.value.slice(this.displayOffset, this.displayOffset + rect.w);
+		const visible   = this.mask ? '*'.repeat(raw.length) : raw;
 		const bg        = colorBg(theme.inputBg);
 		const fg        = colorFg(theme.inputFg);
 		const cursorPos = this.cursor - this.displayOffset;
@@ -453,6 +456,12 @@ export class TextArea implements Widget {
 		this.id           = id;
 		this.value        = initial;
 		this.cursor       = initial.length;
+		this.scrollOffset = 0;
+	}
+
+	setValue(v: string) {
+		this.value        = v;
+		this.cursor       = v.length;
 		this.scrollOffset = 0;
 	}
 

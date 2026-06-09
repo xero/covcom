@@ -255,67 +255,54 @@ function getCompletions(val: string): string[] {
 export function renderLanding(
 	scr: Screen,
 	opts: {
-		config:      { server?: string; username?: string }
-		onCreate:    (server: string, username: string, adminToken?: string) => void
-		onJoinClick: (username: string) => void
-		error?:      string
+		config:        { username?: string }
+		onCreateClick: (username: string) => void
+		onJoinClick:   (username: string) => void
 	},
 ): void {
 	disposeSidebar();
 	_scrollView = null; _chatScreen = null; _chatRender = null; _errorDisplay = null;
 	const theme = loadTheme(readConfig());
 
-	let errorLine = opts.error ?? '';
+	let errorLine = '';
 
-	const serverInput   = new TextInput('server',    opts.config.server   ?? '');
-	const usernameInput = new TextInput('username',  opts.config.username ?? '');
-	const tokenInput    = new TextInput('authToken', '');
+	const usernameInput = new TextInput('username', opts.config.username ?? '');
 	const createBtn     = new Button('create', 'Create Room', () => {
-		const server   = serverInput.value.trim();
 		const username = usernameInput.value.trim();
-		if (!server || !username) return;
-		opts.onCreate(server, username, tokenInput.value.trim() || undefined);
+		if (!username) {
+			errorLine = 'Username is required'; scr.markDirty(); return;
+		}
+		opts.onCreateClick(username);
 	});
 	const joinBtn = new Button('join', 'Join Room', () => {
 		const username = usernameInput.value.trim();
-		if (!username) return;
+		if (!username) {
+			errorLine = 'Username is required'; scr.markDirty(); return;
+		}
 		opts.onJoinClick(username);
 	});
 
 	const ring    = new FocusRing();
-	ring.register('server'); ring.register('username'); ring.register('authToken');
-	ring.register('create'); ring.register('join');
-	const widgets: Widget[] = [serverInput, usernameInput, tokenInput, createBtn, joinBtn];
-
-	_errorDisplay = (msg: string) => {
-		errorLine = msg;
-		scr.markDirty();
-		scr.beginRender(); scr.clear(); render(); scr.endRender();
-	};
+	ring.register('username'); ring.register('create'); ring.register('join');
+	const widgets: Widget[] = [usernameInput, createBtn, joinBtn];
 
 	function render() {
 		scr.hideCursor();
 		const cw = Math.min(scr.w - 8, 44);
 		const ox = Math.floor((scr.w - cw) / 2);
-		const oy = Math.max(1, Math.floor((scr.h - 14) / 2));
+		const oy = Math.max(1, Math.floor((scr.h - 8) / 2));
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
 		drawBanner(scr, oy);
 
-		scr.moveTo(ox, oy);   scr.write(colorFg(theme.fg) + 'Server DNS:' + ansi.reset);
-		serverInput.render(scr, { x: ox, y: oy + 1, w: cw, h: 1 }, ring.isFocused('server'), theme);
+		scr.moveTo(ox, oy); scr.write(colorFg(theme.fg) + 'Username:' + ansi.reset);
+		usernameInput.render(scr, { x: ox, y: oy + 1, w: cw, h: 1 }, ring.isFocused('username'), theme);
 
-		scr.moveTo(ox, oy + 3); scr.write(colorFg(theme.fg) + 'Username:' + ansi.reset);
-		usernameInput.render(scr, { x: ox, y: oy + 4, w: cw, h: 1 }, ring.isFocused('username'), theme);
-
-		scr.moveTo(ox, oy + 6); scr.write(colorFg(theme.fg) + 'Server Password (optional):' + ansi.reset);
-		tokenInput.render(scr, { x: ox, y: oy + 7, w: cw, h: 1 }, ring.isFocused('authToken'), theme);
-
-		createBtn.render(scr, { x: ox,      y: oy + 10, w: 14, h: 1 }, ring.isFocused('create'), theme);
-		joinBtn.render(scr,   { x: ox + 16, y: oy + 10, w: 12, h: 1 }, ring.isFocused('join'),   theme);
+		createBtn.render(scr, { x: ox,      y: oy + 3, w: 14, h: 1 }, ring.isFocused('create'), theme);
+		joinBtn.render(scr,   { x: ox + 16, y: oy + 3, w: 12, h: 1 }, ring.isFocused('join'),   theme);
 
 		if (errorLine) {
-			scr.moveTo(ox, oy + 12);
+			scr.moveTo(ox, oy + 5);
 			scr.write(colorFg(theme.error) + errorLine.slice(0, cw) + ansi.reset);
 		}
 
@@ -354,6 +341,141 @@ export function renderLanding(
 			}
 		} else {
 			const fw = widgets.find(w => w.id === ring.current());
+			fw?.onPaste?.(ev.text); scr.markDirty();
+		}
+	});
+}
+
+// ─── renderCreate ──────────────────────────────────────────────────────────────
+
+export function renderCreate(
+	scr: Screen,
+	opts: {
+		config:   { server?: string; username?: string }
+		username: string
+		onCreate: (server: string, username: string, adminToken?: string) => void
+		onCancel: (username: string) => void
+	},
+): void {
+	disposeSidebar();
+	_scrollView = null; _chatScreen = null; _chatRender = null; _errorDisplay = null;
+	const theme = loadTheme(readConfig());
+
+	let errorLine = '';
+	let showToken = false;
+
+	const usernameInput = new TextInput('username',  opts.username || (opts.config.username ?? ''));
+	const serverInput   = new TextInput('server',    opts.config.server ?? '');
+	const tokenInput    = new TextInput('authToken', '', true);  // masked, like the web type="password"
+	const advancedBtn   = new Button('advanced', 'Advanced >', () => {
+		showToken = !showToken;
+		buildRing();
+		ring.setById('advanced');
+		scr.markDirty();
+	});
+	const createBtn = new Button('create', 'Create Room', () => {
+		const server   = serverInput.value.trim();
+		const username = usernameInput.value.trim();
+		if (!server || !username) {
+			errorLine = 'Server and username are required'; scr.markDirty(); return;
+		}
+		errorLine = '';
+		opts.onCreate(server, username, tokenInput.value.trim() || undefined);
+	});
+	const cancelBtn = new Button('cancel', 'Cancel', () => opts.onCancel(usernameInput.value.trim()));
+
+	// Token row joins the ring only while expanded, so Tab never lands on a
+	// hidden field.
+	const ring = new FocusRing();
+	function buildRing() {
+		ring.clear();
+		ring.register('username'); ring.register('server'); ring.register('advanced');
+		if (showToken) ring.register('authToken');
+		ring.register('create'); ring.register('cancel');
+	}
+	function widgetList(): Widget[] {
+		const ws: Widget[] = [usernameInput, serverInput, advancedBtn];
+		if (showToken) ws.push(tokenInput);
+		ws.push(createBtn, cancelBtn);
+		return ws;
+	}
+	buildRing();
+
+	// surface doCreate system errors (server error, connection failed, version
+	// mismatch) inline so the user stays here with their entries intact.
+	_errorDisplay = (msg: string) => {
+		errorLine = msg;
+		scr.markDirty();
+		scr.beginRender(); scr.clear(); render(); scr.endRender();
+	};
+
+	function render() {
+		scr.hideCursor();
+		const cw = Math.min(scr.w - 8, 44);
+		const ox = Math.floor((scr.w - cw) / 2);
+		const oy = Math.max(1, Math.floor((scr.h - 16) / 2));
+
+		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
+		drawBanner(scr, oy);
+
+		scr.moveTo(ox, oy); scr.write(colorFg(theme.fg) + 'Username:' + ansi.reset);
+		usernameInput.render(scr, { x: ox, y: oy + 1, w: cw, h: 1 }, ring.isFocused('username'), theme);
+
+		scr.moveTo(ox, oy + 3); scr.write(colorFg(theme.fg) + 'Server DNS:' + ansi.reset);
+		serverInput.render(scr, { x: ox, y: oy + 4, w: cw, h: 1 }, ring.isFocused('server'), theme);
+
+		advancedBtn.render(scr, { x: ox, y: oy + 6, w: 14, h: 1 }, ring.isFocused('advanced'), theme);
+
+		let row = oy + 8;
+		if (showToken) {
+			scr.moveTo(ox, oy + 8); scr.write(colorFg(theme.fg) + 'Server Password (optional):' + ansi.reset);
+			tokenInput.render(scr, { x: ox, y: oy + 9, w: cw, h: 1 }, ring.isFocused('authToken'), theme);
+			row = oy + 11;
+		}
+
+		createBtn.render(scr, { x: ox,      y: row, w: 14, h: 1 }, ring.isFocused('create'), theme);
+		cancelBtn.render(scr, { x: ox + 16, y: row, w: 10, h: 1 }, ring.isFocused('cancel'), theme);
+
+		if (errorLine) {
+			scr.moveTo(ox, row + 2);
+			scr.write(colorFg(theme.error) + errorLine.slice(0, cw) + ansi.reset);
+		}
+
+		const fid = ring.current();
+		const fi  = widgetList().find(w => w.id === fid && w instanceof TextInput) as TextInput | undefined;
+		if (fi) {
+			const p = fi.getCursorPos(); scr.showCursor(p.x, p.y);
+		}
+	}
+
+	setupView(scr, theme, render, ev => {
+		if (ev.kind === 'key') {
+			if (ev.key.ctrl && ev.key.name === 'c') {
+				requestQuit(); return;
+			}
+			if (ev.key.name === 'tab' && !ev.key.shift) {
+				ring.next(); scr.markDirty(); return;
+			}
+			if (ev.key.name === 'tab' && ev.key.shift)  {
+				ring.prev(); scr.markDirty(); return;
+			}
+			const fw = widgetList().find(w => w.id === ring.current());
+			if (!fw) return;
+			if (fw.onKey(ev.key)) {
+				scr.markDirty(); return;
+			}
+			if (ev.key.name === 'enter' && fw instanceof TextInput) {
+				ring.next(); scr.markDirty();
+			}
+		} else if (ev.kind === 'mouse') {
+			if (ev.mouse.type === 'click') {
+				const w = clickHit(widgetList(), ev.mouse.x, ev.mouse.y);
+				if (w) {
+					ring.setById(w.id); w.onClick?.(); scr.markDirty();
+				}
+			}
+		} else {
+			const fw = widgetList().find(w => w.id === ring.current());
 			fw?.onPaste?.(ev.text); scr.markDirty();
 		}
 	});
@@ -458,83 +580,68 @@ export function renderJoin(
 	opts: {
 		prefillPath?: string
 		username:    string
-		onConnect:   (invite: InvitePayload) => void
+		onConnect:   (invite: InvitePayload, username: string) => void
+		onCancel:    (username: string) => void
 	},
 ): void {
 	disposeSidebar();
 	_scrollView = null; _chatScreen = null; _chatRender = null; _errorDisplay = null;
 	const theme = loadTheme(readConfig());
 
-	let parsedInvite: InvitePayload | null = null;
-	let errorLine  = '';
-	let statusLine = '';
+	let errorLine = '';
 
-	const pathInput  = new TextInput('path', opts.prefillPath ?? '');
-	const inviteArea = new TextArea('invite', '');
-	const loadBtn    = new Button('load',    'Load',    () => {
-		void doLoad();
+	const usernameInput = new TextInput('username', opts.username);
+	const pathInput     = new TextInput('path', opts.prefillPath ?? '');
+	const inviteArea    = new TextArea('invite', '');
+	const browseBtn     = new Button('browse', 'Browse', () => {
+		void doBrowse();
 	});
-	const parseBtn   = new Button('parse',   'Parse',   () => {
-		void doParse();
+	const joinBtn       = new Button('join', 'Join Room', () => {
+		const username = usernameInput.value.trim();
+		if (!username) {
+			errorLine = 'Username is required'; scr.markDirty(); return;
+		}
+		const text = inviteArea.value.trim();
+		if (!text) {
+			errorLine = 'Paste an invite or load a .room file first.'; scr.markDirty(); return;
+		}
+		let invite: InvitePayload;
+		try {
+			invite = parseArmoredInvite(text);
+		} catch (e) {
+			errorLine = `Parse error: ${e instanceof Error ? e.message : String(e)}`;
+			scr.markDirty(); return;
+		}
+		errorLine = '';
+		opts.onConnect(invite, username);
 	});
-	const connectBtn = new Button('connect', 'Connect', () => {
-		if (!parsedInvite) return;
-		statusLine = 'Connecting...';
-		errorLine  = '';
-		scr.markDirty();
-		scr.beginRender(); scr.clear(); render(); scr.endRender();
-		opts.onConnect(parsedInvite);
-	}, true);
+	const cancelBtn = new Button('cancel', 'Cancel', () => opts.onCancel(usernameInput.value.trim()));
 
 	const ring = new FocusRing();
-	ring.register('path'); ring.register('load'); ring.register('invite');
-	ring.register('parse'); ring.register('connect');
-	const widgets: Widget[] = [pathInput, loadBtn, inviteArea, parseBtn, connectBtn];
+	ring.register('username'); ring.register('path'); ring.register('browse');
+	ring.register('invite'); ring.register('join'); ring.register('cancel');
+	const widgets: Widget[] = [usernameInput, pathInput, browseBtn, inviteArea, joinBtn, cancelBtn];
 
 	// surface doJoin system errors (server errors, room not found, etc.) into this view
 	_errorDisplay = (msg: string) => {
-		errorLine  = msg;
-		statusLine = '';
+		errorLine = msg;
 		scr.markDirty();
 		scr.beginRender(); scr.clear(); render(); scr.endRender();
 	};
 
-	function tryParse(text: string): boolean {
-		try {
-			parsedInvite    = parseArmoredInvite(text);
-			connectBtn.disabled = false;
-			statusLine      = `Server: ${parsedInvite.dns ?? 'localhost:1337'}  Room: ${parsedInvite.roomId}`;
-			errorLine       = '';
-			return true;
-		} catch (e) {
-			errorLine = `Parse error: ${e instanceof Error ? e.message : String(e)}`;
-			return false;
-		}
-	}
-
-	async function doLoad() {
+	// Browse reads the file at the path into the textarea, the single source
+	// Join Room parses.
+	async function doBrowse() {
 		const p = pathInput.value.trim();
 		if (!p) {
 			errorLine = 'Enter a file path.'; scr.markDirty(); return;
 		}
 		try {
-			const text = await Bun.file(p).text();
-			tryParse(text);
+			inviteArea.setValue(await Bun.file(p).text());
+			errorLine = '';
 		} catch (e) {
 			errorLine = `Read error: ${e instanceof Error ? e.message : String(e)}`;
 		}
-		scr.markDirty();
-		if (scr.needsRender()) {
-			scr.beginRender(); scr.clear(); render(); scr.endRender();
-		}
-	}
-
-	async function doParse() {
-		const text = inviteArea.value.trim();
-		if (!text) {
-			errorLine = 'Paste invite text first.'; scr.markDirty(); return;
-		}
-		tryParse(text);
 		scr.markDirty();
 		if (scr.needsRender()) {
 			scr.beginRender(); scr.clear(); render(); scr.endRender();
@@ -545,29 +652,28 @@ export function renderJoin(
 		scr.hideCursor();
 		const cw = Math.min(scr.w - 8, 52);
 		const ox = Math.floor((scr.w - cw) / 2);
-		const oy = Math.max(1, Math.floor((scr.h - 20) / 2));
+		const oy = Math.max(1, Math.floor((scr.h - 22) / 2));
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
 		drawBanner(scr, oy);
 
-		scr.moveTo(ox, oy);     scr.write(colorFg(theme.fg) + 'Path to .room file:' + ansi.reset);
-		pathInput.render(scr,   { x: ox, y: oy + 1, w: cw,  h: 1 }, ring.isFocused('path'),    theme);
-		loadBtn.render(scr,     { x: ox, y: oy + 3, w: 8,   h: 1 }, ring.isFocused('load'),    theme);
+		scr.moveTo(ox, oy); scr.write(colorFg(theme.fg) + 'Username:' + ansi.reset);
+		usernameInput.render(scr, { x: ox, y: oy + 1, w: cw, h: 1 }, ring.isFocused('username'), theme);
+
+		scr.moveTo(ox, oy + 3); scr.write(colorFg(theme.fg) + 'Path to .room file:' + ansi.reset);
+		pathInput.render(scr,   { x: ox, y: oy + 4, w: cw, h: 1 }, ring.isFocused('path'),   theme);
+		browseBtn.render(scr,   { x: ox, y: oy + 6, w: 10, h: 1 }, ring.isFocused('browse'), theme);
+
+		scr.moveTo(ox, oy + 8); scr.write(colorFg(theme.fg) + 'Or paste invite text:' + ansi.reset);
+		inviteArea.render(scr,  { x: ox, y: oy + 9, w: cw, h: 5 }, ring.isFocused('invite'), theme);
 
 		if (errorLine) {
-			scr.moveTo(ox, oy + 5);
+			scr.moveTo(ox, oy + 15);
 			scr.write(colorFg(theme.error) + errorLine.slice(0, cw) + ansi.reset);
 		}
 
-		scr.moveTo(ox, oy + 7); scr.write(colorFg(theme.fg) + 'Or paste invite text:' + ansi.reset);
-		inviteArea.render(scr,  { x: ox, y: oy + 8,  w: cw, h: 5 }, ring.isFocused('invite'),  theme);
-		parseBtn.render(scr,    { x: ox, y: oy + 14, w: 9,  h: 1 }, ring.isFocused('parse'),   theme);
-		connectBtn.render(scr,  { x: ox + 11, y: oy + 14, w: 11, h: 1 }, ring.isFocused('connect'), theme);
-
-		if (statusLine) {
-			scr.moveTo(ox, oy + 16);
-			scr.write(colorFg(theme.disabled) + statusLine.slice(0, cw) + ansi.reset);
-		}
+		joinBtn.render(scr,   { x: ox,      y: oy + 17, w: 12, h: 1 }, ring.isFocused('join'),   theme);
+		cancelBtn.render(scr, { x: ox + 14, y: oy + 17, w: 10, h: 1 }, ring.isFocused('cancel'), theme);
 
 		const fid = ring.current();
 		const fi  = widgets.find(w => w.id === fid);
@@ -578,10 +684,10 @@ export function renderJoin(
 		}
 	}
 
-	// auto-load prefill path
+	// auto-load prefill path into the textarea
 	if (opts.prefillPath) {
 		void Bun.file(opts.prefillPath).text().then(text => {
-			tryParse(text);
+			inviteArea.setValue(text);
 		}).catch(e => {
 			errorLine = `Read error: ${e instanceof Error ? e.message : String(e)}`;
 		});

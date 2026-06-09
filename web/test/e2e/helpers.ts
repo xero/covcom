@@ -72,16 +72,18 @@ export async function timeStep<T>(label: string, fn: () => Promise<T>): Promise<
 	}
 }
 
-// The relay broker; the web client points at it via the landing "Server" field.
-// localhost maps to plaintext ws:// in the client, so no TLS is needed.
+// The relay broker; the web client points at it via the create screen's "Server"
+// field. localhost maps to plaintext ws:// in the client, so no TLS is needed.
 export const SERVER = 'localhost:1337';
 
-// alice's path: fill the landing form, create a room, wait for the lobby, and
-// return the armored invite text others paste to join.
+// alice's path: set the username on the landing, open the create screen, fill the
+// server, create the room, wait for the lobby, and return the armored invite text
+// others paste to join.
 export async function createRoom(page: Page, username: string): Promise<string> {
 	await page.goto('/');
-	await page.fill('#server', SERVER);
 	await page.fill('#username', username);
+	await page.getByRole('button', { name: 'Create Room' }).click();
+	await page.fill('#server', SERVER);
 	await page.getByRole('button', { name: 'Create Room' }).click();
 
 	const invite = page.locator('.view-waiting .invite-block');
@@ -92,18 +94,15 @@ export async function createRoom(page: Page, username: string): Promise<string> 
 }
 
 // bob's path: set the username on the landing screen, open the join view, paste
-// the invite, parse it, and connect. Resolves once the chat view is mounted.
+// the invite, and join. There is no parse step now: Join Room parses and connects.
+// Resolves once the chat view is mounted.
 export async function joinRoom(page: Page, username: string, invite: string): Promise<void> {
 	await page.goto('/');
 	await page.fill('#username', username);
 	await page.getByRole('button', { name: 'Join Room' }).click();
 
 	await page.locator('.view-join textarea').fill(invite);
-	await page.getByRole('button', { name: 'Parse' }).click();
-
-	const summary = page.locator('.invite-summary');
-	await expect(summary).toBeVisible();
-	await summary.getByRole('button', { name: 'Connect' }).click();
+	await page.locator('.view-join').getByRole('button', { name: 'Join Room' }).click();
 
 	await expect(page.locator('.view-chat #chat-input')).toBeVisible();
 }

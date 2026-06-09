@@ -88,10 +88,13 @@ afterAll(async () => {
 });
 
 test('web and CLI clients exchange end-to-end encrypted messages through the relay', async () => {
-	// ── web Alice creates the room, hand the invite to the CLI via a file ──
+	// ── web Alice creates the room, hand the invite to the CLI via a file. The
+	// landing takes only a username; Create Room opens the create sub-screen
+	// where the server field lives, then Create Room again connects. ──
 	await page.goto(`${WEB_URL}/`);
-	await page.fill('#server', SERVER);
 	await page.fill('#username', 'alice-web');
+	await page.getByRole('button', { name: 'Create Room' }).click();
+	await page.fill('#server', SERVER);
 	await page.getByRole('button', { name: 'Create Room' }).click();
 
 	const inviteBlock = page.locator('.view-waiting .invite-block');
@@ -106,9 +109,10 @@ test('web and CLI clients exchange end-to-end encrypted messages through the rel
 	writeFileSync(join(cfgDir, 'config.json'), JSON.stringify({ username: 'bob-cli' }), { flag: 'w' });
 
 	// ── CLI Bob joins. With COVCOM_CONFIG_DIR carrying a username, `--join`
-	// routes straight to JoinView. The auto-parse of the prefill path does not
-	// repaint, so we drive the Load button (deterministic parse + repaint) and
-	// wait for the parsed Room: status line before activating Connect. ──
+	// routes straight to JoinView. The auto-load of the prefill path does not
+	// repaint, so we drive the Browse button (deterministic read into the
+	// textarea + repaint) and wait for the armored text before joining. There is
+	// no parse step now: Join Room parses the textarea and connects. ──
 	// cwd is the temp dir so files the CLI saves on receive land there (and are
 	// cleaned up in afterAll), never in the repo. Absolute paths (roomFile, the
 	// attached file) are unaffected.
@@ -116,16 +120,17 @@ test('web and CLI clients exchange end-to-end encrypted messages through the rel
 		cwd: tmp,
 		env: { COVCOM_CONFIG_DIR: cfgDir },
 	});
-	await cli.waitFor('Path to .room file:');   // JoinView mounted
+	await cli.waitFor('Path to .room file:');   // JoinView mounted (username focused)
 
 	// The CLI reads one keystroke per stdin chunk, so every key is its own write.
-	await cli.write('\t');                       // path -> Load
-	await cli.write('\r');                       // Load: read file + parse + repaint
-	await cli.waitFor(/Room:/);                  // parse succeeded, Connect enabled
-	await cli.write('\t');                       // Load -> invite
-	await cli.write('\t');                       // invite -> parse
-	await cli.write('\t');                       // parse -> Connect
-	await cli.write('\r');                        // Connect
+	// Focus ring: username -> path -> browse -> invite -> join -> cancel.
+	await cli.write('\t');                       // username -> path
+	await cli.write('\t');                       // path -> browse
+	await cli.write('\r');                       // Browse: read file into textarea + repaint
+	await cli.waitFor(/BEGIN COVCOM INVITE/);    // textarea populated
+	await cli.write('\t');                       // browse -> invite
+	await cli.write('\t');                       // invite -> join
+	await cli.write('\r');                       // Join Room: parse + connect
 
 	// ── readiness: web Alice drops into chat once the handshake completes; the
 	// CLI is ready once its post-connect auto-ratchet renders "keys rotated"

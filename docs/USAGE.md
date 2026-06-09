@@ -413,11 +413,12 @@ messages, peers, fingerprints, event log, sidebar width, and the hide-system
 toggle all live in memory and are wiped when you reload or close the tab. There
 is no theme, no settings panel, and no persisted history.
 
-You set the server address, your username, and an optional server password on
-the landing screen each time. The server field defaults to the host serving the
-page, which is the relay in the single-container deployment; edit it to target
-a separate relay. The CLI can persist these and more in an optional
-[config file](#configuration); the web client always starts fresh.
+You set your username on the landing screen, then the server address and an
+optional server password on the create screen, each time. The server field
+defaults to the host serving the page, which is the relay in the single-container
+deployment; edit it to target a separate relay. The CLI can persist these and
+more in an optional [config file](#configuration); the web client always starts
+fresh.
 
 ---
 
@@ -501,8 +502,8 @@ passed, `--clean` takes precedence.
 
 | field            | type                    | default | notes                                                                                       |
 |------------------|-------------------------|---------|---------------------------------------------------------------------------------------------|
-| `server`         | string                  | unset   | prefilled into the Server DNS input on the login screen. updated after a successful create. skipped under `--clean` and `--anon`. |
-| `username`       | string                  | unset   | prefilled into the Username input on the login screen. updated after a successful create. skipped under `--clean` and `--anon`.   |
+| `server`         | string                  | unset   | prefilled into the Server DNS input on the create screen. updated after a successful create. skipped under `--clean` and `--anon`. |
+| `username`       | string                  | unset   | prefilled into the Username input on the landing screen. updated after a successful create. skipped under `--clean` and `--anon`.   |
 | `copyCmd`        | string                  | unset   | clipboard command for "Copy Code". whitespace-split into argv. see [copyCmd](#copycmd).     |
 | `showSystem`     | boolean                 | `true`  | when `false`, system messages (`<peer> joined`, server errors, etc.) are not appended to the chat scroll. event log still receives them. |
 | `sidebar`        | `{ width?: number }`    | `{}`    | see [sidebar](#sidebar-1).                                                                  |
@@ -700,19 +701,21 @@ filenames get a numeric suffix.
 
 **Create a room:**
 
-1. Enter a server address and a username, then select **Create Room**. The web
-   client prefills the server field with the host serving the page, which is the
-   relay in the single-container deployment; edit it to target a separate relay.
-2. The lobby screen shows an armored invite block, a QR code of the same
+1. Enter a username and select **Create Room**.
+2. On the create screen, enter a server address and select **Create Room**. The
+   web client prefills the server field with the host serving the page, which is
+   the relay in the single-container deployment; edit it to target a separate
+   relay. An **Advanced** toggle reveals an optional server password.
+3. The lobby screen shows an armored invite block, a QR code of the same
    bytes, and copy/download buttons. Share it via any channel.
-3. The screen waits until a peer joins.
+4. The screen waits until a peer joins.
 
 **Join a room:**
 
 1. Enter a username and select **Join Room**.
-2. Paste the armored invite text, drag-drop the `.room` file (web), or
-   provide the file path (CLI).
-3. Select **Connect**.
+2. On the join screen, paste the armored invite text, drag-drop the `.room`
+   file (web), or enter the file path and select **Browse** (CLI).
+3. Select **Join Room**. It parses the invite and connects.
 
 Once both sides complete the handshake, the chat opens. The server has relayed
 a sequence of encrypted blobs and learned nothing about the content.

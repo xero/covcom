@@ -4,10 +4,11 @@ import type { InvitePayload } from '@covcom/lib';
 import { mountLanding } from '../src/views/landing.ts';
 import type { CovcomSession } from '../src/session.ts';
 
-// Light smoke coverage of the landing/join DOM and its wiring to the session.
-// Real interaction coverage lives in the playwright e2e; here we only confirm
-// the form renders and clicks call the right session method. parseArmoredInvite
-// (used by the join form) is pure base64; no crypto init required.
+// Light smoke coverage of the landing/create/join DOM and its wiring to the
+// session. Real interaction coverage lives in the playwright e2e; here we only
+// confirm the forms render and clicks call the right session method.
+// parseArmoredInvite (used by the join form) is pure base64; no crypto init
+// required.
 
 interface FakeCalls {
 	create: { server: string; username: string; adminToken?: string }[];
@@ -36,6 +37,10 @@ function armoredInvite(): string {
 	}));
 }
 
+function clickButton(label: string): void {
+	[...app.querySelectorAll('button')].find(b => b.textContent === label)!.click();
+}
+
 let app: HTMLElement;
 
 beforeEach(() => {
@@ -45,11 +50,11 @@ beforeEach(() => {
 });
 
 describe('landing form', () => {
-	test('renders server + username fields and the action buttons', () => {
+	test('renders username and the action buttons, but no server field', () => {
 		const { session } = fakeSession();
 		mountLanding(app, session, { name: 'landing' });
-		expect(app.querySelector('#server')).not.toBeNull();
 		expect(app.querySelector('#username')).not.toBeNull();
+		expect(app.querySelector('#server')).toBeNull();
 		const labels = [...app.querySelectorAll('button')].map(b => b.textContent);
 		expect(labels).toContain('Create Room');
 		expect(labels).toContain('Join Room');
@@ -60,62 +65,91 @@ describe('landing form', () => {
 		mountLanding(app, session, { name: 'landing', prefill: { username: 'carol' } });
 		expect((app.querySelector('#username') as HTMLInputElement).value).toBe('carol');
 	});
+});
+
+describe('create form', () => {
+	function gotoCreate(username = 'alice'): void {
+		const { session } = fakeSession();
+		mountLanding(app, session, { name: 'landing' });
+		(app.querySelector('#username') as HTMLInputElement).value = username;
+		clickButton('Create Room');
+	}
+
+	test('Create Room swaps in the server field, defaulting to the page host', () => {
+		gotoCreate();
+		const server = app.querySelector('#server') as HTMLInputElement;
+		expect(server).not.toBeNull();
+		expect(server.value).toBe(location.host);
+		expect((app.querySelector('#username') as HTMLInputElement).value).toBe('alice');
+	});
 
 	test('Create Room calls session.create with the typed values', () => {
 		const { session, calls } = fakeSession();
 		mountLanding(app, session, { name: 'landing' });
-		(app.querySelector('#server') as HTMLInputElement).value = 'localhost:1337';
 		(app.querySelector('#username') as HTMLInputElement).value = 'alice';
-		const create = [...app.querySelectorAll('button')].find(b => b.textContent === 'Create Room')!;
-		create.click();
+		clickButton('Create Room');
+		(app.querySelector('#server') as HTMLInputElement).value = 'localhost:1337';
+		clickButton('Create Room');
 		expect(calls.create).toHaveLength(1);
 		expect(calls.create[0]).toMatchObject({ server: 'localhost:1337', username: 'alice' });
 	});
 
-	test('Create Room with empty fields shows an error and does not connect', () => {
+	test('Create Room with an empty server shows an error and does not connect', () => {
 		const { session, calls } = fakeSession();
 		mountLanding(app, session, { name: 'landing' });
-		const create = [...app.querySelectorAll('button')].find(b => b.textContent === 'Create Room')!;
-		create.click();
+		(app.querySelector('#username') as HTMLInputElement).value = 'alice';
+		clickButton('Create Room');
+		(app.querySelector('#server') as HTMLInputElement).value = '';
+		clickButton('Create Room');
 		expect(calls.create).toHaveLength(0);
 		const err = app.querySelector('.error') as HTMLElement;
 		expect(err.style.display).not.toBe('none');
 	});
 
-	test('shows the prior error from the screen state', () => {
+	test('a fatal error restores the create form with the entered server and the message', () => {
 		const { session } = fakeSession();
+		mountLanding(app, session, { name: 'landing' });
+		(app.querySelector('#username') as HTMLInputElement).value = 'alice';
+		clickButton('Create Room');
+		(app.querySelector('#server') as HTMLInputElement).value = 'relay.example:9000';
+		clickButton('Create Room');  // sets pendingForm, calls session.create
+		// session emits fatal -> store routes back to landing with an error
 		mountLanding(app, session, { name: 'landing', error: 'Room is full.' });
+		expect((app.querySelector('#server') as HTMLInputElement).value).toBe('relay.example:9000');
 		expect((app.querySelector('.error') as HTMLElement).textContent).toBe('Room is full.');
 	});
 });
 
 describe('join form', () => {
-	function gotoJoin(): void {
-		const { session } = fakeSession();
+	function gotoJoin(): { calls: FakeCalls } {
+		const { session, calls } = fakeSession();
 		mountLanding(app, session, { name: 'landing' });
 		(app.querySelector('#username') as HTMLInputElement).value = 'bob';
-		[...app.querySelectorAll('button')].find(b => b.textContent === 'Join Room')!.click();
+		clickButton('Join Room');
+		return { calls };
 	}
 
-	test('Join Room swaps in the paste/parse view', () => {
+	test('Join Room swaps in the paste view with the username carried over', () => {
 		gotoJoin();
 		expect(app.querySelector('.view-join')).not.toBeNull();
 		expect(app.querySelector('textarea')).not.toBeNull();
+		expect((app.querySelector('#username') as HTMLInputElement).value).toBe('bob');
 	});
 
-	test('parsing a valid invite reveals the connect summary', () => {
-		gotoJoin();
+	test('a valid invite connects directly, no parse step', () => {
+		const { calls } = gotoJoin();
 		(app.querySelector('textarea') as HTMLTextAreaElement).value = armoredInvite();
-		[...app.querySelectorAll('button')].find(b => b.textContent === 'Parse')!.click();
-		const summary = app.querySelector('.invite-summary') as HTMLElement;
-		expect(summary.style.display).not.toBe('none');
-		expect(summary.textContent).toContain('r'.repeat(32));
+		clickButton('Join Room');
+		expect(calls.join).toHaveLength(1);
+		expect(calls.join[0].invite.roomId).toBe('r'.repeat(32));
+		expect(calls.join[0].username).toBe('bob');
 	});
 
-	test('parsing garbage shows a parse error', () => {
-		gotoJoin();
+	test('garbage shows a parse error and does not connect', () => {
+		const { calls } = gotoJoin();
 		(app.querySelector('textarea') as HTMLTextAreaElement).value = 'not an invite';
-		[...app.querySelectorAll('button')].find(b => b.textContent === 'Parse')!.click();
+		clickButton('Join Room');
+		expect(calls.join).toHaveLength(0);
 		const err = app.querySelector('.error') as HTMLElement;
 		expect(err.style.display).not.toBe('none');
 		expect(err.textContent).toContain('Parse error');

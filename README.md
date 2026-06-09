@@ -426,10 +426,14 @@ filenames get a numeric suffix.
 
 **Create a room:**
 
-1. Enter a server address and a username, then select **Create Room**.
-2. The lobby screen shows an armored invite block, a QR code of the same
+1. Enter a username and select **Create Room**.
+2. On the create screen, enter a server address and select **Create Room**. An
+   **Advanced** toggle reveals an optional server password. The web client
+   prefills the server with the host serving the page, which is the relay in the
+   single-container deployment; edit it to target a separate relay.
+3. The lobby screen shows an armored invite block, a QR code of the same
    bytes, and copy/download buttons. Share it via any channel.
-3. The screen waits until a peer joins.
+4. The screen waits until a peer joins.
 
 Sample armored invite:
 ```
@@ -441,9 +445,11 @@ AWU5YTYyMWVhMzQwOTM2MDRkMTM5M2MxNTQ0ZDBjNjg0gCIiZMnOHFyPCn5zIfaLsGNvdmNvbS4zeGku
 **Join a room:**
 
 1. Enter a username and select **Join Room**.
-2. Paste the armored invite text, drag-drop the `.room` file (web), or
-   provide the file path (CLI).
-3. Select **Connect**.
+2. On the join screen, paste the armored invite text, drag-drop the `.room`
+   file (web), or enter the file path and select **Browse** (CLI). A dropped or
+   browsed file fills the paste box.
+3. Select **Join Room**. It parses the invite and connects; there is no separate
+   parse or connect step.
 
 Once both sides complete the handshake, the chat opens. The server has relayed
 a sequence of encrypted blobs and learned nothing about the content.
