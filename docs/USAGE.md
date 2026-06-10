@@ -258,6 +258,30 @@ The server starts on `localhost:1337` and reloads on source changes.
 time. You do not need `ADMIN_TOKEN` set to run a private server; the
 `roomSecret` alone prevents uninvited joins.
 
+### command-line flags
+
+Every environment variable above (except `DOMAIN`, which is Caddy's) has a
+matching flag. Pass them to `bun run src/index.ts` in the `server/` workspace,
+or to the compiled binary.
+
+| Flag              | Short | Env var         | Default     | Description                                  |
+| ----------------- | ----- | --------------- | ----------- | -------------------------------------------- |
+| `--port`          | `-p`  | `PORT`          | `1337`      | Port the server listens on                   |
+| `--host`          | -     | `HOST`          | `127.0.0.1` | Interface to bind                            |
+| `--max-room-size` | -     | `MAX_ROOM_SIZE` | `20`        | Max participants per room. `0` is unlimited  |
+| `--admin-token`   | -     | `ADMIN_TOKEN`   | unset       | Token required to create rooms               |
+| `--room-ttl`      | -     | `ROOM_TTL`      | `24`        | Hours before an empty room is pruned. `0` is never |
+| `--help`          | `-h`  | -               | -           | Print the usage screen and exit              |
+
+Precedence is **flag > environment variable > default**: a provided flag
+overrides its env var, and an absent flag leaves the env behavior untouched.
+Flags fail loudly: a non-numeric or negative numeric value, or an unknown
+flag, prints usage to stderr and exits 1.
+
+> [!WARNING]
+> `--admin-token` is visible in process listings (`ps`) and shell history.
+> Prefer the `ADMIN_TOKEN` environment variable for secrets.
+
 ---
 
 ## web client

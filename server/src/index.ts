@@ -11,6 +11,7 @@ import {
 	handleEkUpdate,
 } from './relay.ts';
 import type { InboundMsg } from './types.ts';
+import { parseFlags } from './flags.ts';
 
 function parseMaxRoomSize(): number {
 	const raw = parseInt(process.env.MAX_ROOM_SIZE ?? '20', 10);
@@ -22,6 +23,7 @@ export interface ServerConfig {
 	maxRoomSize?: number
 	adminToken?:  string | undefined
 	hostname?:    string
+	roomTtl?:     number
 }
 
 export function startServer(config: ServerConfig = {}) {
@@ -37,7 +39,7 @@ export function startServer(config: ServerConfig = {}) {
 	const hostname    = config.hostname ?? process.env.HOST ?? '127.0.0.1';
 	const rooms       = new Map<string, Room>();
 
-	const ROOM_TTL_HOURS = parseInt(process.env.ROOM_TTL ?? '24', 10);
+	const ROOM_TTL_HOURS = config.roomTtl ?? parseInt(process.env.ROOM_TTL ?? '24', 10);
 	const ROOM_TTL_MS    = (isNaN(ROOM_TTL_HOURS) || ROOM_TTL_HOURS <= 0)
 		? 0
 		: ROOM_TTL_HOURS * 60 * 60 * 1000;
@@ -110,6 +112,15 @@ export function startServer(config: ServerConfig = {}) {
 }
 
 if (import.meta.main) {
-	const server = startServer();
+	const { config, help, error } = parseFlags(process.argv.slice(2));
+	if (help) {
+		console.log(help);
+		process.exit(0);
+	}
+	if (error) {
+		console.error(error);
+		process.exit(1);
+	}
+	const server = startServer(config);
 	console.log(`Leviathan server listening on ${server.hostname}:${server.port}`);
 }
