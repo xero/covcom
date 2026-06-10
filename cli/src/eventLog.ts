@@ -1,6 +1,6 @@
-// In-process event log for the CLI sidebar. Shape mirrors
-// `web/src/store.ts`'s EventLogEntry so the two clients show the same data.
-// Capped ring buffer; subscribers fire on every push so the TUI can mark dirty.
+// In-process event log for the CLI sidebar. Shape mirrors `web/src/store.ts`
+// EventLogEntry so the two clients show the same data. Capped ring buffer;
+// subscribers fire on every push so the TUI can mark dirty.
 
 export interface EventLogEntry {
 	id:        number
@@ -13,7 +13,7 @@ export interface EventLogEntry {
 
 const CAP        = 500;
 const events:    EventLogEntry[]    = [];
-const listeners    = new Set<() => void>();
+const listeners  = new Set<() => void>();
 let nextId       = 1;
 
 export function logEvent(e: Omit<EventLogEntry, 'id' | 'ts'> & { ts?: number }): void {

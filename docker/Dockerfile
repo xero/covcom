@@ -1,4 +1,4 @@
-# ── Stage 1: build web client ──────────────────────────────────────────────
+# build stage: web client
 FROM oven/bun:1 AS builder
 
 WORKDIR /build
@@ -20,11 +20,10 @@ COPY web/ ./web/
 # Build web client (single inlined index.html, strict-CSP friendly)
 RUN bun run --cwd web build
 
-# ── Stage 2: final image ───────────────────────────────────────────────────
+# final image
 FROM caddy:2-alpine AS caddy
 FROM oven/bun:1
 
-# Setup
 COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
 RUN mkdir -p /etc/caddy /data /config
 # Point Caddy's storage at the mounted volumes so ACME certs/account survive
@@ -48,11 +47,9 @@ COPY server/ ./server/
 # Web client dist (built in stage 1)
 COPY --from=builder /build/web/dist ./web/dist/
 
-# Entrypoint
 COPY docker/entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
-# Open Ports
 EXPOSE 443 80
 
 ENTRYPOINT ["./entrypoint.sh"]

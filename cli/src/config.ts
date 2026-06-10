@@ -40,9 +40,9 @@ export function setConfigPath(path: string | undefined): void {
 }
 
 // Resolve the config file path. Precedence:
-//   1. --config <path>                       (used verbatim)
+//   1. --config <path> (used verbatim)
 //   2. $XDG_CONFIG_HOME/covcom/config.json
-//   3. ~/.config/covcom/config.json          (the XDG default base)
+//   3. ~/.config/covcom/config.json  (the XDG default base)
 // Resolved per call rather than captured at load so an override or env set after
 // this module is imported is still honoured.
 function configFile(): string {

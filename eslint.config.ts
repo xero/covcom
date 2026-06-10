@@ -5,7 +5,7 @@ import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig([
-	// ── Ignores ────────────────────────────────────────────────────────────────
+	// ignores
 	{
 		ignores: [
 			'**/node_modules/**',
@@ -20,12 +20,12 @@ export default defineConfig([
 		],
 	},
 
-	// ── Base rule sets ─────────────────────────────────────────────────────────
+	// base rule sets
 	eslint.configs.recommended,
 	...tseslint.configs.strict,
 	...tseslint.configs.stylistic,
 
-	// ── All TypeScript files ───────────────────────────────────────────────────
+	// all typescript files
 	{
 		files: ['**/*.ts'],
 		languageOptions: {
@@ -42,7 +42,7 @@ export default defineConfig([
 			},
 		},
 		rules: {
-			// ── Formatting ───────────────────────────────────────────────────────
+			// formatting
 			indent:                ['error', 'tab'],
 			'no-tabs':             'off',
 			quotes:                ['error', 'single'],
@@ -57,7 +57,7 @@ export default defineConfig([
 			'key-spacing':         ['error', { beforeColon: false, afterColon: true }],
 			'brace-style':         ['error', '1tbs', { allowSingleLine: false }],
 
-			// ── Safety ───────────────────────────────────────────────────────────
+			// safety
 			'no-eval':   'error',
 			'no-var':    'error',
 			eqeqeq:      ['error', 'always', { null: 'ignore' }],
@@ -70,7 +70,7 @@ export default defineConfig([
 		},
 	},
 
-	// ── Web client: no raw HTML-string DOM sinks ────────────────────────────────
+	// web client: no raw HTML-string DOM sinks
 	// The web client builds DOM via el()/createElement + textContent so a
 	// user-controlled value can never become markup. The one legitimate exception
 	// (static SVG icons) goes through setHtml(el, SafeHtml) in web/src/safehtml.ts,
@@ -88,7 +88,7 @@ export default defineConfig([
 		},
 	},
 
-	// ── Test files ─────────────────────────────────────────────────────────────
+	// test files
 	{
 		files: ['**/test/**/*.ts'],
 		rules: {

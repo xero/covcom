@@ -1,12 +1,13 @@
 // CLI argument parser. A small getopt-style parser over process.argv, kept in
 // its own module so it can be unit-tested without main.ts's startup side
-// effects. Adding a flag is one entry in FLAGS below.
+// effects.
 //
 // Supported forms:
 //   long:   --flag            --flag value      --flag=value
 //   short:  -f                -f value          -fvalue          -f=value
 //   bundled booleans:         -xa  ==  -x -a    (a value short ends the bundle)
 //   bundled value at end:     -xac value        -xacvalue
+//
 // A space-form value that looks like another flag (starts with `-`) is treated
 // as missing, so a flag is never swallowed as a value (e.g. `--join --clean`).
 // Unknown flags are ignored.
@@ -57,7 +58,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 			if (!spec) continue;
 			if (spec.kind === 'value') {
 				if (eq >= 0) {
-					set(spec, tok.slice(eq + 1));            // --flag=value (empty -> unset)
+					set(spec, tok.slice(eq + 1));  // --flag=value (empty -> unset)
 				} else {
 					const next = argv[i + 1];
 					if (next && !next.startsWith('-')) {
@@ -76,9 +77,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
 			let consumedNext = false;
 			for (let j = 1; j < tok.length; j++) {
 				const spec = byShort.get(tok[j]);
-				if (!spec) break;                            // unknown short ends the cluster
+				if (!spec) break;  // unknown short ends the cluster
 				if (spec.kind === 'value') {
-					const after = tok.slice(j + 1);          // rest of the token is the value
+					const after = tok.slice(j + 1);  // rest of the token is the value
 					if (after.length > 0) {
 						set(spec, after.startsWith('=') ? after.slice(1) : after);
 					} else {
@@ -88,15 +89,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
 							consumedNext = true;
 						}
 					}
-					break;                                   // a value short consumes the rest
+					break;  // a value short consumes the rest
 				}
 				set(spec, undefined);
 			}
 			if (consumedNext) i++;
 			continue;
 		}
-
-		// bare positional: none expected, ignored
+		// bare positional: ignored
 	}
 	return out;
 }

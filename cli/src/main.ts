@@ -27,8 +27,6 @@ Options:
 Report bugs to: https://github.com/xero/covcom
 `;
 
-// parse CLI args: covcom [-h|--help] [-v|--version] [-x|--clean] [-a|--anon]
-//                        [-c|--config <path>] [-j|--join <path>]
 const opts = parseArgs(process.argv.slice(2));
 
 // --help prints the banner and usage, then exits before any TUI setup.

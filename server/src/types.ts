@@ -3,22 +3,22 @@
 export interface CreateMsg {
 	type:             'create'
 	adminToken?:      string
-	protocolVersion?: number   // absent = pre-v3 client; server rejects on mismatch
+	protocolVersion?: number  // absent = pre-v3 client; server rejects on mismatch
 }
 
 export interface JoinMsg {
 	type:             'join'
 	roomId:           string
 	roomSecret:       string
-	protocolVersion?: number   // absent = pre-v3 client; server rejects on mismatch
+	protocolVersion?: number  // absent = pre-v3 client; server rejects on mismatch
 }
 
 export interface IdentifyMsg {
 	type:      'identify'
 	username:  string
-	ek:        string   // base64 Seal encapsulation key (chain seed distribution)
-	ratchetEk: string   // base64 RatchetKeypair ek (for KEM ratchet steps)
-	claim:     string   // base64 Sign.sign envelope of the identity claim
+	ek:        string  // base64 Seal encapsulation key (chain seed distribution)
+	ratchetEk: string  // base64 RatchetKeypair ek (for KEM ratchet steps)
+	claim:     string  // base64 Sign.sign envelope of the identity claim
 }
 
 export interface RelayMsg {
@@ -58,7 +58,7 @@ export interface RekeyMsg {
 	type:      'rekey'
 	ek:        string
 	ratchetEk: string
-	claim:     string   // fresh identity claim for the post-transition session
+	claim:     string  // fresh identity claim for the post-transition session
 }
 
 export type InboundMsg =
@@ -116,7 +116,7 @@ export interface BroadcastFwdMsg {
 export interface ErrorMsg {
 	type: 'error'
 	reason: 'room_full' | 'not_found' | 'forbidden' | 'username_taken' | 'version_mismatch'
-	serverVersion?: number   // present on version_mismatch to aid a newer client
+	serverVersion?: number // present on version_mismatch to aid a newer client
 }
 
 // server delivers one of these per recipient from a ratchet_step

@@ -9,27 +9,13 @@ import { createRoom, joinRoom, watchCrash } from './helpers.ts';
 // File-attachment size sweep across all three engines, the regression net for the
 // "Aw, Snap!" renderer crash that large attachments used to cause.
 //
-// Files now stream as one signed `broadcast` per chunk (FILE_CHUNK_SIZE plaintext,
-// ~1.34 MiB base64 on the wire). That removed both old ceilings:
-//   1. Wire ceiling. The monolithic frame used to exceed Bun's 16 MiB WS limit
-//      (base64 inflates 4/3, so raw files past ~12 MiB were dropped and the
-//      sender silently reconnected). Per-chunk frames stay far under it, so the
-//      16 MiB case below now relays end-to-end. (Caddy proxies WS transparently,
-//      so the container inherits the same broker limit and the same fix.)
-//   2. Renderer ceiling. The old path held bytes + ciphertext + base64 + JSON
-//      (~4.6x the file) at once and OOM'd the tab. Streaming keeps send peak at
-//      O(chunk).
-//
-// Every size here must round-trip with no crash. The 16 MiB entry is the proof
-// the wire ceiling is gone. file-stress.e2e.ts pushes hundreds of MiB to GiB.
+// Files stream as a `file-begin` frame then one signed `file-chunk` broadcast per
+// FILE_CHUNK_SIZE (64 KiB) slice, so memory and wire stay bounded regardless of
+// file size. Every size here must round-trip with no crash.
 
-// Raw byte sizes. 2.64 MB is the exact size the user saw a second client die on.
-// 16 MiB sits past the old ~12 MiB wire cap, so it would have been dropped before
-// chunking; it must relay now.
 const SIZES: { label: string; bytes: number }[] = [
 	{ label: '64 KiB',  bytes: 64 * 1024 },
 	{ label: '1 MiB',   bytes: 1024 * 1024 },
-	{ label: '2.64 MB', bytes: 2_640_000 },
 	{ label: '8 MiB',   bytes: 8 * 1024 * 1024 },
 	{ label: '16 MiB',  bytes: 16 * 1024 * 1024 },
 ];

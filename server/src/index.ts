@@ -68,7 +68,7 @@ export function startServer(config: ServerConfig = {}) {
 			return new Response('Not found', { status: 404 });
 		},
 		websocket: {
-			open(_ws) { /* noop */ },
+			open(_ws) { /* Bun requires the handler; identity is set later via identify */ },
 			message(ws, raw) {
 				try {
 					const msg = JSON.parse(raw as string) as InboundMsg;
@@ -98,7 +98,7 @@ export function startServer(config: ServerConfig = {}) {
 						handleRekey(ws, msg, rooms);
 						break;
 					}
-				} catch { /* drop malformed messages silently */ }
+				} catch { /* untrusted input: a bad frame must not crash or leak; just drop it */ }
 			},
 			close(ws) {
 				handleClose(ws, rooms);

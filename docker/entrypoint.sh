@@ -1,11 +1,9 @@
 #!/bin/sh
 set -e
-
 if [ -z "$DOMAIN" ]; then
 	echo "ERROR: DOMAIN env var is required" >&2
 	exit 1
 fi
-
 # For localhost (and any address with an explicit port), force HTTP-only so
 # Caddy does not attempt TLS certificate provisioning.
 case "$DOMAIN" in
@@ -16,11 +14,10 @@ case "$DOMAIN" in
 		SITE_ADDR="${DOMAIN}"
 		;;
 esac
-
 cat > /etc/caddy/Caddyfile <<EOF
 ${SITE_ADDR} {
 	# Clickjacking protection: frame-ancestors is ignored in the SPA's <meta>
-	# CSP, so enforce the equivalent as a real response header here.
+	# CSP, so enforce the equivalent via a real response header
 	header X-Frame-Options "DENY"
 	@ws path /ws
 	handle @ws {
@@ -33,7 +30,5 @@ ${SITE_ADDR} {
 	}
 }
 EOF
-
 caddy run --config /etc/caddy/Caddyfile &
-
 exec bun run /app/server/src/index.ts

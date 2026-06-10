@@ -88,9 +88,9 @@ afterAll(async () => {
 });
 
 test('web and CLI clients exchange end-to-end encrypted messages through the relay', async () => {
-	// ── web Alice creates the room, hand the invite to the CLI via a file. The
+	// web Alice creates the room, hand the invite to the CLI via a file. The
 	// landing takes only a username; Create Room opens the create sub-screen
-	// where the server field lives, then Create Room again connects. ──
+	// where the server field lives, then Create Room again connects.
 	await page.goto(`${WEB_URL}/`);
 	await page.fill('#username', 'alice-web');
 	await page.getByRole('button', { name: 'Create Room' }).click();
@@ -108,12 +108,12 @@ test('web and CLI clients exchange end-to-end encrypted messages through the rel
 	writeFileSync(roomFile, invite);
 	writeFileSync(join(cfgDir, 'config.json'), JSON.stringify({ username: 'bob-cli' }), { flag: 'w' });
 
-	// ── CLI Bob joins. With `--config` pointing at a file that carries a
+	// CLI Bob joins. With `--config` pointing at a file that carries a
 	// username, `--join` routes straight to JoinView. The auto-load of the
 	// prefill path does not repaint, so we drive the Browse button (deterministic
 	// read into the textarea + repaint) and wait for the armored text before
-	// joining. There is no parse step now: Join Room parses the textarea and
-	// connects. ──
+	// joining. There is no separate parse step: Join Room parses the textarea
+	// and connects in one action.
 	// cwd is the temp dir so files the CLI saves on receive land there (and are
 	// cleaned up in afterAll), never in the repo. Absolute paths (roomFile, the
 	// attached file) are unaffected.
@@ -124,24 +124,24 @@ test('web and CLI clients exchange end-to-end encrypted messages through the rel
 
 	// The CLI reads one keystroke per stdin chunk, so every key is its own write.
 	// Focus ring: username -> path -> browse -> invite -> join -> cancel.
-	await cli.write('\t');                       // username -> path
-	await cli.write('\t');                       // path -> browse
-	await cli.write('\r');                       // Browse: read file into textarea + repaint
-	await cli.waitFor(/BEGIN COVCOM INVITE/);    // textarea populated
-	await cli.write('\t');                       // browse -> invite
-	await cli.write('\t');                       // invite -> join
-	await cli.write('\r');                       // Join Room: parse + connect
+	await cli.write('\t');  // username -> path
+	await cli.write('\t');  // path -> browse
+	await cli.write('\r');  // Browse: read file into textarea + repaint
+	await cli.waitFor(/BEGIN COVCOM INVITE/);  // textarea populated
+	await cli.write('\t');  // browse -> invite
+	await cli.write('\t');  // invite -> join
+	await cli.write('\r');  // Join Room: parse + connect
 
-	// ── readiness: web Alice drops into chat once the handshake completes; the
+	// readiness: web Alice drops into chat once the handshake completes; the
 	// CLI is ready once its post-connect auto-ratchet renders "keys rotated"
 	// (state.ts doConnect). Gating the first send on this avoids the relay
-	// dropping a broadcast that arrives before the CLI reaches phase 'ready'. ──
+	// dropping a broadcast that arrives before the CLI reaches phase 'ready'.
 	await page.locator('.view-chat #chat-input').waitFor({ state: 'visible', timeout: 30_000 });
 	await page.locator('#chat-history').getByText('bob-cli joined').first().waitFor({ state: 'visible', timeout: 15_000 });
 	await cli.waitFor('keys rotated', 30_000);
 
-	// ── fingerprints must cross-match: what the web shows for its peer is the
-	// CLI's own fingerprint, and vice versa, proving a shared session. ──
+	// fingerprints must cross-match: what the web shows for its peer is the
+	// CLI's own fingerprint, and vice versa, proving a shared session.
 	await page.locator('.fp-badge').click();
 	const webHex = page.locator('.sidebar .fp-hex');
 	await webHex.nth(1).waitFor({ state: 'visible', timeout: 15_000 });
@@ -149,7 +149,7 @@ test('web and CLI clients exchange end-to-end encrypted messages through the rel
 	const webPeer = norm((await webHex.nth(1).textContent()) ?? '');
 
 	const vMark = cli.rawLen();
-	await cli.write('/verify');                   // open verify pane via slash command
+	await cli.write('/verify');   // open verify pane via slash command
 	await cli.write('\r');
 	await cli.waitFor(/[0-9a-f]{16}[\s\S]*?[0-9a-f]{16}/, 15_000, vMark);
 	const cliHexes = cli.screenFrom(vMark).match(hex16) ?? [];
@@ -162,18 +162,18 @@ test('web and CLI clients exchange end-to-end encrypted messages through the rel
 	expect(cliPeer).toBe(webSelf);
 	expect(webSelf).not.toBe(cliSelf);
 
-	// ── web -> CLI ──
+	// web -> CLI
 	const fromWeb = `ping-from-web-${nonce()}`;
 	await page.fill('#chat-input', fromWeb);
 	await page.locator('#chat-input').press('Enter');
 	await cli.waitFor(fromWeb, 20_000);
 
-	// ── CLI -> web. Opening the verify pane moved focus to the sidebar; Escape
+	// CLI -> web. Opening the verify pane moved focus to the sidebar; Escape
 	// from the focused-open sidebar closes the pane and returns focus to
 	// chatInput. Multi-char text arrives as one paste event; Enter must be a
-	// separate keystroke to submit. ──
+	// separate keystroke to submit.
 	const fromCli = `pong-from-cli-${nonce()}`;
-	await cli.write('\x1b');                      // Escape: close verify pane -> focus chatInput
+	await cli.write('\x1b');      // Escape: close verify pane -> focus chatInput
 	await cli.write(fromCli);
 	await cli.write('\r');
 	await page.locator('#chat-history li.msg.peer:not(.ratchet) .msg-text')
@@ -217,25 +217,25 @@ test('CLI attaches a real file; web peer receives and decrypts it byte-for-byte'
 // save, then compare the file's bytes.
 // The CLI's cwd is the temp dir, so the save test stays out of the repo.
 test('web attaches a real file; CLI receives, decrypts, and saves it byte-for-byte', async () => {
-	const original = payload(70_000, 117);     // ~70 KB -> 2 chunks
+	const original = payload(70_000, 117);  // ~70 KB -> 2 chunks
 	await page.locator('#file-input').setInputFiles({
 		name: 'web-to-cli.bin', mimeType: 'application/octet-stream', buffer: original,
 	});
 
 	await cli.waitFor('web-to-cli.bin', 30_000);   // chip rendered => decrypt finalized
 
-	await cli.write('\t');         // chatInput -> sendBtn
-	await cli.write('\t');         // sendBtn   -> attachBtn
-	await cli.write('\t');         // attachBtn -> rotateBtn
-	await cli.write('\t');         // rotateBtn -> msgArea (selectLatest picks the file)
-	await cli.write('\r');         // Enter -> triggerSelectedDownload saves to cwd (tmp)
+	await cli.write('\t');   // chatInput -> sendBtn
+	await cli.write('\t');   // sendBtn   -> attachBtn
+	await cli.write('\t');   // attachBtn -> rotateBtn
+	await cli.write('\t');   // rotateBtn -> msgArea (selectLatest picks the file)
+	await cli.write('\r');   // Enter -> triggerSelectedDownload saves to cwd (tmp)
 
 	await cli.waitFor('File Downloaded', 15_000);
 	const saved = readFileSync(join(tmp, 'web-to-cli.bin'));
 	expect(saved.equals(original)).toBe(true);
 
-	await cli.write('\r');         // dismiss the modal
-	await cli.write('\x1b');       // Escape: msgArea -> chatInput, clean for the next test
+	await cli.write('\r');   // dismiss the modal
+	await cli.write('\x1b'); // Escape: msgArea -> chatInput, clean for the next test
 }, 60_000);
 
 // Regression for the attach-a-ghost bug: the FilePicker tab-completes paths, but

@@ -222,8 +222,7 @@ export function mount(
 	_keysIcon = (config.icons?.keys ?? '').trim();
 
 	// Single teardown for every exit path (Ctrl+C, /exit, SIGTERM, fatal). Reads
-	// the module-level `current` so it covers whatever phase we're in, then
-	// restores the terminal (leaves alt-screen, re-shows cursor, raw mode off).
+	// the module-level `current` so it covers whatever phase we're in.
 	registerCleanup(() => {
 		_shuttingDown = true;
 		disposeAllInbound();

@@ -39,7 +39,7 @@ function colorFor(name: string, peers: Map<string, PeerView>): string {
 	return peerColor(peer ? peer.colorIdx : 0);
 }
 
-// ── chat-item renderers ────────────────────────────────────────────────────
+// chat-item renderers
 
 function liBase(sender: string, isSelf: boolean, peers: Map<string, PeerView>, clearLayout: boolean): HTMLLIElement {
 	const li = document.createElement('li');
@@ -102,7 +102,7 @@ function renderItem(item: ChatItem, peers: Map<string, PeerView>): HTMLLIElement
 	}
 }
 
-// ── bar variants ───────────────────────────────────────────────────────────
+// bar variants
 
 interface RegularBar {
 	root:     HTMLDivElement;
@@ -288,7 +288,7 @@ function buildKeysBar(session: CovcomSession, onExit: () => void): HTMLUListElem
 	return ul;
 }
 
-// ── mount ──────────────────────────────────────────────────────────────────
+// mount
 
 export function mountChat(app: Element, session: CovcomSession): () => void {
 	clear(app);

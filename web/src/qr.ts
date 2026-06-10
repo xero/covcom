@@ -3,16 +3,16 @@ import { qrMatrix } from '@covcom/lib';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const QUIET  = 4; // spec quiet-zone width, in modules
 
-// Render an invite as an inline SVG QR using the shared zero-dependency encoder
-// in @covcom/lib. The dark modules collapse into a single black <path> over a
+// Render an invite as an inline SVG QR using the shared encoder in
+// @covcom/lib. The dark modules collapse into a single black <path> over a
 // white background rect; forced black-on-white (independent of theme) keeps it
 // scannable, matching the cli renderer. Crisp at any size since the SVG is
 // vector and scaled via CSS. Throws RangeError when the invite is too large to
 // encode, so the caller can omit the QR.
 export function qrToSvg(data: string): SVGSVGElement {
 	const matrix = qrMatrix(data);
-	const size   = matrix.length;
-	const dim    = size + QUIET * 2;
+	const size = matrix.length;
+	const dim = size + QUIET * 2;
 
 	let d = '';
 	for (let y = 0; y < size; y++) {

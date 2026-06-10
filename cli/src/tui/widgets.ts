@@ -17,7 +17,7 @@ export interface Widget {
 	onClick?(): void
 }
 
-// ─── word wrap ───────────────────────────────────────────────────────────────
+// word wrap
 //
 // Widths are measured in display columns (see displayWidth), so a CJK/emoji run
 // wraps where it actually fills the pane rather than one column short. A word
@@ -46,7 +46,7 @@ export function wordWrap(text: string, width: number): string[] {
 	return lines.length ? lines : [''];
 }
 
-// ─── display width ─────────────────────────────────────────────────────────────
+// display width
 //
 // A terminal cell is not a code point. East Asian Wide/Fullwidth glyphs and most
 // emoji occupy two columns; combining marks and the zero-width format chars we
@@ -99,7 +99,7 @@ function displayWidth(s: string): number {
 	return w;
 }
 
-// ─── terminal sanitization ─────────────────────────────────────────────────────
+// terminal sanitization
 //
 // The CLI renders untrusted peer data (usernames, error reasons, message text)
 // as raw bytes to process.stdout, so the real threat is ANSI/CSI/OSC escape
@@ -133,7 +133,7 @@ export function sanitizeTerminal(s: string): string {
 	return stripFormatChars(tagless);                   // bidi controls + zero-width spoofing chars
 }
 
-// ─── markup → ANSI ──────────────────────────────────────────────────────────────
+// markup to ANSI
 //
 // Message flow on the CLI is sanitizeTerminal → parseMarkup → emit our own
 // controlled SGR. The markup markers (* _ `) are ASCII and survive sanitization,
@@ -293,7 +293,7 @@ export function messageToLines(text: string, width: number, baseFg: string, them
 	return out.length ? out : [''];
 }
 
-// ─── drawModal ───────────────────────────────────────────────────────────────
+// drawModal
 
 export interface ModalOpts {
 	title:   string
@@ -301,8 +301,8 @@ export interface ModalOpts {
 	accent?: ColorValue
 }
 
-// Long-time minimum inner width; the modal never wraps narrower than this when
-// the terminal has room for it.
+// Minimum inner width; the modal never wraps narrower than this when the
+// terminal has room for it.
 export const MODAL_MIN_INNER = 24;
 // Share of the terminal width the modal grows to use before its content caps it.
 export const MODAL_WIDTH_RATIO = 0.6;
@@ -348,7 +348,7 @@ export function drawModal(scr: Screen, theme: Theme, opts: ModalOpts): void {
 	}
 }
 
-// ─── TextInput ────────────────────────────────────────────────────────────────
+// TextInput
 
 export class TextInput implements Widget {
 	id:            string;
@@ -458,7 +458,7 @@ export class TextInput implements Widget {
 	}
 }
 
-// ─── TextArea ─────────────────────────────────────────────────────────────────
+// TextArea
 
 export class TextArea implements Widget {
 	id:           string;
@@ -601,7 +601,7 @@ export class TextArea implements Widget {
 	}
 }
 
-// ─── Button ───────────────────────────────────────────────────────────────────
+// Button
 
 export class Button implements Widget {
 	id:       string;
@@ -647,7 +647,7 @@ export class Button implements Widget {
 	}
 }
 
-// ─── ScrollView ───────────────────────────────────────────────────────────────
+// ScrollView
 
 type StoredMsg =
 	| { isFile: false; sender: string; text: string; isSelf: boolean; senderIndex: number; system?: boolean; ratchet?: boolean; ratchetIcon?: string }
@@ -929,7 +929,7 @@ export class ScrollView implements Widget {
 	}
 }
 
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
+// Sidebar
 //
 // Two-mode side pane: event-log mirrors the web sidebar's event feed; verify
 // renders the local + peer fingerprints (8 truecolor swatches + 16-char hex).

@@ -5,9 +5,8 @@ import { MiB, transferTimeout } from './timing.ts';
 // Large-attachment round-trips, the at-scale proof for chunked streaming.
 // Every size must round-trip, alice streams it as bounded chunks and bob
 // reassembles and renders the file card. Each size is its own test per engine
-// so the report pinpoints any regression. The sweep used to climb to 1 GiB for
-// perf work; CI now keeps the sizes that prove correctness without the
-// wall-clock cost, so it no longer needs a manual opt-in gate.
+// so the report pinpoints any regression. Sizes are capped at what proves
+// correctness without the wall-clock cost, so the sweep always runs in CI.
 //
 // The bytes are synthesized inside alice's page (helpers.attachSynthFile), so
 // the source allocation lives in the renderer under test rather than crossing

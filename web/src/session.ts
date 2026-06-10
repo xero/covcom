@@ -63,8 +63,7 @@ function wsUrl(server: string): string {
 	// http page speaks ws. This is the single rule that holds for the same-origin
 	// container (wss://DOMAIN/ws via Caddy) and plaintext self-host alike.
 	const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-	// Tolerate a pasted scheme prefix / trailing slash so `https://host` and
-	// `host/` both normalize to the bare authority before we build the ws URL.
+	// Tolerate a pasted scheme prefix or trailing slash on the entered server.
 	const host = server.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/\/+$/, '');
 	return `${scheme}://${host}/ws`;
 }
@@ -101,8 +100,8 @@ export class CovcomSession extends Emitter<SessionEvents> {
 	private _room:              Room | null = null;
 	private _username           = '';
 	private _server             = '';
-	private _knownPeers = new Set<string>();
-	private _peerRatchetEk = new Map<string, string>();
+	private _knownPeers         = new Set<string>();
+	private _peerRatchetEk      = new Map<string, string>();
 	private _chainsExpected     = 0;
 	private _chainsReceived     = 0;
 	private _isReconnect        = false;
@@ -117,7 +116,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 	// seq (init -1). The sender holds within WINDOW of the slowest recipient.
 	private _sendingFiles       = new Map<string, { recipients: Set<string>; acked: Map<string, number> }>();
 
-	// ── public API ───────────────────────────────────────────────────────────
+	// public API
 
 	async create(opts: { server: string; username: string; adminToken?: string }): Promise<void> {
 		this._teardown();
@@ -140,8 +139,8 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		this._openWs(dns, () => this._sendJoin());
 	}
 
-	// Returns false when the message could not be sent so the caller (chat view)
-	// can keep the user's text in the textarea.
+	// False return lets the caller (chat view) keep the user's text in the
+	// textarea instead of clearing a send that never went out.
 	sendMessage(text: string): boolean {
 		if (this._phase !== 'ready' || !this._lib || !this._isWsOpen()) return false;
 		try {
@@ -270,7 +269,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		this._teardown();
 	}
 
-	// ── internals: lifecycle ─────────────────────────────────────────────────
+	// internals: lifecycle
 
 	private _teardown(): void {
 		this._disposeAllInbound();
@@ -282,7 +281,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		if (this._ws) {
 			this._ws.onopen    = null;
 			this._ws.onmessage = null;
-			this._ws.onclose   = null;   // suppress reconnect on intentional close
+			this._ws.onclose   = null;  // suppress reconnect on intentional close
 			this._ws.onerror   = null;
 			try {
 				this._ws.close();
@@ -439,7 +438,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		this._scheduleReconnect();
 	}
 
-	// ── internals: connect / reconnect ──────────────────────────────────────
+	// internals: connect / reconnect
 
 	private _onRoomCreated(roomId: string, roomSecret: string): void {
 		this._room = { id: roomId, secret: b64dec(roomSecret), dns: this._server };
@@ -471,7 +470,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		this._openWs(dns, () => this._sendJoin());
 	}
 
-	// ── internals: protocol handlers ────────────────────────────────────────
+	// internals: protocol handlers
 
 	private _onJoined(members: { username: string; ek: string; ratchetEk: string; claim: string }[]): void {
 		// rebuild the lib session for this attempt (fresh keys each connect)
@@ -649,7 +648,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 			return;
 		}
 
-		// advertise our new ek to the room
+		// advertise new ek to the room
 		try {
 			const ekClaim = lib.identity.buildClaim(lib.ratchetEk, this._username, this._room.id, lib.epoch);
 			this._sendOut({ type: 'ek_update', ek: b64enc(lib.ratchetEk), claim: b64enc(ekClaim) });
@@ -753,7 +752,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		const lib = this._lib;
 		if (!lib) return;
 		const key = `${from}|${env.fileId}`;
-		this._disposeInbound(key);   // drop any stale transfer reusing this id
+		this._disposeInbound(key);  // drop any stale transfer reusing this id
 		let handle: { key: Uint8Array; commit: () => void; rollback: () => void };
 		try {
 			handle = lib.openFileKey(from, env.epoch ?? 0, env.counter);
@@ -855,9 +854,9 @@ export class CovcomSession extends Emitter<SessionEvents> {
 	}
 
 	// True if the server's advertised version matches. A missing field means an
-	// older server that predates negotiation (the friend's v2 case): it can't
-	// reject us, so the newer client detects the skew and bails. Numbers go to
-	// the console for debugging; the on-screen message stays generic.
+	// older server that predates version negotiation: it can't reject us, so the
+	// newer client detects the skew and bails. Numbers go to the console for
+	// debugging; the on-screen message stays generic.
 	private _checkServerVersion(got: number | undefined): boolean {
 		if (got === PROTOCOL_VERSION) return true;
 		console.warn(`covcom: server protocol version mismatch (expected ${PROTOCOL_VERSION}, got ${got ?? 'none'})`);
@@ -873,7 +872,7 @@ export class CovcomSession extends Emitter<SessionEvents> {
 		this._teardown();
 	}
 
-	// ── internals: ratchet / lobby ──────────────────────────────────────────
+	// internals: ratchet / lobby
 
 	private _doRatchetStep(): void {
 		if (this._phase !== 'ready' || !this._lib || !this._room) return;
@@ -889,12 +888,12 @@ export class CovcomSession extends Emitter<SessionEvents> {
 
 			// sentinel payload, kept on the wire so receivers can verify the new
 			// chain works; never surfaced as a `message` event (arch decision)
-			const bytes                            = new TextEncoder().encode('[\u{1F512} keys rotated]');
-			const { ciphertext, counter, epoch }   = lib.sealMessage(bytes);
-			const ts                               = Date.now();
-			const sig                              = lib.identity.signMessage(counter, epoch, this._username, ts, ciphertext);
-			const claim                            = lib.identity.buildClaim(lib.ratchetEk, this._username, this._room.id, epoch);
-			const meta: MessageEnvelope            = { type: 'message', sender: this._username, counter, epoch, ts };
+			const bytes                           = new TextEncoder().encode('[\u{1F512} keys rotated]');
+			const { ciphertext, counter, epoch }  = lib.sealMessage(bytes);
+			const ts                              = Date.now();
+			const sig                             = lib.identity.signMessage(counter, epoch, this._username, ts, ciphertext);
+			const claim                           = lib.identity.buildClaim(lib.ratchetEk, this._username, this._room.id, epoch);
+			const meta: MessageEnvelope           = { type: 'message', sender: this._username, counter, epoch, ts };
 			this._sendOut({
 				type: 'ratchet_step',
 				payloads,

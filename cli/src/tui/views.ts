@@ -13,15 +13,14 @@ import type { Config } from '../config.js';
 import { resolveUniqueFilename } from '../util.js';
 import { BANNER } from './banner.js';
 
-// ─── banner ──────────────────────────────────────────────────────────────────
+// banner
 
 const BANNER_LINES    = BANNER.split('\n').filter(l => l.length > 0);
 export const BANNER_W        = 56;  // visible cell width of the banner
 export const BANNER_H        = BANNER_LINES.length;  // derived, so the banner can grow or shrink
 export const BANNER_FORM_GAP = 4;   // blank rows between the banner and the form below it
 
-// draw the banner with its first row at `top`. skips silently when the terminal
-// is too narrow or `top` is off-screen.
+// Skips silently when the terminal is too narrow or `top` is off-screen.
 function drawBannerAt(scr: Screen, top: number): void {
 	if (top < 1 || scr.w < BANNER_W + 4) return;
 	const ox = Math.floor((scr.w - BANNER_W) / 2);
@@ -46,13 +45,13 @@ export function centerBannerBlock(screenW: number, screenH: number, formH: numbe
 	return { bannerTop: top, formY: top + BANNER_H + BANNER_FORM_GAP };
 }
 
-// ─── chat layout decision ────────────────────────────────────────────────────
+// chat layout decision
 
 export type ChatLayoutMode = 'chat' | 'side' | 'full';
 export interface ChatLayout { mode: ChatLayoutMode; sideW: number; chatW: number }
 
-// Layout from sidebar state + terminal width. in 'full' (terminal too narrow)
-// the sidebar spans the whole screen and chat is hidden
+// In 'full' (terminal too narrow) the sidebar spans the whole screen and chat
+// is hidden.
 export function chatLayout(open: boolean, cols: number, sidebarPct: number): ChatLayout {
 	if (!open)                   return { mode: 'chat', sideW: 0,    chatW: cols };
 	if (cols < SIDEBAR_MIN_COLS) return { mode: 'full', sideW: cols, chatW: 0    };
@@ -113,7 +112,7 @@ function renderKeysBar(scr: Screen, x: number, y: number, theme: Theme, hints: K
 	scr.write(out + ansi.reset);
 }
 
-// ─── module-level state for appendMessage / appendFile ───────────────────────
+// module-level state for appendMessage / appendFile
 
 let viewGen  = 0;
 let _scrollView:    ScrollView | null  = null;
@@ -162,7 +161,7 @@ function chatDoRender() {
 	_chatScreen.endRender();
 }
 
-// ─── shared view setup ───────────────────────────────────────────────────────
+// shared view setup
 
 function setupView(scr: Screen, theme: Theme, render: () => void, onEv: (ev: InputEvent) => void) {
 	viewGen++;
@@ -236,7 +235,7 @@ function clickHit(widgets: Widget[], x: number, y: number): Widget | null {
 	return null;
 }
 
-// ─── clipboard copy ──────────────────────────────────────────────────────────
+// clipboard copy
 
 async function tryCopy(text: string, copyCmd?: string): Promise<boolean> {
 	const buf = Buffer.from(text);
@@ -254,7 +253,7 @@ async function tryCopy(text: string, copyCmd?: string): Promise<boolean> {
 	return false;
 }
 
-// ─── tab completion ──────────────────────────────────────────────────────────
+// tab completion
 
 function getCompletions(val: string): string[] {
 	const i      = val.lastIndexOf('/');
@@ -269,7 +268,7 @@ function getCompletions(val: string): string[] {
 	}
 }
 
-// ─── renderLanding ───────────────────────────────────────────────────────────
+// renderLanding
 
 export function renderLanding(
 	scr: Screen,
@@ -366,7 +365,7 @@ export function renderLanding(
 	});
 }
 
-// ─── renderCreate ──────────────────────────────────────────────────────────────
+// renderCreate
 
 export function renderCreate(
 	scr: Screen,
@@ -504,7 +503,7 @@ export function renderCreate(
 	});
 }
 
-// ─── renderWaiting ───────────────────────────────────────────────────────────
+// renderWaiting
 
 export function renderWaiting(
 	scr: Screen,
@@ -633,7 +632,7 @@ export function renderWaiting(
 	});
 }
 
-// ─── renderJoin ──────────────────────────────────────────────────────────────
+// renderJoin
 
 export function renderJoin(
 	scr: Screen,
@@ -788,7 +787,7 @@ export function renderJoin(
 	});
 }
 
-// ─── renderChat ──────────────────────────────────────────────────────────────
+// renderChat
 
 interface PeerInfo {
 	ek:        string
@@ -1253,7 +1252,7 @@ export function renderChat(
 	});
 }
 
-// ─── appendMessage / appendFile ───────────────────────────────────────────────
+// appendMessage / appendFile
 
 export function appendMessage(msg: {
 	sender:       string

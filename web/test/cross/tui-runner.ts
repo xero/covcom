@@ -17,16 +17,16 @@ export interface CliOpts {
 
 export interface CliSession {
 	// raw byte length of the accumulated PTY output, for marking a point in time
-	rawLen():               number;
+	rawLen(): number;
 	// the whole PTY output with ANSI control sequences stripped
-	screen():               string;
+	screen(): string;
 	// the PTY output since `rawIdx` (a prior rawLen()), ANSI-stripped
 	screenFrom(rawIdx: number): string;
 	// feed keystrokes, then pause briefly so the event-driven TUI can repaint
-	write(keys: string):    Promise<void>;
+	write(keys: string): Promise<void>;
 	// poll until `needle` appears in the screen (optionally only after `fromRaw`)
 	waitFor(needle: string | RegExp, timeoutMs?: number, fromRaw?: number): Promise<void>;
-	close():                void;
+	close(): void;
 }
 
 export function startCliSession(bin: string, args: string[] = [], opts: CliOpts = {}): CliSession {
@@ -78,7 +78,7 @@ export function startCliSession(bin: string, args: string[] = [], opts: CliOpts 
 		close() {
 			try {
 				term.close();
-			} catch { /* already gone */ }
+			} catch { /* already rip */ }
 			proc.kill();
 		},
 	};

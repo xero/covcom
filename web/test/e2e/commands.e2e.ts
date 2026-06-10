@@ -84,26 +84,26 @@ test('sidebar keyboard: +/- resize (clamped) and Esc close', async ({ browser })
 		await expect(row).toBeVisible();
 		await row.focus();
 
-		await expectPct(bob, 30);                                  // default
-		await bob.keyboard.press('Shift+Equal');                   // '+'
+		await expectPct(bob, 30);  // default
+		await bob.keyboard.press('Shift+Equal');  // '+'
 		await expectPct(bob, 35);
 		for (let i = 0; i < 10; i++) await bob.keyboard.press('Shift+Equal');
-		await expectPct(bob, 70);                                  // clamps at MAX_PCT
+		await expectPct(bob, 70);  // clamps at MAX_PCT
 		for (let i = 0; i < 20; i++) await bob.keyboard.press('Minus');
-		await expectPct(bob, 10);                                  // clamps at MIN_PCT
+		await expectPct(bob, 10);  // clamps at MIN_PCT
 
 		// Esc closes the panel and hands focus back to the chat input.
 		await bob.keyboard.press('Escape');
 		await expect(sidebar).toBeHidden();
 		await expect(chatInput).toBeFocused();
 
-		// Verify mode has no buttons; the new tabindex makes the panel itself a tab
-		// stop, so the same keys must work after focusing it.
+		// Verify mode has no buttons; the panel's tabindex makes it a tab stop, so
+		// the same keys must work after focusing the panel itself.
 		await sendChat(bob, '/verify');
 		const verify = bob.locator('.sidebar [data-section="verify"]');
 		await expect(verify).toBeVisible();
 		await verify.focus();
-		await bob.keyboard.press('Shift+Equal');                   // 10 -> 15
+		await bob.keyboard.press('Shift+Equal');  // 10 -> 15
 		await expectPct(bob, 15);
 		await bob.keyboard.press('Escape');
 		await expect(sidebar).toBeHidden();

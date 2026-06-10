@@ -4,13 +4,9 @@ import { createRoom, joinRoom, sendFile } from './helpers.ts';
 
 // Encrypted file transfer under the production CSP, across all three engines.
 //
-// File send/receive uses leviathan's SealStream / OpenStream on the MAIN THREAD,
-// no Web Worker. That is the post-fix shape: there used to be a same-origin pool
-// worker (to dodge WebKit's blob:-worker CSP refusal), and the CSP carried
-// `worker-src 'self'` for it. Streaming replaced the worker, so the policy is now
-// `default-src 'none'` with no worker-src, the strictest possible, and the client
-// is a true single-file SPA. This test is the load-bearing proof that the strict,
-// worker-free CSP doesn't break file transfer on any engine (WebKit especially).
+// File send/receive uses leviathan's SealStream / OpenStream on the main
+// thread. This test is the load-bearing proof that the strict, worker-free CSP
+// doesn't break file transfer on any engine (glares at WebKit  •͡˘㇁•͡˘)
 
 // Collect real CSP violations. Match the violation vocabulary (refused / blocked /
 // violates) rather than the mere phrase "Content Security Policy", which also

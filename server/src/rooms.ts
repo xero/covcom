@@ -5,7 +5,7 @@ export interface ConnData {
 	username:  string | null
 	ek:        string | null
 	ratchetEk: string | null
-	claim:     string | null    // last-known identity claim for late-joiner replay
+	claim:     string | null  // last-known identity claim for late-joiner replay
 }
 
 export interface Room {

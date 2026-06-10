@@ -29,9 +29,9 @@ export function parseInput(buf: Buffer): InputEvent {
 	if (s.startsWith('\x1b[<')) {
 		const m = /\[<(\d+);(\d+);(\d+)([Mm])/.exec(s);
 		if (m) {
-			const btn    = parseInt(m[1]);
-			const x      = parseInt(m[2]);
-			const y      = parseInt(m[3]);
+			const btn     = parseInt(m[1]);
+			const x       = parseInt(m[2]);
+			const y       = parseInt(m[3]);
 			const release = m[4] === 'm';
 			const type: MouseEvent['type'] = btn >= 64 ? 'scroll' : release ? 'release' : 'click';
 			return { kind: 'mouse', mouse: { type, button: btn, x, y } };
@@ -46,10 +46,10 @@ export function parseInput(buf: Buffer): InputEvent {
 	}
 
 	// escape sequences
-	if (s === '\x1b[A' || s === '\x1bOA') return k('up');
-	if (s === '\x1b[B' || s === '\x1bOB') return k('down');
-	if (s === '\x1b[C' || s === '\x1bOC') return k('right');
-	if (s === '\x1b[D' || s === '\x1bOD') return k('left');
+	if (s === '\x1b[A' || s === '\x1bOA')  return k('up');
+	if (s === '\x1b[B' || s === '\x1bOB')  return k('down');
+	if (s === '\x1b[C' || s === '\x1bOC')  return k('right');
+	if (s === '\x1b[D' || s === '\x1bOD')  return k('left');
 	if (s === '\x1b[Z')                    return k('tab', { shift: true });
 	if (s === '\x1b[H' || s === '\x1b[1~') return k('home');
 	if (s === '\x1b[F' || s === '\x1b[4~') return k('end');
@@ -59,17 +59,18 @@ export function parseInput(buf: Buffer): InputEvent {
 	if (s === '\x1b[2~')                   return k('insert');
 
 	// standalone escape (no following char)
-	if (s === '\x1b') return k('escape');
+	if (s === '\x1b')                      return k('escape');
 
 	// control characters
-	if (s === '\r' || s === '\r\n') return k('enter');
-	if (s === '\t')               return k('tab');
-	if (s === '\x7f')             return k('backspace');
-	if (s === '\x08')             return k('backspace', { ctrl: true });
+	if (s === '\r' || s === '\r\n')        return k('enter');
+	if (s === '\t')                        return k('tab');
+	if (s === '\x7f')                      return k('backspace');
+	if (s === '\x08')                      return k('backspace', { ctrl: true });
 
 	const byte = buf[0];
 
-	// ctrl+letter: bytes 0x01-0x1a (skip 0x08=bs, 0x09=tab, 0x0a=lf, 0x0d=cr already handled)
+	// ctrl+letter: bytes 0x01-0x1a
+	// (skip 0x08=bs, 0x09=tab, 0x0a=lf, 0x0d=cr already handled)
 	if (byte >= 0x01 && byte <= 0x1a) {
 		const ch = String.fromCharCode(byte + 0x60);
 		return k(ch, { ctrl: true, ch });

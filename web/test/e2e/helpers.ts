@@ -1,8 +1,6 @@
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-// ── crash / large-file diagnostics (file-size investigation) ────────────────
-
 // Chrome's "Aw, Snap!" renderer OOM surfaces in Playwright as a `crash` event.
 // Firefox/WebKit usually report a process-gone error on the next call instead.
 // Push a marker into `sink` so a test can assert the renderer survived.
@@ -94,8 +92,8 @@ export async function createRoom(page: Page, username: string): Promise<string> 
 }
 
 // bob's path: set the username on the landing screen, open the join view, paste
-// the invite, and join. There is no parse step now: Join Room parses and connects.
-// Resolves once the chat view is mounted.
+// the invite, and join. There is no separate parse step: Join Room parses and
+// connects in one action. Resolves once the chat view is mounted.
 export async function joinRoom(page: Page, username: string, invite: string): Promise<void> {
 	await page.goto('/');
 	await page.fill('#username', username);

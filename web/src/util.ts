@@ -20,9 +20,6 @@ export function formatBytes(n: number): string {
 	return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-// Map a sender's colorIdx to a CSS peer-color var. colorIdx 0 is self → --peer0
-// (reserved). Peers (colorIdx >= 1) cycle --peer1..--peer7, wrapping after 7, so
-// a peer can never land on --peer0 (your color) or the separate --system color.
 export function peerColor(colorIdx: number): string {
 	if (colorIdx <= 0) return 'var(--peer0)';
 	return `var(--peer${1 + ((colorIdx - 1) % 7)})`;

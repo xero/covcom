@@ -6,7 +6,7 @@ import { generateKeypair, Session, RELAY_TAG_SEED, prefixTag } from '@covcom/lib
 import { b64dec, b64enc } from '../src/util.ts';
 import type { InboundMsg, OutboundMsg } from '../src/ws.ts';
 
-// ─── fake WebSocket ────────────────────────────────────────────────────────
+// fake WebSocket
 
 export class FakeWebSocket {
 	url:       string;
@@ -52,7 +52,7 @@ export function installFakeWebSocket(): { last(): FakeWebSocket; restore(): void
 	};
 }
 
-// ─── real-crypto peer ────────────────────────────────────────────────────────
+// real-crypto peer
 
 // A standalone peer Session that mints the wire frames a remote participant
 // would send: its identity claim, its peer_joined announcement, and the chain

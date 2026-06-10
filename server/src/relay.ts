@@ -91,7 +91,7 @@ export function handleIdentify(
 ): void {
 	if (!ws.data.roomId) return;
 	const uname = msg.username.trim();
-	if (!uname || uname.length > 64)           {
+	if (!uname || uname.length > 64) {
 		ws.close(); return;
 	}
 	// Reject (never strip) control chars: a stripped name would desync from the
@@ -99,7 +99,7 @@ export function handleIdentify(
 	// other reject-on-invalid checks here, so no new error reason is introduced.
 	// Deliberate hardening beyond PROTOCOL.md, which states no charset rules.
 	// eslint-disable-next-line no-control-regex -- forbidding C0/C1 + DEL is the point
-	if (/[\x00-\x1F\x7F-\x9F]/.test(uname))    {
+	if (/[\x00-\x1F\x7F-\x9F]/.test(uname)) {
 		ws.close(); return;
 	}
 	// Reject (never strip) bidi controls + zero-width format chars too: they
@@ -111,10 +111,10 @@ export function handleIdentify(
 	if (hasUnsafeFormatChars(uname)) {
 		ws.close(); return;
 	}
-	if (msg.ek.length !== 1580)                {
+	if (msg.ek.length !== 1580) {
 		ws.close(); return;
 	}
-	if (msg.ratchetEk.length !== 1580)         {
+	if (msg.ratchetEk.length !== 1580) {
 		ws.close(); return;
 	}
 	if (!msg.claim || msg.claim.length === 0 || msg.claim.length > 4000) {
@@ -193,8 +193,8 @@ export function handleEkUpdate(
 	const room = getRoom(rooms, ws.data.roomId);
 	if (!room) return;
 	room.lastActivity = Date.now();
-	ws.data.ratchetEk = msg.ek;       // keep ConnData current for late joiners
-	ws.data.claim     = msg.claim;    // refresh stored claim
+	ws.data.ratchetEk = msg.ek;     // keep ConnData current for late joiners
+	ws.data.claim     = msg.claim;  // refresh stored claim
 	for (const conn of room.conns) {
 		if (conn !== ws)
 			send(conn, { type: 'ek_update_fwd', from: ws.data.username, ek: msg.ek, claim: msg.claim });
@@ -269,7 +269,7 @@ export function handleRekey(
 	if (!room) return;
 	ws.data.ek        = msg.ek;
 	ws.data.ratchetEk = msg.ratchetEk;
-	ws.data.claim     = msg.claim;    // refresh so late joiners see the new identity
+	ws.data.claim     = msg.claim;  // refresh so late joiners see the new identity
 	room.lastActivity = Date.now();
 	send(ws, { type: 'rekeyed' });
 }
