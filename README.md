@@ -207,7 +207,8 @@ bun start:server
 ```
 
 This invokes `bun run src/index.ts` in the `server/` workspace and listens
-on `localhost:$PORT` (default `1337`).
+on `127.0.0.1:$PORT` (default `1337`). Set `HOST=0.0.0.0` to bind all
+interfaces when your reverse proxy lives on another host.
 
 ### Development
 
@@ -218,7 +219,7 @@ connect over `ws://`.
 bun dev:server
 ```
 
-The server starts on `localhost:1337` and reloads on source changes.
+The server starts on `127.0.0.1:1337` and reloads on source changes.
 
 ### Environment Variables
 
@@ -226,6 +227,7 @@ The server starts on `localhost:1337` and reloads on source changes.
 | --------------- | -------- | --------------------------------------------------------------------- |
 | `DOMAIN`        | required | Domain name for Caddy TLS                                             |
 | `PORT`          | `1337`   | Internal port the Bun server listens on                               |
+| `HOST`          | `127.0.0.1` | Interface the Bun server binds. Loopback by default; set `0.0.0.0` to expose directly |
 | `ADMIN_TOKEN`   | unset    | Optional token required to create rooms                               |
 | `ROOM_TTL`      | `24`     | Hours of inactivity before an empty room is deleted. `0` disables TTL |
 | `MAX_ROOM_SIZE` | `20`     | Maximum participants per room. `0` is unlimited                       |

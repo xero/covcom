@@ -363,6 +363,7 @@ still performs no crypto and stores nothing.
 |---|---|---|
 | `DOMAIN` | required | FQDN passed to Caddy |
 | `PORT` | `1337` | Internal port the Bun server listens on |
+| `HOST` | `127.0.0.1` | Interface the Bun server binds; `0.0.0.0` exposes it directly |
 | `ADMIN_TOKEN` | unset | Optional creation-only auth gate |
 | `ROOM_TTL` | `24` | Hours of inactivity before room deletion; `0` = never |
 | `MAX_ROOM_SIZE` | `20` | Max participants per room; `0` = unlimited |

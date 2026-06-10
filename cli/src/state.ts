@@ -378,7 +378,7 @@ function doJoin(
 	username: string,
 	isReconnect = false,
 ): void {
-	const dns = invite.dns ?? 'localhost:1337';
+	const dns = invite.dns ?? '127.0.0.1:1337';
 	if (!isReconnect) resetEvents();
 	_authSettled = false;
 	const ws = new WS(wsUrl(dns));

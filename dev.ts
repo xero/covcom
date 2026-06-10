@@ -13,7 +13,7 @@
  */
 
 const port  = process.env.PORT ?? '1337';
-const relay = `localhost:${port}`;
+const relay = `127.0.0.1:${port}`;
 
 const procs = [
 	Bun.spawn(['bun', 'run', 'dev:server'], {
