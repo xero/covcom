@@ -13,9 +13,10 @@ COPY server/package.json ./server/
 RUN mkdir -p cli && echo '{"name":"@covcom/cli","private":true}' > cli/package.json
 RUN bun i --ignore-scripts
 
-# Copy source
+# Copy source (web/build.ts imports the shared codegen from scripts/)
 COPY lib/ ./lib/
 COPY web/ ./web/
+COPY scripts/ ./scripts/
 
 # Build web client (single inlined index.html, strict-CSP friendly)
 RUN bun run --cwd web build

@@ -1,6 +1,6 @@
 # Changelog
 
-## v3.0.1
+## v3.1.0
 
 This release adds rich-text formatting to messages on both clients and hardens
 every path that renders peer-controlled text. Untrusted display data is now
@@ -13,12 +13,13 @@ cleanly at the door instead of failing as cryptic dropped messages.
 > [!WARNING]
 > **Breaking wire-protocol change**. File transfer drops the single `file`
 > envelope for a `file-begin` frame followed by `file-chunk` frames, and every
-> peer-to-peer relay payload now carries a one-byte tag prefix. Both clients
-> must run v3.0.1. A v3.0.0 client cannot receive files from a v3.0.1 peer, and
-> the tagged relay payload breaks its key handshake outright, so mixed-version
-> rooms fail to connect rather than just failing to share files. Version
-> negotiation now catches this case at join time and returns the client to the
-> start screen with a clear message instead of a cryptic handshake failure.
+> peer-to-peer relay payload now carries a one-byte tag prefix. All
+> participants in a room must run this release or newer. A v3.0.0 client
+> cannot receive files from a newer peer, and the tagged relay payload breaks
+> its key handshake outright, so mixed-version rooms fail to connect rather
+> than just failing to share files. Version negotiation now catches this case
+> at join time and returns the client to the start screen with a clear message
+> instead of a cryptic handshake failure.
 
 ### Security
 

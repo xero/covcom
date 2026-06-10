@@ -252,6 +252,16 @@ the unstaged half. Revert probes and experiments with `cp` backups or
 `git stash` instead. This destroyed unstaged work in two sessions in a
 single day.
 
+### 9. The protocol byte and the major version move together
+
+`PROTOCOL_VERSION` in `lib/src/protocol.ts` names the wire-protocol family,
+and the app's major version tracks it. A wire-incompatible change bumps
+both in the same release, so "covcom vN speaks protocol N" always holds.
+Smaller releases inside a family may still break old clients (the rolling
+support policy declares only the latest release supported, and version
+negotiation rejects skew at join), but they never change the protocol
+byte. If a change forces the byte to move, the release is a major.
+
 ---
 
 ## Code Style

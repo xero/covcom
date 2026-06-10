@@ -2,8 +2,8 @@
 	"name": "@covcom/server",
 	"private": true,
 	"scripts": {
-		"dev": "bun run --watch src/index.ts",
-		"start": "bun run src/index.ts",
+		"dev": "bun build.ts && bun run --watch src/index.ts",
+		"start": "bun build.ts && bun run src/index.ts",
 		"test": "bun build.ts && bun test",
 		"typecheck": "bunx --no-install tsc --noEmit -p tsconfig.json",
 		"bundle": "bun build.ts",
