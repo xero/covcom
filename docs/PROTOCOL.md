@@ -590,5 +590,8 @@ ephemeral use.
 | [USAGE](./USAGE.md) | Client and server applications development and runtime help |
 | [CRYPTOGRAPHY](./CRYPTOGRAPHY.md) | Primitives, KDF chains, wire format, invite encoding |
 | [THREAT-MODEL](./THREAT-MODEL.md) | Principals, adversary tiers, guarantees, non-goals |
+| [LIB-SPEC](./LIB-SPEC.md) | Shared library API, session and identity surface, invites, file transfer, and protocol manifest |
+| [SERVER-SPEC](./SERVER-SPEC.md) | Server wire contract, message handlers, room lifecycle, and configuration |
+| [WEB-SPEC](./WEB-SPEC.md) | Web client architecture, state and session model, views, rendering, and the single-file build |
 | [CLI-SPEC](./CLI-SPEC.md) | CLI architecture, rendering, input, widgets, views, and color system |
 | [TESTING](./TESTING.md) | Test layers, unit and end-to-end suites, cross-client interop, and CI |

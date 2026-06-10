@@ -58,6 +58,12 @@ silently altering it would break peer verification.
 the web client's `<meta>` CSP, where browsers silently ignore it, into a real
 response header.
 
+**Constant-time room-secret comparison.** The relay's `join` handler checks the
+submitted `roomSecret` with `constantTimeEqual` over encoded bytes instead of a
+string `!==`. The 128-bit secret space already made timing-assisted brute force
+impractical over a network; the comparison now leaks nothing, so the oracle is
+closed outright rather than argued away.
+
 ### Added
 
 **Rich text in messages.** Both clients render a markdown subset in message
@@ -166,6 +172,35 @@ session never reads or writes `~/.config/covcom/config.json`. `--anon` skips
 only the saved server and username, leaving them untouched on disk while every
 other setting persists as normal.
 
+**Server command-line flags.** Every server env var now has a matching flag
+(`--port`, `--host`, `--max-room-size`, `--admin-token`, `--room-ttl`), plus
+`--help` and `--version`. Precedence is flag > env var > `.env` > default,
+and flags fail loudly: a bad value or an unknown flag prints usage and exits
+1. The interface is identical from source and from a compiled binary; see
+[USAGE.md](./docs/USAGE.md#command-line-flags).
+
+**Compiled server binaries.** Releases attach standalone server executables
+for five targets, including fully self-contained musl builds for alpine and
+locked-down hosts. Assets ship xz-compressed with a `SHA256SUMS` file and a
+GitHub build-provenance attestation. CI compiles the host binary on every
+push and reruns the entire relay suite against it, so source mode and binary
+mode cannot drift.
+
+**npm distribution.** `npm i -g covcom` installs the CLI and
+`npm i -g covcom-server` installs the relay. Each meta package pulls one
+prebuilt `@covcom/<app>-<platform>` binary as an optional dependency and
+launches it through a small Node shim; the binaries embed their own runtime,
+so Bun is never required, and on linux the shim picks the glibc or musl
+package automatically. Every publish carries sigstore provenance, and the
+outgoing version is deprecated in lockstep with the Docker tombstone, with
+the same reason string.
+
+**Parallel test fanout.** `bun run test` runs all four unit suites
+concurrently with per-suite prefixed output and keeps going past a failing
+suite while still exiting nonzero. `typecheck` fans out per-workspace the
+same way, and the new `test:server:bin` alias compiles the host binary and
+runs the relay suite against it in one command.
+
 ### Changed
 
 **Create and Join screens center vertically.** The create-room and join-room
@@ -216,6 +251,24 @@ that exits on startup, and always builds with `--no-cache` so a rebuild never
 serves a stale web client. The image also points Caddy's storage at the mounted
 `/data` and `/config` volumes, so the TLS certificate and ACME account survive a
 restart.
+
+**Build system reorg.** Root tooling lives in `./scripts/` (`build`, `cicd`,
+`dev`, `npm`, `version`). A thin orchestrator runs version codegen first,
+then dispatches each app's exported `build()`; every app declares its compile
+targets as data, and that one table drives the compile loop, the npm platform
+manifests, and the launcher shim. Generated files (`version.ts`, the CLI
+banner) are gitignored and regenerate on demand, so a fresh clone passes
+`check` with no manual step and version drift is structurally impossible.
+Full-matrix builds clean their own `dist/` first; single-target builds
+overwrite in place.
+
+**Release flow hardening.** The release workflow is dispatch-only and demands
+a non-empty deprecation reason up front. It builds and stages every artifact
+before publishing anything, then pushes registries in reversibility order
+(Docker, then npm with skip-if-published idempotency), and touches the git
+remote dead last, so a failed run is a rerun rather than a revert and
+force-push. The GitHub release is created from the verified tag with the
+binaries and checksums attached.
 
 ### Fixed
 

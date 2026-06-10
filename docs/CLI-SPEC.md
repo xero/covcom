@@ -379,9 +379,12 @@ key behaviors:
 
 - new messages appended to `msgs[]`. each body is sanitized for terminal escape
   injection (ANSI/CSI/OSC sequences, stray control bytes, and the shared
-  bidi/zero-width spoofing characters are stripped), then parsed by the shared
-  markup model and rendered to our own SGR: bold (`*`), italic (`_`),
-  bold+italic (`_*`/`*_`), inline code, and fenced ` ``` ` blocks. peer
+  bidi/zero-width spoofing characters from
+  [LIB-SPEC §sanitize](./LIB-SPEC.md#sanitize) are stripped), then parsed by
+  the shared markup model ([LIB-SPEC §markup](./LIB-SPEC.md#markup)) and
+  rendered to our own SGR: bold (`*`), italic (`_`), bold+italic (`_*`/`*_`),
+  inline code, and fenced ` ``` ` blocks. the web client renders the same token
+  tree to DOM instead; see [WEB-SPEC §rendering](./WEB-SPEC.md#rendering). peer
   usernames and filenames pass through the same sanitizer before they reach the
   buffer, so their visible width drives the prefix and chip math correctly.
 - the sender prefix `name: ` is colored by sender: self uses `peer0`, peers use
@@ -439,8 +442,10 @@ route to scrollView regardless of focus.
 
 ### `Sidebar`
 
-two-mode side pane mirroring the web client's sidebar. either hidden, or
-showing the `event-log` (live session activity feed), or showing `verify` (the
+two-mode side pane mirroring the web client's sidebar
+([WEB-SPEC §sidebar, event log, verify](./WEB-SPEC.md#sidebar-event-log-verify)).
+either hidden, or showing the `event-log` (live session activity feed), or
+showing `verify` (the
 local + per-peer fingerprints as colored swatches + hex). data comes from the
 shared `eventLog.ts` ring buffer (subscribed to in `attach()`) and a
 `getFingerprints()` callback from `state.ts`. width is a percentage of the
@@ -493,7 +498,8 @@ HH:MM:SS  ·  join       peer2 joined
 - auto-scrolls to bottom unless the user has scrolled away from the tail
 
 verify layout: ` You` heading, up to 8 colored 2-col swatches drawn with
-truecolor hex from `FingerprintSurface.swatches[]` (as many as fit the pane
+truecolor hex from `FingerprintSurface.swatches[]`
+([LIB-SPEC §fingerprints](./LIB-SPEC.md#fingerprints), as many as fit the pane
 width), 16-char hex below. blank line, then each peer in the same shape under
 their username heading, or `(no peers yet)` when none have joined. no
 `[verified]` marker; verification is out-of-band, matching the web.
@@ -543,7 +549,9 @@ other key is swallowed. every action closes the modal: `R` ratchets and returns
 focus to the input, `E`/`V` toggle the panel via `toggleMode` and defer to its
 focus move (sidebar on open, input on close), and `Esc` just returns to the
 input. `Ctrl+C` still quits. the modal is also dropped when focus leaves the
-input (Tab, click) or the layout collapses to full-width.
+input (Tab, click) or the layout collapses to full-width. the web client
+reaches the same three actions through its own Escape-opened keys modal; see
+[WEB-SPEC §chat](./WEB-SPEC.md#chat).
 
 ### `FilePicker`
 
@@ -569,7 +577,9 @@ stays open with the typed value intact so the path can be corrected. this guards
 against tab-completion leaving a partial or wrong path that would otherwise be
 transmitted as a 0-byte file.
 
-no file tree. no GUI. just a text input that knows about the filesystem.
+no file tree. no GUI. just a text input that knows about the filesystem. the
+web client attaches through drag-drop and a native file picker instead
+([WEB-SPEC §chat](./WEB-SPEC.md#chat)).
 
 ---
 
@@ -596,7 +606,8 @@ silently otherwise.
 
 the entry view. collects a username and routes to Create or Join. server DNS and
 the optional auth token moved to the Create view, so Landing is just the name and
-the two paths.
+the two paths. the web client folds Landing, Create, and Join into one view with
+three sub-screens; see [WEB-SPEC §landing and join](./WEB-SPEC.md#landing-and-join).
 
 ```
 layout (centered on screen):
@@ -681,7 +692,8 @@ tab order: username → path → browse → invite → join → cancel
 `inviteArea` is the single source the invite parses from. Browse reads the file
 at `pathInput` into `inviteArea`; a `prefillPath` is loaded into it on mount. Join
 Room requires a username and non-empty invite text, then parses it with
-`parseArmoredInvite`, surfacing any parse or read error inline. there is no
+`parseArmoredInvite` ([LIB-SPEC §invites](./LIB-SPEC.md#invites)), surfacing
+any parse or read error inline. there is no
 separate parse step and no disabled-until-loaded button; parsing happens on the
 Join Room click. Cancel returns to Landing.
 
@@ -721,8 +733,10 @@ tab order: copyBtn → downloadBtn → cancelBtn
 the QR and table are inert (not focusable). Cancel returns to Landing.
 ```
 
-**crypto table:** rows come from `CRYPTO_TABLE` in `lib/src/protocol.ts`, the
-same array the web client's definition list maps over, so the two cannot drift.
+**crypto table:** rows come from `CRYPTO_TABLE`
+([LIB-SPEC §protocol manifest](./LIB-SPEC.md#protocol-manifest)), the same
+array the web client's definition list maps over
+([WEB-SPEC §waiting](./WEB-SPEC.md#waiting)), so the two cannot drift.
 the cipher name, KEM name, and the `protocol format` byte derive from the
 `PROTOCOL` manifest; the rest are curated strings. the format byte is covcom's
 own wire-protocol version (`PROTOCOL_VERSION`), a hand-bumped integer kept
@@ -732,13 +746,14 @@ the only ones in the app, per the goals above. see [PROTOCOL](./PROTOCOL.md) for
 the versioning system.
 
 **QR code:** a scannable QR of the same armored invite, encoded by the shared
-`qrMatrix` (`lib/src/qr.ts`) and rendered by `qrHalfBlock` (`tui/qr.ts`), which
+`qrMatrix` ([LIB-SPEC §qr](./LIB-SPEC.md#qr)) and rendered by `qrHalfBlock`
+(`tui/qr.ts`), which
 packs two module rows per text row with half-block glyphs and adds a quiet zone.
 it renders forced black-on-white regardless of theme for scanner contrast. it
 sits one blank row above the table, and the whole centered block recomputes to
-include it. it is omitted when the invite is too large to encode (matching the
-web client hiding its canvas) or when it would not fit the terminal, falling back
-to the table-only layout.
+include it. it is omitted when the invite is too large to encode (the web client omits its
+QR pane the same way; see [WEB-SPEC §waiting](./WEB-SPEC.md#waiting)) or when it
+would not fit the terminal, falling back to the table-only layout.
 
 Example:
 ```
@@ -832,7 +847,8 @@ tab order: chatInput → sendBtn → attachBtn → rotateBtn → msgArea → sid
   being sent. recognized commands: `/exit` (`/quit`, `/q`, `/part`) quit,
   `/ratchet` rotate keys, `/events` toggle event log, `/verify` toggle verify
   pane, `/help` (`/?`) print the list. unknown slash inputs surface a system
-  message; the text is not transmitted.
+  message; the text is not transmitted. the web client accepts the identical
+  command set ([WEB-SPEC §chat](./WEB-SPEC.md#chat)).
 
 **scrollView focus:**
 - when msgArea is focused, up/down/pgup/pgdn scroll the chat
@@ -1103,7 +1119,8 @@ waiting, and chat without re-registering per phase. the cleanup runs in order:
 leaving the alternate buffer restores whatever filled the screen before covcom
 launched, so the exit is clean with no leftover frame and the user's scrollback
 stays intact. a full `\x1bc` reset is deliberately avoided because it would also
-wipe that scrollback.
+wipe that scrollback. the web client's analogue is its `beforeunload` teardown;
+see [WEB-SPEC §key hygiene](./WEB-SPEC.md#key-hygiene).
 
 > [!IMPORTANT]
 > Every exit call site must funnel through this path. Do not call
@@ -1143,4 +1160,7 @@ wipe that scrollback.
 | [PROTOCOL](./PROTOCOL.md) | Cipher, chains, ratchet, group model, session lifecycle, server role |
 | [CRYPTOGRAPHY](./CRYPTOGRAPHY.md) | Primitives, KDF chains, wire format, invite encoding |
 | [THREAT-MODEL](./THREAT-MODEL.md) | Principals, adversary tiers, guarantees, non-goals |
+| [LIB-SPEC](./LIB-SPEC.md) | Shared library API, session and identity surface, invites, file transfer, and protocol manifest |
+| [SERVER-SPEC](./SERVER-SPEC.md) | Server wire contract, message handlers, room lifecycle, and configuration |
+| [WEB-SPEC](./WEB-SPEC.md) | Web client architecture, state and session model, views, rendering, and the single-file build |
 | [TESTING](./TESTING.md) | Test layers, unit and end-to-end suites, cross-client interop, and CI |

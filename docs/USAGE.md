@@ -88,9 +88,26 @@ Cryptographic primitives are provided by [leviathan-crypto](https://github.com/x
 
 ## requirements
 
-- [Bun](https://bun.sh) v1.1 or later
-- [Docker](https://docker.com) for the containerized server
-- A modern browser (Chrome, Firefox, or Safari) for the web client
+Nothing needs [Bun](https://bun.sh) at runtime. Every component installs
+manually (a release binary, the Docker image, or the single-file
+`covcom.html` web page) or from the npm registry with any JS package
+manager. Bun is required only to develop or build from source.
+
+| Component  | Channel                      | Requires                                       |
+| ---------- | ---------------------------- | ---------------------------------------------- |
+| Web client | hosted page                  | a modern browser (Chrome, Firefox, or Safari)  |
+| Web client | `covcom.html` release asset  | a modern browser; open from disk or any static host |
+| CLI        | release binary               | nothing                                        |
+| CLI        | `npm i -g covcom`            | Node 18 or newer, or Bun (launcher shim only)  |
+| Server     | release binary               | nothing                                        |
+| Server     | Docker image                 | [Docker](https://docker.com)                   |
+| Server     | `npm i -g covcom-server`     | Node 18 or newer, or Bun (launcher shim only)  |
+| All of it  | source: develop, build, test | Bun v1.3.14 or later (the `packageManager` pin) |
+
+The release binaries and the npm platform packages embed the runtime they
+were compiled with, which is why the shim's Node is the only requirement on
+the npm rows. See [SECURITY-POLICY](../SECURITY.md) for how that frozen
+runtime is patched.
 
 ---
 
@@ -117,7 +134,7 @@ npm i -g covcom-server  # relay server
 
 ### run modes
 
-The server ships three ways. Same code, same flags and env vars, same wire
+The server ships four ways. Same code, same flags and env vars, same wire
 contract; the rows differ only in how you launch it and how it picks up
 security fixes.
 
@@ -128,7 +145,7 @@ security fixes.
 | npm    | `npm i -g covcom-server`              | node 18+ | updating the package each release        |
 | docker | `bun run:docker` or a published image | docker   | pulling the rebuilt image each release   |
 
-All three read the same configuration; see
+Every mode reads the same configuration; see
 [command-line flags](#command-line-flags) for the flags, the env vars, and
 the precedence between them.
 
@@ -264,8 +281,9 @@ on `localhost:$PORT` (default `1337`).
 ### standalone binary
 
 Every release attaches compiled server binaries, so a deployment is one
-downloaded file: no bun, no node, no npm. Assets are xz-compressed and
-covered by a `SHA256SUMS` file and a GitHub build-provenance attestation.
+downloaded file: no bun, no node, no npm. Binaries are xz-compressed; every
+asset, including the uncompressed `covcom.html` web client, is covered by a
+`SHA256SUMS` file and a GitHub build-provenance attestation.
 
 | Asset                            | Target                       |
 |----------------------------------|------------------------------|
@@ -274,9 +292,10 @@ covered by a `SHA256SUMS` file and a GitHub build-provenance attestation.
 | `covcom-server-linux-arm64`      | Linux arm64, glibc           |
 | `covcom-server-linux-arm64-musl` | Linux arm64, musl (alpine)   |
 | `covcom-server-macos-arm64`      | macOS Apple Silicon          |
+| `covcom.html`                    | the web client, any browser  |
 
-Verify the compressed asset before unpacking, since the checksums and the
-attestation cover the `.xz`:
+Verify a compressed asset before unpacking, since the checksums and the
+attestation cover the `.xz`; `covcom.html` verifies as downloaded:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
@@ -450,6 +469,13 @@ in Safari/WebKit under a strict CSP (see
 [leviathan-crypto/docs/csp.md](https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md)).
 Serve the file from any static host with no build step, or let
 `bun build:docker` bake it into the image.
+
+**Release asset:**
+
+Every release attaches this same inlined page as `covcom.html`, checksummed
+and attested next to the binaries. No build step at all: download it, open
+it straight from disk (`file://`) or serve it from any static host, and
+point the create screen at your relay.
 
 **Preview the production build:**
 
@@ -1066,5 +1092,8 @@ docs/      Project documentation
 | [PROTOCOL](./PROTOCOL.md) | Cipher, chains, ratchet, group model, session lifecycle, server role |
 | [CRYPTOGRAPHY](./CRYPTOGRAPHY.md) | Primitives, KDF chains, wire format, invite encoding |
 | [THREAT-MODEL](./THREAT-MODEL.md) | Principals, adversary tiers, guarantees, non-goals |
+| [LIB-SPEC](./LIB-SPEC.md) | Shared library API, session and identity surface, invites, file transfer, and protocol manifest |
+| [SERVER-SPEC](./SERVER-SPEC.md) | Server wire contract, message handlers, room lifecycle, and configuration |
+| [WEB-SPEC](./WEB-SPEC.md) | Web client architecture, state and session model, views, rendering, and the single-file build |
 | [CLI-SPEC](./CLI-SPEC.md) | CLI architecture, rendering, input, widgets, views, and color system |
 | [TESTING](./TESTING.md) | Test layers, unit and end-to-end suites, cross-client interop, and CI |

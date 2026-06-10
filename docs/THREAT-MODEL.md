@@ -252,7 +252,9 @@ adversary ([§8.11][S811]).
 
 **Enumeration resistance.** The `roomSecret` is 16 server-generated random
 bytes. The 2^128 space makes brute-force room discovery computationally
-infeasible for A₁.
+infeasible for A₁. The server compares submitted secrets with a
+constant-time equality check, so A₁ gains no timing oracle to narrow that
+search.
 
 **Session anonymity.** The server holds no persistent identity material.
 Each session uses a fresh keypair. There is no long-term identity key that
@@ -358,5 +360,8 @@ cryptographic attack and is outside this model.
 | [USAGE](./USAGE.md) | Client and server applications development and runtime help |
 | [PROTOCOL](./PROTOCOL.md) | Cipher, chains, ratchet, group model, session lifecycle, server role |
 | [CRYPTOGRAPHY](./CRYPTOGRAPHY.md) | Primitives, KDF chains, wire format, invite encoding |
+| [LIB-SPEC](./LIB-SPEC.md) | Shared library API, session and identity surface, invites, file transfer, and protocol manifest |
+| [SERVER-SPEC](./SERVER-SPEC.md) | Server wire contract, message handlers, room lifecycle, and configuration |
+| [WEB-SPEC](./WEB-SPEC.md) | Web client architecture, state and session model, views, rendering, and the single-file build |
 | [CLI-SPEC](./CLI-SPEC.md) | CLI architecture, rendering, input, widgets, views, and color system |
 | [TESTING](./TESTING.md) | Test layers, unit and end-to-end suites, cross-client interop, and CI |

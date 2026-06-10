@@ -8,9 +8,10 @@ Read it in full before starting any work.
 ## What This Project Is
 
 COVCOM is a post-quantum end-to-end encrypted group chat application built on
-[leviathan-crypto](https://github.com/xero/leviathan-crypto). It ships as
-three artifacts: a Docker container (server + bundled web client), a
-standalone web page, and a compiled Bun CLI binary.
+[leviathan-crypto](https://github.com/xero/leviathan-crypto). It ships as a
+Docker container (server + bundled web client), a standalone web page,
+compiled Bun CLI and server binaries, and npm packages (`covcom`,
+`covcom-server`) that wrap those binaries.
 
 The server is a dumb WebSocket broker. It knows room IDs and active
 connections. It stores no messages, no keys, and no user data. All
@@ -21,6 +22,9 @@ the crypto protocol, the session lifecycle, and the group messaging model in
 narrative form. Byte-level wire format and invite encoding live in
 `./docs/CRYPTOGRAPHY.md`. If something in your task file conflicts with
 either, the doc wins; flag the conflict rather than resolving it silently.
+Per-app internals specs live in `./docs/LIB-SPEC.md`, `./docs/SERVER-SPEC.md`,
+`./docs/WEB-SPEC.md`, and `./docs/CLI-SPEC.md`; read the one for the app you
+are touching.
 
 For implementation specifics like method signatures, return shapes, and error
 conditions, the leviathan-crypto TypeScript type declarations are the ground
@@ -41,7 +45,8 @@ lib/                shared crypto session layer (consumed by web and cli)
 scripts/            root tooling: build orchestrator, version codegen,
                     npm staging, release versionbump, dev launcher
 docker/             Dockerfile, Caddyfile template, entrypoint
-docs/               protocol, cryptography reference, threat model, CLI design
+docs/               protocol, cryptography reference, threat model, usage,
+                    testing, and the per-app specs (lib, server, web, cli)
 package.json        Bun workspace root
 AGENTS.md           this file
 ```
@@ -56,9 +61,11 @@ Use these shorthands from the repository root:
 
 ```sh
 bun i                  # install all workspaces. always run first
-bun dev:server         # run server in development mode
+bun dev                # run relay + web client together, prefilled to match
+bun dev:server         # run server in development mode (watch)
 bun dev:web            # run web client dev server (Vite)
-bun start:server       # build server
+bun dev:cli            # run the CLI from source
+bun start:server       # run server from source, no watch (production no-docker mode)
 bun build:web          # build standalone web client
 bun build:cli          # compile CLI binary for current platform
 bun build:cli:all      # compile CLI binaries for all target platforms
@@ -66,10 +73,17 @@ bun build:server       # compile server binary for current platform
 bun build:server:all   # compile server binaries for all release targets
 bun bake               # web SPA + every binary target + npm staging
 bun run test           # all unit suites in parallel, failures aggregated
+bun run test:all       # unit fanout + cross-client interop + Playwright e2e
 bun test:server        # server tests only
 bun test:lib           # shared lib tests only
+bun test:web           # web client tests only
+bun test:cli           # CLI tests only
 bun test:server:bin    # compile host server binary, run server suite against it
+bun test:cross         # web <-> CLI interop over a real relay
+bun lint               # eslint report
 bun fix                # eslint autofix. run before marking any task done
+bun typecheck          # codegen, then tsc --noEmit across every workspace
+bun check              # codegen + lint + typecheck + bake + test:all (release gate)
 bun build:docker       # build Docker image
 bun run:docker         # run container locally for integration testing
 ```
@@ -78,9 +92,9 @@ bun run:docker         # run container locally for integration testing
 failures. One broken suite does not stop the others, and the exit code is
 still nonzero. Each output line carries a `@covcom/<app>:test |` prefix. The
 per-app `test:<app>` aliases remain the single-suite loop for focused work.
-The fanout flags (`--parallel`, `--no-exit-on-error`, `--workspaces`,
-`--if-present`) require the bun version pinned in `packageManager`; do not
-run the suite with an older bun.
+The fanout flags (`--parallel`, `--no-exit-on-error`, and `--filter` on
+`test`; `--workspaces` and `--if-present` on `typecheck`) require the bun
+version pinned in `packageManager`; do not run the suite with an older bun.
 
 ### Build System
 
@@ -356,7 +370,8 @@ expected chain seeds have been received. It does not fire anywhere else.
 - `cli/src/tui/` contains:
   - infrastructure: `screen.ts`, `keys.ts`, `focus.ts`, `widgets.ts`
     (TextInput, TextArea, Button, ScrollView, Sidebar, Modal)
-  - rendering implementation: `views.ts`
+  - rendering implementation: `views.ts`, plus `qr.ts` (the half-block
+    terminal renderer for the shared `qrMatrix` encoder)
   - per-screen façades that re-export from `views.ts`: `landing.ts`,
     `waiting.ts`, `join.ts`, `chat.ts`
   - generated asset: `banner.ts` (rebuilt by `build.ts`; do not edit by
@@ -375,7 +390,7 @@ expected chain seeds have been received. It does not fire anywhere else.
   exit-signal handlers.
 - The public interface between `cli/src/state.ts` and the TUI is fixed.
   `state.ts` imports through the per-screen façades:
-  - `renderLanding` from `tui/landing.ts`
+  - `renderLanding` and `renderCreate` from `tui/landing.ts`
   - `renderWaiting` from `tui/waiting.ts`
   - `renderJoin` from `tui/join.ts`
   - `renderChat`, `appendMessage`, `appendFile`, `showModal` from `tui/chat.ts`
@@ -386,7 +401,9 @@ expected chain seeds have been received. It does not fire anywhere else.
 - Config is stored at `~/.config/covcom/config.json`. Fields: `server`,
   `username`, `copyCmd`, `theme`, `showSystem`, `sidebar`, `icons`. No key
   material.
-- The CLI accepts `covcom --join <path>` as a flag. It also
+- The CLI accepts `covcom --join <path>` (`-j`), plus two config-privacy
+  flags: `--clean` (`-x`, ignore the config file entirely, no read or write)
+  and `--anon` (`-a`, skip only the saved server and username). It also
   accepts pasted armored text at the interactive join prompt.
 
 **Room invite format**
@@ -460,13 +477,18 @@ still performs no crypto and stores nothing.
 | `ROOM_TTL` | `24` | Hours of inactivity before room deletion; `0` = never |
 | `MAX_ROOM_SIZE` | `20` | Max participants per room; `0` = unlimited |
 
+Every variable except `DOMAIN` (Caddy is Docker-only) has a matching server
+command-line flag in `server/src/flags.ts`. Precedence is flag > env var >
+default.
+
 ---
 
 ## Definition of Done
 
 A task is complete when **all** of the following are true:
 
-1. `bun test` passes for all packages touched by the task
+1. `bun run test` passes for all packages touched by the task (never bare
+   `bun test`; see Build & Test above)
 2. `bun fix` has been run with no remaining lint errors
 3. No existing tests were modified to make new tests pass
 4. The implementation matches `./docs/PROTOCOL.md`, not just the task file

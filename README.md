@@ -102,9 +102,26 @@ Open https://chat.example.com in a browser. Create a room, share the invite, & c
 
 ## Requirements
 
-- [Bun](https://bun.sh) v1.1 or later
-- [Docker](https://docker.com) for the containerized server
-- A modern browser (Chrome, Firefox, or Safari) for the web client
+Nothing needs [Bun](https://bun.sh) at runtime. Every component installs
+manually (a release binary, the Docker image, or the single-file
+`covcom.html` web page) or from the npm registry with any JS package
+manager. Bun is required only to develop or build from source.
+
+| Component  | Channel                      | Requires                                       |
+| ---------- | ---------------------------- | ---------------------------------------------- |
+| Web client | hosted page                  | a modern browser (Chrome, Firefox, or Safari)  |
+| Web client | `covcom.html` release asset  | a modern browser; open from disk or any static host |
+| CLI        | release binary               | nothing                                        |
+| CLI        | `npm i -g covcom`            | Node 18 or newer, or Bun (launcher shim only)  |
+| Server     | release binary               | nothing                                        |
+| Server     | Docker image                 | [Docker](https://docker.com)                   |
+| Server     | `npm i -g covcom-server`     | Node 18 or newer, or Bun (launcher shim only)  |
+| All of it  | source: develop, build, test | Bun v1.3.14 or later (the `packageManager` pin) |
+
+The release binaries and the npm platform packages embed the runtime they
+were compiled with, which is why the shim's Node is the only requirement on
+the npm rows. See [SECURITY-POLICY](./SECURITY.md) for how that frozen
+runtime is patched.
 
 ---
 
@@ -226,9 +243,9 @@ interfaces when your reverse proxy lives on another host.
 ### Standalone binary
 
 Every release also attaches compiled server and CLI binaries (server:
-Linux x64/arm64 in glibc and musl flavors, plus macOS arm64) next to the
-Docker images. One downloaded file, no bun install, same flags and env
-vars as source mode. See
+Linux x64/arm64 in glibc and musl flavors, plus macOS arm64) and the
+single-file web client as `covcom.html`, next to the Docker images. One
+downloaded file, no bun install, same flags and env vars as source mode. See
 [USAGE.md](./docs/USAGE.md#standalone-binary) for verification and
 target details, or compile your own with `bun build:server`.
 
@@ -273,6 +290,12 @@ The server starts on `127.0.0.1:1337` and reloads on source changes.
 time. You do not need `ADMIN_TOKEN` set to run a private server; the
 `roomSecret` alone prevents uninvited joins.
 
+Every variable except `DOMAIN` (Caddy is Docker-only) has a matching
+command-line flag (`--port`, `--host`, `--max-room-size`, `--admin-token`,
+`--room-ttl`), plus `--help` and `--version`. Flags beat env vars. See
+[USAGE.md](./docs/USAGE.md#command-line-flags) for the full table and the
+`ps`-visibility caveat on `--admin-token`.
+
 ---
 
 ## Web Client
@@ -284,7 +307,7 @@ bun dev:web
 ```
 
 Open `http://localhost:5173`. The create screen prefills the server with the
-host serving the page (`localhost:5173`), which is _not_ the relay in dev — edit
+host serving the page (`localhost:5173`), which is _not_ the relay in dev. Edit
 it to `localhost:1337`, or use the combined launcher below which prefills it for
 you.
 
@@ -296,8 +319,8 @@ bun dev
 
 Starts the relay and the web client together. `PORT` (default `1337`) drives the
 relay and is handed to the web client as the prefilled server address, so the
-create screen targets the right relay with no edit. Ctrl+C — or either process
-exiting — shuts both down.
+create screen targets the right relay with no edit. Ctrl+C, or either process
+exiting, shuts both down.
 
 **Static build:**
 
@@ -310,7 +333,9 @@ crypto, including chunked encrypted file transfer, runs as WASM on the main
 thread, so the policy is the strictest possible, `default-src 'none'`, and works
 in Safari/WebKit under a strict CSP (see
 [leviathan-crypto/docs/csp.md](https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md)).
-Serve the file from any static host with no build step, or let
+Serve the file from any static host with no build step, download the same
+page as `covcom.html` from any
+[release](https://github.com/xero/covcom/releases), or let
 `bun build:docker` bake it into the image.
 
 **Preview the production build:**
@@ -549,6 +574,9 @@ Deeper references for users, auditors, contributors, and the curious.
 | [PROTOCOL](./docs/PROTOCOL.md)                        | Cipher, chains, ratchet, group model, session lifecycle, server role  |
 | [CRYPTOGRAPHY](./docs/CRYPTOGRAPHY.md)                | Primitives, KDF chains, wire format, invite encoding                  |
 | [THREAT-MODEL](./docs/THREAT-MODEL.md)                | Principals, adversary tiers, guarantees, non-goals                    |
+| [LIB-SPEC](./docs/LIB-SPEC.md)                        | Shared library API, session and identity surface, invites, & files    |
+| [SERVER-SPEC](./docs/SERVER-SPEC.md)                  | Server wire contract, message handlers, room lifecycle, & config      |
+| [WEB-SPEC](./docs/WEB-SPEC.md)                        | Web client architecture, state, session, views, & single-file build   |
 | [CLI-SPEC](./docs/CLI-SPEC.md)                        | CLI architecture, rendering, input, widgets, views, & color system    |
 | [TESTING](./docs/TESTING.md)                          | Test layers, unit and end-to-end suites, cross-client interop, and CI   |
 | [SECURITY-POLICY](./SECURITY.md)                      | Supported versions, disclosure policy, cryptographic foundation       |
@@ -567,19 +595,25 @@ Deeper references for users, auditors, contributors, and the curious.
 bun run test
 ```
 
-This runs `test:server`, `test:lib`, `test:web`, `test:cli`, and the
-Playwright `test:e2e` suite in sequence, each via `bun run`. Note the
-`bun run` prefix: a bare `bun test` invokes Bun's built-in runner with the
-script name treated as a path filter, not the package script. The e2e run
-needs Chromium installed once (see below).
+This fans out the four workspace unit suites (`server`, `lib`, `web`, `cli`)
+in parallel and aggregates failures: one broken suite does not stop the
+others, and each output line carries a `@covcom/<app>:test |` prefix. Note
+the `bun run` prefix: a bare `bun test` invokes Bun's built-in runner with
+the script name treated as a path filter, not the package script.
 
-**Run tests for a single package:**
+The end-to-end suites run separately. `bun run test:all` chains everything:
+the unit fanout, the cross-client interop test, and the Playwright e2e suite
+(which needs the browsers installed once, see below).
+
+**Run a single suite:**
 
 ```sh
-bun run test:server  # server WebSocket broker
-bun run test:lib     # shared crypto session layer
-bun run test:web     # web client (store, session, bridge, views) via happy-dom
-bun run test:cli     # CLI widgets, key parsing, state machine, event log
+bun run test:server      # server WebSocket broker
+bun run test:lib         # shared crypto session layer
+bun run test:web         # web client (store, session, bridge, views) via happy-dom
+bun run test:cli         # CLI widgets, key parsing, state machine, event log
+bun run test:server:bin  # compile the host server binary, run the server suite against it
+bun run test:cross       # web ↔ CLI interop over a real relay (compiles the CLI first)
 ```
 
 **Run the end-to-end test on its own (Playwright):**
@@ -589,11 +623,13 @@ bunx playwright install --with-deps chromium firefox webkit  # one time
 bun run test:e2e
 ```
 
-`test:e2e` auto-starts the Bun broker and the Vite dev server, then drives real
-browser contexts through the full flow: a two-party encrypted chat (create →
-invite → join → exchange messages → verify fingerprints) plus the file-attachment
-round-trip and stress sweeps, which push encrypted attachments up to 180 MiB
-through chunked streaming.
+`test:e2e` auto-starts the Bun broker and a static server hosting a fresh
+production build of the single-file bundle, then drives real browser contexts
+(Chromium, Firefox, and WebKit) through the full flow: a two-party encrypted
+chat (create → invite → join → exchange messages → verify fingerprints), the
+slash commands, and file-attachment round-trips and stress sweeps, which push
+encrypted attachments up to 180 MiB through chunked streaming under the
+production CSP.
 
 **Lint:**
 
@@ -629,8 +665,9 @@ publish-ready npm package trees under `dist/npm/`.
 bun check
 ```
 
-Runs codegen, `lint`, `typecheck`, `bake`, and the full test suite in one
-pass. This is the single gate to validate a release candidate. Codegen runs
+Runs codegen, `lint`, `typecheck`, `bake`, and `test:all` (the unit fanout,
+cross-client interop, and e2e) in one pass. This is the single gate to
+validate a release candidate. Codegen runs
 first so a fresh clone passes with no manual step: the generated
 `src/version.ts` modules and the CLI banner are gitignored, never
 committed.
@@ -638,11 +675,11 @@ committed.
 **Repository layout:**
 
 ```
-server/    WebSocket broker (Bun)
+server/    WebSocket broker
 lib/       Shared crypto session layer
-web/       Vite + vanilla TS web client
-cli/       Custom zero-dependency TUI
-scripts/   Root tooling: build orchestrator, npm staging, release scripts
+web/       Vanilla SPA web client
+cli/       Custom zero-dependency TUI client
+scripts/   Dev tooling: build orchestrator, release scripts
 docker/    Dockerfile, Caddyfile template, entrypoint
 docs/      Project documentation / Wiki sources
 ```
