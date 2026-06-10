@@ -252,8 +252,8 @@ serves a stale web client. The image also points Caddy's storage at the mounted
 `/data` and `/config` volumes, so the TLS certificate and ACME account survive a
 restart.
 
-**Build system reorg.** Root tooling lives in `./scripts/` (`build`, `cicd`,
-`dev`, `npm`, `version`). A thin orchestrator runs version codegen first,
+**Build system reorg.** Root tooling lives in `./scripts/` (`build`, `dev`,
+`stage`, `tombstone`, `version`). A thin orchestrator runs version codegen first,
 then dispatches each app's exported `build()`; every app declares its compile
 targets as data, and that one table drives the compile loop, the npm platform
 manifests, and the launcher shim. Generated files (`version.ts`, the CLI

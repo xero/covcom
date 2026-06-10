@@ -20,7 +20,7 @@
 
 import { join } from 'node:path';
 import { bundleVersion } from './version.ts';
-import { hostSuffix, type Target } from './npm.ts';
+import { hostSuffix, type Target } from './stage.ts';
 
 const ROOT = join(import.meta.dir, '..');
 const APPS = ['cli', 'server', 'web'] as const;

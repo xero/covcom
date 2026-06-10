@@ -14,19 +14,31 @@
   unreadable and secure against future cryptanalysis.
 ```
 
+**Using COVCOM**
+
 | Document                                              | Purpose                                                               |
 | ----------------------------------------------------- | --------------------------------------------------------------------- |
-| [USAGE](USAGE.md)                                     | Client and server applications development and runtime help           |
-| [PROTOCOL](PROTOCOL.md)                               | Cipher, chains, ratchet, group model, session lifecycle, server role  |
-| [CRYPTOGRAPHY](CRYPTOGRAPHY.md)                       | Primitives, KDF chains, wire format, invite encoding                  |
-| [THREAT-MODEL](THREAT-MODEL.md)                       | Principals, adversary tiers, guarantees, non-goals                    |
-| [LIB-SPEC](LIB-SPEC.md)                               | Shared library API, session and identity surface, invites, & files    |
-| [SERVER-SPEC](SERVER-SPEC.md)                         | Server wire contract, message handlers, room lifecycle, & config      |
-| [WEB-SPEC](WEB-SPEC.md)                               | Web client architecture, state, session, views, & single-file build   |
-| [CLI-SPEC](CLI-SPEC.md)                               | CLI architecture, rendering, input, widgets, views, & color system    |
-| [TESTING](TESTING.md)                                 | Test layers, unit and end-to-end suites, cross-client interop, and CI |
+| [USAGE](USAGE.md)                                     | Install, configure, and run the server and clients; developer tooling |
 | [SECURITY-POLICY](../SECURITY.md)                     | Supported versions, disclosure policy, cryptographic foundation       |
 | [DIAGRAM](https://xero.github.io/covcom/diagram.html) | Animated protocol visualization, session establishment, epochs, fingerprinting, file attachments, ratchets, and reconnect ceremonies |
+
+**Design**
+
+| Document                        | Purpose                                                               |
+| ------------------------------- | --------------------------------------------------------------------- |
+| [PROTOCOL](PROTOCOL.md)         | Cipher, chains, ratchet, group model, session lifecycle, server role  |
+| [CRYPTOGRAPHY](CRYPTOGRAPHY.md) | Primitives, KDF chains, wire format, invite encoding                  |
+| [THREAT-MODEL](THREAT-MODEL.md) | Principals, adversary tiers, guarantees, non-goals                    |
+
+**Internals**
+
+| Document                      | Purpose                                                               |
+| ----------------------------- | --------------------------------------------------------------------- |
+| [LIB-SPEC](LIB-SPEC.md)       | Shared library API, session and identity surface, invites, & files    |
+| [SERVER-SPEC](SERVER-SPEC.md) | Server wire contract, message handlers, room lifecycle, & config      |
+| [WEB-SPEC](WEB-SPEC.md)       | Web client architecture, state, session, views, & single-file build   |
+| [CLI-SPEC](CLI-SPEC.md)       | CLI architecture, rendering, input, widgets, views, & color system    |
+| [TESTING](TESTING.md)         | Test layers, unit and end-to-end suites, cross-client interop, and CI |
 
 ## Quickstart
 

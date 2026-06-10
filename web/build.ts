@@ -7,7 +7,7 @@
 
 import { join } from 'node:path';
 import { bundleVersion } from '../scripts/version.ts';
-import type { Target } from '../scripts/npm.ts';
+import type { Target } from '../scripts/stage.ts';
 
 const DIR = import.meta.dir;
 

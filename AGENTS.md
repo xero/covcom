@@ -42,8 +42,8 @@ server/             Bun WebSocket server
 web/                Vite + vanilla TS web client
 cli/                compiled Bun binary, custom zero-dependency TUI
 lib/                shared crypto session layer (consumed by web and cli)
-scripts/            root tooling: build orchestrator, version codegen,
-                    npm staging, release versionbump, dev launcher
+scripts/            root tooling: build orchestrator, dev launcher,
+                    npm staging, release tombstone, version codegen
 docker/             Dockerfile, Caddyfile template, entrypoint
 docs/               protocol, cryptography reference, threat model, usage,
                     testing, and the per-app specs (lib, server, web, cli)

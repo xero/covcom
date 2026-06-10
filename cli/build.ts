@@ -12,7 +12,7 @@ import { statSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { bundleVersion } from '../scripts/version.ts';
-import { hostSuffix, pickTargets, stageNpm, type Target } from '../scripts/npm.ts';
+import { hostSuffix, pickTargets, stageNpm, type Target } from '../scripts/stage.ts';
 
 const DIR = import.meta.dir;
 

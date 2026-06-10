@@ -1,15 +1,16 @@
 #!/usr/bin/env bun
 /**
- * cicd.ts - release tooling for covcom, run with Bun.
+ * tombstone.ts - release version tombstoning for covcom, run with Bun.
  *
  * Usage:
- *   bun scripts/cicd.ts --versionbump <major|minor|patch> <reason>
+ *   bun scripts/tombstone.ts --versionbump <major|minor|patch> <reason>
  *
- * versionbump bumps package.json via `npm version --no-git-tag-version`, then in
- * SECURITY.md and docker/DOCKERHUB.md demotes the current "Latest version" row
- * to deprecated (stamping <reason> as its new reason) and inserts a fresh
- * "Latest version" supported row for the just-bumped version. It performs no git
- * actions and leaves the working tree dirty for manual review.
+ * The bump itself is a single `npm version --no-git-tag-version` call; the
+ * script exists for the tombstone work: in SECURITY.md and docker/DOCKERHUB.md
+ * it demotes the current "Latest version" row to deprecated (stamping <reason>
+ * as its new reason) and inserts a fresh "Latest version" supported row for
+ * the just-bumped version. It performs no git actions and leaves the working
+ * tree dirty for manual review.
  */
 
 import { join } from 'node:path';
@@ -24,12 +25,12 @@ const SUPPORTED_MARK = '✓ supported';
 const VERSION_RE = /\[v?(\d+\.\d+\.\d+)\]/;
 
 function die(msg: string, code = 1): never {
-	process.stderr.write(`cicd: ${msg}\n`);
+	process.stderr.write(`tombstone: ${msg}\n`);
 	process.exit(code);
 }
 
 function usage(): never {
-	process.stderr.write('usage: bun scripts/cicd.ts --versionbump <major|minor|patch> <reason>\n');
+	process.stderr.write('usage: bun scripts/tombstone.ts --versionbump <major|minor|patch> <reason>\n');
 	process.exit(1);
 }
 
@@ -108,9 +109,9 @@ async function versionbump(bumpType: string, reason: string): Promise<void> {
 
 	for (const { file, text } of docs) {
 		await Bun.write(file, bumpVersionTable(text, oldVersion, newVersion, reason));
-		process.stdout.write(`cicd: updated ${file}\n`);
+		process.stdout.write(`tombstone: updated ${file}\n`);
 	}
-	process.stdout.write(`cicd: bumped ${oldVersion} -> ${newVersion} (working tree left dirty, no git actions taken)\n`);
+	process.stdout.write(`tombstone: bumped ${oldVersion} -> ${newVersion} (working tree left dirty, no git actions taken)\n`);
 }
 
 export {};

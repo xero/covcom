@@ -42,7 +42,7 @@ jobs:
     timeout-minutes: 30
     if: github.ref == 'refs/heads/main'
     steps:
-      # cicd.ts stamps the reason into the SECURITY.md and DOCKERHUB.md
+      # tombstone.ts stamps the reason into the SECURITY.md and DOCKERHUB.md
       # version tables and npm deprecate reuses it verbatim, so a blank or
       # whitespace reason must die before anything else runs.
       - name: require a real deprecation reason
@@ -106,7 +106,7 @@ jobs:
       - name: capture outgoing version
         run: echo "OLD_VERSION=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
 
-      - name: bump version and deprecate previous (cicd.ts)
+      - name: bump version and deprecate previous (tombstone.ts)
         env:
           BUMP: ${{ inputs.version }}
           REASON: ${{ inputs.message }}

@@ -9,19 +9,27 @@ XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-p
 
 # COVCOM Usage Reference
 
+> [!NOTE]
+> How to install, configure, and run the COVCOM server and clients. Install
+> channels, flags, and usage patterns come first; building from source and
+> all developer tooling live in [development](#development).
+
 > ### Table of Contents
 > - [how it works](#how-it-works)
 > - [requirements](#requirements)
 > - [installation](#installation)
+>   - [release binaries](#release-binaries)
+>   - [npm packages](#npm-packages)
+>   - [docker image](#docker-image)
+>   - [web page](#web-page)
 > - [server](#server)
 >   - [run modes](#run-modes)
 >   - [docker](#docker)
->   - [docker (raw)](#docker-raw)
->   - [production (no docker)](#production-no-docker)
 >   - [standalone binary](#standalone-binary)
 >   - [npm](#npm)
->   - [development](#development)
+>   - [production (no docker)](#production-no-docker)
 >   - [environment variables](#environment-variables)
+>   - [command-line flags](#command-line-flags)
 > - [web client](#web-client)
 >   - [running](#running)
 >   - [the interface](#the-interface)
@@ -44,7 +52,17 @@ XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-p
 >   - [navigation](#navigation)
 > - [starting a session](#starting-a-session)
 > - [formatting messages](#formatting-messages)
-> - [development](#development-1)
+> - [troubleshooting](#troubleshooting)
+> - [upgrading](#upgrading)
+> - [development](#development)
+>   - [setup](#setup)
+>   - [dev servers](#dev-servers)
+>   - [building](#building)
+>   - [docker (local build)](#docker-local-build)
+>   - [testing](#testing)
+>   - [lint and typecheck](#lint-and-typecheck)
+>   - [release artifacts](#release-artifacts)
+>   - [repository layout](#repository-layout)
 
 ---
 
@@ -113,20 +131,80 @@ runtime is patched.
 
 ## installation
 
+COVCOM ships ready to run. Pick a channel; none of them need Bun, a build
+step, or a repository checkout. Building from source is covered in
+[development](#development).
+
+### release binaries
+
+Every [release](https://github.com/xero/covcom/releases) attaches
+xz-compressed standalone binaries for the CLI and the server, plus the
+single-file web client. Each binary embeds its own runtime: one downloaded
+file, zero dependencies.
+
+Install the CLI:
+
 ```sh
-git clone https://github.com/xero/covcom
-cd covcom
-bun i
+curl -sLO https://github.com/xero/covcom/releases/latest/download/covcom-linux-x64.xz
+xz -d covcom-linux-x64.xz
+chmod +x covcom-linux-x64
+sudo mv covcom-linux-x64 /usr/local/bin/covcom
 ```
 
-Or install the published clients from npm without a checkout. The packages
-carry prebuilt binaries with the runtime embedded, so npm installs need no
-Bun:
+Install the server the same way:
+
+```sh
+curl -sLO https://github.com/xero/covcom/releases/latest/download/covcom-server-linux-x64.xz
+xz -d covcom-server-linux-x64.xz
+chmod +x covcom-server-linux-x64
+sudo mv covcom-server-linux-x64 /usr/local/bin/covcom-server
+```
+
+Swap the asset name for your platform. CLI targets:
+
+| Asset                | Target               |
+|----------------------|----------------------|
+| `covcom-macos-arm64` | macOS Apple Silicon  |
+| `covcom-macos-x64`   | macOS Intel          |
+| `covcom-linux-x64`   | Linux x86_64, glibc  |
+| `covcom-win-x64.exe` | Windows x86_64       |
+
+The five server targets (Linux x64 and arm64 in glibc and musl flavors,
+plus macOS Apple Silicon) are tabled under
+[standalone binary](#standalone-binary).
+
+**Verify before unpacking.** The `SHA256SUMS` file and the GitHub
+build-provenance attestation cover the `.xz` assets as downloaded;
+`covcom.html` verifies as-is:
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing
+gh attestation verify covcom-linux-x64.xz --repo xero/covcom
+```
+
+### npm packages
 
 ```sh
 npm i -g covcom         # CLI client
 npm i -g covcom-server  # relay server
 ```
+
+The packages carry the same prebuilt binaries with the runtime embedded, so
+npm installs need no Bun. Each meta package pulls the one
+`@covcom/<app>-<platform>` package matching your os, cpu, and libc, and a
+small shim execs the binary; the shim runs on Node 18 or newer, or on Bun.
+
+### docker image
+
+The server, with the web client baked in and Caddy terminating TLS, ships
+as a container image on every release. The [quickstart](./README.md#quickstart)
+is two commands; the full reference is [docker](#docker) below.
+
+### web page
+
+The web client needs no install at all. Download `covcom.html` from any
+release and open it straight from disk, or use a hosted instance. See
+[web client](#web-client).
 
 ---
 
@@ -135,23 +213,23 @@ npm i -g covcom-server  # relay server
 ### run modes
 
 The server ships four ways. Same code, same flags and env vars, same wire
-contract; the rows differ only in how you launch it and how it picks up
-security fixes.
+contract; the modes differ only in how you launch them.
 
-| Mode   | Launch                                | Requires | Patched by                              |
-|--------|---------------------------------------|----------|------------------------------------------|
-| source | `bun start:server`                    | bun      | updating bun and pulling the repo        |
-| binary | `./covcom-server-<target>`            | nothing  | downloading the next release's binary    |
-| npm    | `npm i -g covcom-server`              | node 18+ | updating the package each release        |
-| docker | `bun run:docker` or a published image | docker   | pulling the rebuilt image each release   |
+| Mode   | Launch                                                | Requires |
+|--------|-------------------------------------------------------|----------|
+| docker | a published image                                     | docker   |
+| binary | `./covcom-server-<target>`                            | nothing  |
+| npm    | `npm i -g covcom-server`                              | node 18+ |
+| source | `bun start:server` (see [development](#development))  | bun      |
 
 Every mode reads the same configuration; see
 [command-line flags](#command-line-flags) for the flags, the env vars, and
-the precedence between them.
+the precedence between them. How each mode picks up new releases and
+security fixes is covered in [upgrading](#upgrading).
 
 ### docker
 
-The Docker image runs the Bun WebSocket server behind Caddy with automatic
+The Docker image runs the WebSocket server behind Caddy with automatic
 TLS via ACME. There are no build arguments; all configuration is runtime
 environment variables.
 
@@ -183,9 +261,19 @@ docker run -d \
   xerostyle/covcom:latest
 ```
 
-The volume mounts persist Caddy's TLS certificates and config across container
-restarts. Without them, Caddy re-provisions a certificate on every start, which
-will hit Let's Encrypt rate limits, or break SSL pinning if used.
+`DOMAIN` is required; the container exits immediately without it. Caddy
+provisions a TLS certificate for `$DOMAIN` on first start, and the volume
+mounts persist Caddy's certificates and config across container restarts.
+Without them, Caddy re-provisions a certificate on every start, which will
+hit Let's Encrypt rate limits, or break SSL pinning if used.
+
+**Stop and logs:**
+
+```sh
+docker ps                  # find the container id
+docker logs -f <container>
+docker stop <container>
+```
 
 **Extend the image:**
 
@@ -210,80 +298,17 @@ unless you override them. The same environment variables documented in
 [environment variables](#environment-variables) below apply to your derived
 image.
 
-**Build locally:**
-
-```sh
-bun build:docker
-```
-
-Builds clean every time (`--no-cache`), so a rebuild never serves a stale web
-client out of a cached image layer.
-
-**Run locally:**
-
-`DOMAIN` is required; the container exits immediately without it. Pass it
-inline, or put it in `docker/.env` (copy `docker/.env.example`), which
-`docker/run` loads automatically.
-
-```sh
-DOMAIN=chat.example.com bun run:docker
-```
-
-Caddy provisions a TLS certificate for `$DOMAIN` on first start. The
-container listens on ports 80 and 443.
-
-**Stop:**
-
-```sh
-docker compose -f docker/docker-compose.yml down
-```
-
-**Logs:**
-
-```sh
-docker compose -f docker/docker-compose.yml logs -f
-```
-
-### docker (raw)
-
-For environments without `docker compose`. There is no separate command:
-`bun build:docker` and `bun run:docker` detect the missing compose plugin and
-fall back to plain `docker build` and `docker run` automatically.
-
-```sh
-bun build:docker
-DOMAIN=chat.example.com bun run:docker
-```
-
-On the fallback path, `docker/run` builds a local `covcom` image and runs it,
-forwarding `DOMAIN`, `PORT`, `ADMIN_TOKEN`, `ROOM_TTL`, and `MAX_ROOM_SIZE`
-from the environment or `docker/.env`, and mounting the `covcom_caddy_data`
-and `covcom_caddy_config` volumes so Caddy's certificate survives restarts.
-
-### production (no docker)
-
-Runs the server directly via Bun without TLS or Caddy. Use this when
-fronting COVCOM with your own reverse proxy.
-
-```sh
-bun start:server
-```
-
-This invokes `bun run src/index.ts` in the `server/` workspace and listens
-on `localhost:$PORT` (default `1337`).
-
-> [!WARNING]
-> The bundled Caddy provides TLS termination and the `X-Frame-Options: DENY`
-> response header. On this path the Bun server provides neither, so your reverse
-> proxy must terminate TLS and set the equivalent security headers. See
-> [Deployment Hardening](../SECURITY.md#deployment-hardening).
+Building the image from a checkout is covered in
+[docker (local build)](#docker-local-build).
 
 ### standalone binary
 
 Every release attaches compiled server binaries, so a deployment is one
 downloaded file: no bun, no node, no npm. Binaries are xz-compressed; every
 asset, including the uncompressed `covcom.html` web client, is covered by a
-`SHA256SUMS` file and a GitHub build-provenance attestation.
+`SHA256SUMS` file and a GitHub build-provenance attestation. Verify the
+download first; the commands are in
+[release binaries](#release-binaries).
 
 | Asset                            | Target                       |
 |----------------------------------|------------------------------|
@@ -294,15 +319,7 @@ asset, including the uncompressed `covcom.html` web client, is covered by a
 | `covcom-server-macos-arm64`      | macOS Apple Silicon          |
 | `covcom.html`                    | the web client, any browser  |
 
-Verify a compressed asset before unpacking, since the checksums and the
-attestation cover the `.xz`; `covcom.html` verifies as downloaded:
-
-```sh
-sha256sum -c SHA256SUMS --ignore-missing
-gh attestation verify covcom-server-linux-x64-musl.xz --repo xero/covcom
-```
-
-Then unpack and run:
+Unpack and run:
 
 ```sh
 xz -d covcom-server-linux-x64-musl.xz
@@ -310,23 +327,16 @@ chmod +x covcom-server-linux-x64-musl
 ./covcom-server-linux-x64-musl --port 1337
 ```
 
-The binary takes the same flags and env vars as source mode, reports its
-baked-in version with `--version`, and auto-loads `.env` from its working
-directory; see [command-line flags](#command-line-flags).
+The binary takes the same flags and env vars as every other mode, reports
+its baked-in version with `--version`, and auto-loads `.env` from its
+working directory; see [command-line flags](#command-line-flags).
 
 The musl builds link the C++ support libraries dynamically, so a stock
 alpine container needs `apk add libstdc++ libgcc` before the binary runs.
 The glibc builds run on mainstream distros as-is.
 
-Build locally instead of downloading:
-
-```sh
-bun build:server      # host target → server/dist/covcom-server
-bun build:server:all  # all five release targets
-```
-
 > [!WARNING]
-> Like the no-docker path above, the binary serves plain HTTP on localhost.
+> Like the no-docker path below, the binary serves plain HTTP on localhost.
 > Your reverse proxy must terminate TLS and set the security headers; see
 > [Deployment Hardening](../SECURITY.md#deployment-hardening).
 
@@ -359,23 +369,33 @@ binaries: a stock alpine container needs `apk add libstdc++ libgcc`
 first. The same warning as above applies too: the server speaks plain
 HTTP and expects your reverse proxy to terminate TLS.
 
-### development
+### production (no docker)
 
-Runs the server in watch mode, useful for local testing where clients
-connect over `ws://`.
+Runs the server directly, with no TLS and no Caddy. Use this when fronting
+COVCOM with your own reverse proxy. It applies to the release binary, the
+npm install, and source mode alike:
 
 ```sh
-bun dev:server
+covcom-server --port 1337
 ```
 
-The server starts on `localhost:1337` and reloads on source changes.
+The server listens on `127.0.0.1:$PORT` (default `1337`). Set
+`HOST=0.0.0.0`, or pass `--host`, to bind all interfaces when your reverse
+proxy lives on another host.
+
+> [!WARNING]
+> The bundled Caddy provides TLS termination and the `X-Frame-Options: DENY`
+> response header. On this path the server provides neither, so your reverse
+> proxy must terminate TLS and set the equivalent security headers. See
+> [Deployment Hardening](../SECURITY.md#deployment-hardening).
 
 ### environment variables
 
 | Variable        | Default  | Description                                                           |
 | --------------- | -------- | --------------------------------------------------------------------- |
-| `DOMAIN`        | required | Domain name for Caddy TLS                                             |
-| `PORT`          | `1337`   | Internal port the Bun server listens on                               |
+| `DOMAIN`        | required | Domain name for Caddy TLS (Docker image only)                         |
+| `PORT`          | `1337`   | Internal port the server listens on                                   |
+| `HOST`          | `127.0.0.1` | Interface the server binds. Loopback by default; set `0.0.0.0` to expose directly |
 | `ADMIN_TOKEN`   | unset    | Optional token required to create rooms                               |
 | `ROOM_TTL`      | `24`     | Hours of inactivity before an empty room is deleted. `0` disables TTL |
 | `MAX_ROOM_SIZE` | `20`     | Maximum participants per room. `0` is unlimited                       |
@@ -388,8 +408,8 @@ time. You do not need `ADMIN_TOKEN` set to run a private server; the
 ### command-line flags
 
 Every environment variable above (except `DOMAIN`, which is Caddy's) has a
-matching flag. Pass them to `bun run src/index.ts` in the `server/` workspace,
-or to the compiled binary.
+matching flag. Pass them to the compiled binary, the npm shim, or source
+mode; all behave identically.
 
 | Flag              | Short | Env var         | Default     | Description                                  |
 | ----------------- | ----- | --------------- | ----------- | -------------------------------------------- |
@@ -414,6 +434,11 @@ by `packageManager`. Loaded `.env` values rank below real environment
 variables, so the full chain is flag > environment variable > `.env` >
 default.
 
+The behavior behind each setting (room caps, TTL pruning, admin gating) is
+specified in [SERVER-SPEC §configuration](./SERVER-SPEC.md#configuration),
+and the binary, npm, and source entry paths in
+[SERVER-SPEC §launch modes](./SERVER-SPEC.md#launch-modes).
+
 > [!CAUTION]
 > A `.env` file in the directory you launch from configures the server
 > silently, in binary mode too. Audit the working directory of a production
@@ -435,56 +460,24 @@ in [starting a session](#starting-a-session).
 
 ### running
 
-**Development:**
+**Release asset.** Every release attaches the entire client as one inlined
+page, `covcom.html`, checksummed and attested next to the binaries. No
+install, no build step: download it, open it straight from disk (`file://`)
+or serve it from any static host, and point the create screen at your
+relay.
 
-```sh
-bun dev:web
-```
+**Hosted.** The Docker image serves the same page behind Caddy, so a
+single-container deployment gives every participant a URL to open. The
+create screen prefills the server field with the host serving the page,
+which is the relay in that deployment.
 
-Open `http://localhost:5173`. In dev the create screen prefills the server with
-Vite's own host, not the relay, so edit it to `localhost:1337` or use the
-combined launcher below.
-
-**Both at once:**
-
-```sh
-bun dev
-```
-
-Starts the relay and the web client together. `PORT` (default `1337`) drives the
-relay and is handed to the web client as the prefilled server address, so the
-create screen targets the right relay with no edit. Ctrl+C, or either process
-exiting, shuts both down.
-
-**Static build:**
-
-```sh
-bun build:web
-```
-
-Produces `web/dist/`: a single inlined `index.html`, no sidecar files. All
-crypto, including chunked encrypted file transfer, runs as WASM on the main
-thread, so the policy is the strictest possible, `default-src 'none'`, and works
-in Safari/WebKit under a strict CSP (see
+All crypto, including chunked encrypted file transfer, runs as WASM on the
+main thread, so the page works under the strictest possible content
+security policy, `default-src 'none'`, in Chrome, Firefox, and
+Safari/WebKit (see
 [leviathan-crypto/docs/csp.md](https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md)).
-Serve the file from any static host with no build step, or let
-`bun build:docker` bake it into the image.
 
-**Release asset:**
-
-Every release attaches this same inlined page as `covcom.html`, checksummed
-and attested next to the binaries. No build step at all: download it, open
-it straight from disk (`file://`) or serve it from any static host, and
-point the create screen at your relay.
-
-**Preview the production build:**
-
-```sh
-bun run --cwd web preview
-```
-
-Serves the contents of `web/dist/` locally for smoke-testing the bundled
-output.
+Building the page from a checkout is covered in [building](#building).
 
 ### the interface
 
@@ -535,7 +528,10 @@ Read your colors and hex aloud to the people you are talking to, over a channel
 the server does not control, and confirm theirs match what the panel shows. A
 mismatch means the session is not what one of you thinks it is. The derivation
 of these surfaces from the session signing key is described in
-[how it works](#how-it-works).
+[how it works](#how-it-works) and specified in
+[CRYPTOGRAPHY §fingerprint derivation](./CRYPTOGRAPHY.md#fingerprint-derivation);
+the signed claim log they anchor is
+[PROTOCOL §identity claims](./PROTOCOL.md#identity-claims).
 
 #### event log
 
@@ -610,7 +606,7 @@ fresh.
 
 ## cli client
 
-The CLI is a compiled Bun binary with a custom zero-dependency TUI.
+The CLI is a compiled standalone binary with a custom zero-dependency TUI.
 
 **Install from npm:**
 
@@ -622,43 +618,14 @@ covcom
 The `covcom` meta package pulls the prebuilt `@covcom/cli-<platform>`
 binary for macOS arm64 or x64, Linux x64 (glibc), or Windows x64; the
 install needs Node 18 or newer (or Bun) for the launcher shim and nothing
-else. Other platforms can use a
-[release binary](https://github.com/xero/covcom/releases) or build from
-source below.
-
-**Run from source:**
-
-```sh
-bun dev:cli
-```
+else. Other platforms can use a release binary (see
+[release binaries](#release-binaries)) or build from source (see
+[building](#building)).
 
 **Join directly from a `.room` file:**
 
 ```sh
-bun dev:cli --join /path/to/invite.room
-```
-
-**Build a standalone binary for the current platform:**
-
-```sh
-bun build:cli
-```
-
-The binary lands in `cli/dist/`.
-
-**Build for a specific target:**
-
-```sh
-bun run --cwd cli build:mac-arm # macOS Apple Silicon → cli/dist/covcom-macos-arm64
-bun run --cwd cli build:mac-x64 # macOS Intel         → cli/dist/covcom-macos-x64
-bun run --cwd cli build:linux   # Linux x86_64        → cli/dist/covcom-linux-x64
-bun run --cwd cli build:win     # Windows x86_64      → cli/dist/covcom-win-x64.exe
-```
-
-**Build all platforms at once:**
-
-```sh
-bun build:cli:all
+covcom --join /path/to/invite.room
 ```
 
 ### invocation
@@ -883,10 +850,10 @@ simple user config:
 	"showSystem": true,
 	"icons": {
 		"send": "󰒊",
-		"attach": "",
+		"attach": "",
 		"ratchet": "󰒓",
 		"keys": "󱕵",
-		"events": "",
+		"events": "",
 		"verify": "󰈷",
 		"escape": "󰌑"
 	},
@@ -962,7 +929,9 @@ simple user config:
 }
 ```
 > [!TIP]
-> See ./docs/example.config.json for a fully anotated config with all the default values.
+> See [example.config.json](./example.config.json) for a fully annotated
+> config with all the default values. The complete config surface and color
+> system are specified in [CLI-SPEC §defaults](./CLI-SPEC.md#defaults).
 
 ### navigation
 
@@ -1015,11 +984,28 @@ filenames get a numeric suffix.
 3. Select **Join Room**. It parses the invite and connects.
 
 Once both sides complete the handshake, the chat opens. The server has relayed
-a sequence of encrypted blobs and learned nothing about the content.
+a sequence of encrypted blobs and learned nothing about the content. The full
+join ceremony is specified in
+[PROTOCOL §joining a room](./PROTOCOL.md#joining-a-room) and
+[§session lifecycle](./PROTOCOL.md#session-lifecycle).
+
+Clients and the server negotiate a wire-protocol version at create and join
+time ([PROTOCOL §versioning](./PROTOCOL.md#versioning)). If they disagree, the
+server refuses the connection up front and reports its own version, so a
+mismatched client sees "This server is running a different version" instead of
+a cryptic handshake failure. This is a compatibility gate, not a security
+boundary.
 
 Late joiners receive current epoch seeds from all present members and enter
 the session at whatever epoch each sender is at. Messages sent before you
 joined are not recoverable. This is forward secrecy working as intended.
+
+The connection survives drops. On network loss the client shows "connection
+lost; reconnecting…" and retries with exponential backoff, then shows
+"connection restored" once it reconnects; the chat stays mounted the whole
+time. Peers joining, leaving, and reconnecting appear as system messages. A
+peer who reconnects with a changed fingerprint is flagged "reconnected (fp
+changed)" so you can re-verify them.
 
 ---
 
@@ -1047,39 +1033,301 @@ inject HTML in the browser or escape sequences in the terminal.
 
 ---
 
+## troubleshooting
+
+**musl binary fails to start on alpine.** The musl builds link the C++
+support libraries dynamically. Run `apk add libstdc++ libgcc` first; the
+glibc builds run on mainstream distros as-is.
+
+**Container exits immediately.** `DOMAIN` is required. Pass it with
+`-e DOMAIN=chat.example.com`; without it the entrypoint exits before Caddy
+starts.
+
+**Certificate errors or Let's Encrypt rate limits.** Mount the
+`covcom_caddy_data` and `covcom_caddy_config` volumes shown in
+[docker](#docker). Without them Caddy re-provisions a certificate on every
+container start and will exhaust the rate limit.
+
+**"This server is running a different version."** The client and server
+disagree on the wire-protocol byte. Check both sides with `--version` and
+upgrade the older one; see [upgrading](#upgrading) and
+[PROTOCOL §versioning](./PROTOCOL.md#versioning).
+
+**"Room is full."** The room hit the server's `MAX_ROOM_SIZE` cap (default
+20). The operator can raise it or set `0` for unlimited; see
+[environment variables](#environment-variables).
+
+**An old invite no longer connects.** Empty rooms are pruned after
+`ROOM_TTL` hours of inactivity (default 24). Create a new room and share a
+fresh invite.
+
+**The server picked up settings you never passed.** A `.env` file in the
+launch directory configures the server silently, in binary mode too. Audit
+the working directory, or pass explicit flags, which always win; see the
+caution in [command-line flags](#command-line-flags).
+
+**Admin token visible to other users.** `--admin-token` shows up in `ps`
+output and shell history. Pass `ADMIN_TOKEN` as an environment variable
+instead.
+
+Running without the Docker image means TLS and security headers are your
+reverse proxy's job; see
+[Deployment Hardening](../SECURITY.md#deployment-hardening).
+
+---
+
+## upgrading
+
+The release binaries and npm packages embed the runtime they were compiled
+with, so runtime security fixes ship as new COVCOM releases. See
+[SECURITY-POLICY §Supported Versions](../SECURITY.md#supported-versions) for
+the patch policy.
+
+**Docker.** Pin `X.Y.Z` in production and bump it deliberately; `latest`
+silently upgrades you on the next pull. A version withdrawn after a
+vulnerability disclosure is replaced by a tombstone image that exits
+nonzero and names the safe replacement, so a pinned deployment fails
+loudly instead of running a known-bad build.
+
+**npm.** `npm update -g covcom covcom-server` pulls the newest meta
+packages, which resolve the matching platform binaries.
+
+**Release binaries.** Download the next release's asset, verify it against
+`SHA256SUMS` and the attestation as in
+[release binaries](#release-binaries), and replace the file.
+
+**covcom.html.** Re-download the page from the release; there is nothing
+else to update. Hosted deployments get the new page when the Docker image
+is upgraded.
+
+---
+
 ## development
 
-**Run all tests:**
+Everything below needs [Bun](https://bun.sh) v1.3.14 or later (the
+`packageManager` pin). End users never need any of it.
+
+### setup
 
 ```sh
-bun test
+git clone https://github.com/xero/covcom
+cd covcom
+bun i
 ```
 
-This runs `test:server`, `test:lib`, and the `test:cli` stub in sequence.
-The `web/` workspace has no unit tests (browser app).
+### dev servers
 
-**Run tests for a single package:**
+**Both at once:**
 
 ```sh
-bun test:server     # server WebSocket broker
-bun test:lib        # shared crypto session layer
+bun dev
 ```
 
-**Lint and autofix:**
+Starts the relay and the web client together. `PORT` (default `1337`) drives the
+relay and is handed to the web client as the prefilled server address, so the
+create screen targets the right relay with no edit. Ctrl+C, or either process
+exiting, shuts both down.
+
+**Relay only:**
 
 ```sh
-bun fix
+bun dev:server
 ```
 
-**Repository layout:**
+The server starts on `127.0.0.1:1337` in watch mode and reloads on source
+changes; clients connect over `ws://`.
+
+**Web client only:**
+
+```sh
+bun dev:web
+```
+
+Open `http://localhost:5173`. In dev the create screen prefills the server with
+Vite's own host, not the relay, so edit it to `localhost:1337` or use `bun dev`.
+
+**CLI client:**
+
+```sh
+bun dev:cli
+```
+
+CLI flags pass straight through, e.g.
+`bun dev:cli --clean --join /path/to/invite.room`.
+
+### building
+
+**Web client:**
+
+```sh
+bun build:web
+```
+
+Produces `web/dist/`: a single inlined `index.html`, no sidecar files. This is
+the same page that ships as `covcom.html` on releases and gets baked into the
+Docker image. Note that `build:web` compiles with esbuild and does not
+typecheck; see [lint and typecheck](#lint-and-typecheck). Smoke-test the
+bundled output locally with:
+
+```sh
+bun run --cwd web preview
+```
+
+**CLI binary for the current platform:**
+
+```sh
+bun build:cli
+```
+
+The binary lands in `cli/dist/`.
+
+**CLI binary for a specific target:**
+
+```sh
+bun run --cwd cli build:mac-arm # macOS Apple Silicon → cli/dist/covcom-macos-arm64
+bun run --cwd cli build:mac-x64 # macOS Intel         → cli/dist/covcom-macos-x64
+bun run --cwd cli build:linux   # Linux x86_64        → cli/dist/covcom-linux-x64
+bun run --cwd cli build:win     # Windows x86_64      → cli/dist/covcom-win-x64.exe
+```
+
+**All CLI platforms at once:**
+
+```sh
+bun build:cli:all
+```
+
+**Server binaries:**
+
+```sh
+bun build:server      # host target → server/dist/covcom-server
+bun build:server:all  # all five release targets
+```
+
+### docker (local build)
+
+```sh
+bun build:docker
+DOMAIN=chat.example.com bun run:docker
+```
+
+`bun build:docker` always builds clean (`--no-cache`), so a rebuild never
+serves a stale web client out of a cached image layer. `DOMAIN` is required;
+pass it inline, or put it in `docker/.env` (copy `docker/.env.example`),
+which `docker/run` loads automatically.
+
+Both commands work without `docker compose`: `docker/run` detects the
+missing compose plugin and falls back to plain `docker build` and
+`docker run` automatically. On the fallback path it builds a local `covcom`
+image and runs it, forwarding `DOMAIN`, `PORT`, `ADMIN_TOKEN`, `ROOM_TTL`,
+and `MAX_ROOM_SIZE` from the environment or `docker/.env`, and mounting the
+`covcom_caddy_data` and `covcom_caddy_config` volumes so Caddy's certificate
+survives restarts.
+
+**Stop and logs (compose path):**
+
+```sh
+docker compose -f docker/docker-compose.yml down
+docker compose -f docker/docker-compose.yml logs -f
+```
+
+### testing
+
+The full test architecture is documented in [TESTING.md](./TESTING.md).
+
+**Run the unit suites:**
+
+```sh
+bun run test
+```
+
+This fans out the four workspace unit suites (`server`, `lib`, `web`, `cli`)
+in parallel and aggregates failures: one broken suite does not stop the
+others, and each output line carries a `@covcom/<app>:test |` prefix. Note
+the `bun run` prefix: a bare `bun test` invokes Bun's built-in runner with
+the script name treated as a path filter, not the package script.
+
+**Run a single suite:**
+
+```sh
+bun run test:server      # server WebSocket broker
+bun run test:lib         # shared crypto session layer
+bun run test:web         # web client (store, session, bridge, views) via happy-dom
+bun run test:cli         # CLI widgets, key parsing, state machine, event log
+bun run test:server:bin  # compile the host server binary, run the server suite against it
+bun run test:cross       # web ↔ CLI interop over a real relay (compiles the CLI first)
+```
+
+**Run the end-to-end suite (Playwright):**
+
+```sh
+bunx playwright install --with-deps chromium firefox webkit  # one time
+bun run test:e2e
+```
+
+`test:e2e` auto-starts the Bun broker and a static server hosting a fresh
+production build of the single-file bundle, then drives real browser contexts
+(Chromium, Firefox, and WebKit) through the full flow: a two-party encrypted
+chat (create → invite → join → exchange messages → verify fingerprints), the
+slash commands, and file-attachment round-trips and stress sweeps, which push
+encrypted attachments up to 180 MiB through chunked streaming under the
+production CSP.
+
+**Run everything:**
+
+```sh
+bun run test:all
+```
+
+Chains the unit fanout, the cross-client interop test, and the Playwright
+e2e suite.
+
+### lint and typecheck
+
+```sh
+bun lint       # report issues
+bun fix        # report and autofix
+bun typecheck
+```
+
+`bun typecheck` runs `tsc --noEmit` across every workspace (root, lib,
+server, web, and cli). `bun build:web` compiles with esbuild and does not
+typecheck, so run this separately.
+
+### release artifacts
+
+**Build all release artifacts:**
+
+```sh
+bun bake
+```
+
+One invocation of the root orchestrator
+(`bun scripts/build.ts all --kind npm --targets all`) builds the inlined
+web bundle, every CLI and server binary target, and stages the
+publish-ready npm package trees under `dist/npm/`.
+
+**Full pre-release check:**
+
+```sh
+bun check
+```
+
+Runs codegen, `lint`, `typecheck`, `bake`, and `test:all` (the unit fanout,
+cross-client interop, and e2e) in one pass. This is the single gate to
+validate a release candidate. Codegen runs first so a fresh clone passes
+with no manual step: the generated `src/version.ts` modules and the CLI
+banner are gitignored, never committed.
+
+### repository layout
 
 ```
-server/    WebSocket broker (Bun)
+server/    WebSocket broker
 lib/       Shared crypto session layer
-web/       Vite + vanilla TS web client
-cli/       Custom zero-dependency TUI
+web/       Vanilla SPA web client
+cli/       Custom zero-dependency TUI client
+scripts/   Dev tooling: build orchestrator, release scripts
 docker/    Dockerfile, Caddyfile template, entrypoint
-docs/      Project documentation
+docs/      Project documentation / Wiki sources
 ```
 
 ---

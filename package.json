@@ -39,7 +39,7 @@
 		"test:server:bin": "bun run --cwd server build && COVCOM_SERVER_BIN=dist/covcom-server bun run --cwd server test",
 		"test:web": "bun run --cwd web test",
 		"typecheck": "bun scripts/build.ts all --codegen && bunx tsc --noEmit -p tsconfig.json && bun run --parallel --no-exit-on-error --workspaces --if-present typecheck",
-		"versionbump": "bun scripts/cicd.ts --versionbump",
+		"versionbump": "bun scripts/tombstone.ts --versionbump",
 		"_shorthand": "# bake=build+stage · check=codegen+lint+typecheck+build+unit+e2e",
 		"bake": "bun scripts/build.ts all --kind npm --targets all",
 		"check": "bun scripts/build.ts all --codegen && bun run lint && bun typecheck && bun bake && bun run test:all"
