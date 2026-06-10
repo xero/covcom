@@ -3,16 +3,16 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "covcom",
+      "name": "@covcom/root",
       "devDependencies": {
         "@eslint/js": "^10.0.1",
         "@playwright/test": "^1.60.0",
-        "@types/node": "^25.9.1",
+        "@types/node": "^25.9.2",
         "bun-types": "^1.3.14",
         "eslint": "^10.4.1",
         "jiti": "^2.7.0",
         "playwright": "^1.60.0",
-        "typescript-eslint": "^8.60.1",
+        "typescript-eslint": "^8.61.0",
       },
     },
     "cli": {

@@ -43,6 +43,11 @@ COVCOM releases in tandem with its cryptographic library
 [leviathan-crypto](https://github.com/xero/leviathan-crypto/).
 A vulnerability in either project triggers a coordinated release of both.
 
+Beyond Docker, the same versions ship as GitHub release binaries and as
+npm packages ([covcom](https://www.npmjs.com/package/covcom) and
+[covcom-server](https://www.npmjs.com/package/covcom-server)), all cut
+from the same release and deprecated in lockstep.
+
 | Tag | Status       | Reason         |
 |-----|--------------|----------------|
 | [3.0.0](https://github.com/xero/covcom/blob/main/CHANGELOG.md#v300) | ✓ supported  | Latest version |

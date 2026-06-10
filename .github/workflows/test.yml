@@ -42,6 +42,77 @@ jobs:
       - name: unit tests (server, lib, web, cli)
         run: bun run test
 
+  # The compiled server binary must pass the same black-box suite as source
+  # mode. This catches tree-shaking regressions, embedded-asset breakage, and
+  # env-handling drift in compiled mode on every push. Host target only; the
+  # release workflow builds the full cross-target matrix.
+  binary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: ghcr.io/xero/covcom/ci:latest
+      options: --user root
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: install
+        run: bun i
+      - name: compile server binary and test against it
+        run: bun run test:server:bin
+
+  # Every PR proves the npm staging is publishable without publishing
+  # anything: stage host-target packages, npm publish --dry-run each, and
+  # smoke the launcher shim against the host platform package. Runs on the
+  # plain runner (not the CI container) because it needs node and npm.
+  # Cross-target compilation stays out of PR CI; the release workflow owns
+  # the full matrix.
+  npm-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 'lts/*'
+      - name: install
+        run: bun i
+      - name: build host binaries and stage npm packages
+        run: |
+          bun scripts/build.ts cli --kind npm
+          bun scripts/build.ts server --kind npm
+      - name: validate staged packages (npm publish --dry-run)
+        run: |
+          set -e
+          for dir in dist/npm/*/; do
+            echo "== $dir"
+            npm publish --dry-run "$dir"
+          done
+      # The shim resolves its platform package through node_modules, so lay
+      # the staged dirs out as an install would and assert the shim's
+      # --version output matches the binary invoked directly.
+      - name: shim smoke test
+        run: |
+          set -e
+          mkdir -p /tmp/shim-smoke/node_modules/@covcom
+          cp -R dist/npm/covcom /tmp/shim-smoke/node_modules/covcom
+          cp -R dist/npm/covcom-server /tmp/shim-smoke/node_modules/covcom-server
+          cp -R dist/npm/cli-linux-x64 /tmp/shim-smoke/node_modules/@covcom/cli-linux-x64
+          cp -R dist/npm/server-linux-x64 /tmp/shim-smoke/node_modules/@covcom/server-linux-x64
+          shim_cli=$(node /tmp/shim-smoke/node_modules/covcom/bin/covcom --version)
+          direct_cli=$(cli/dist/covcom-linux-x64 --version)
+          echo "cli shim:   $shim_cli"
+          echo "cli direct: $direct_cli"
+          test "$shim_cli" = "$direct_cli"
+          shim_srv=$(node /tmp/shim-smoke/node_modules/covcom-server/bin/covcom-server --version)
+          direct_srv=$(server/dist/covcom-server-linux-x64 --version)
+          echo "server shim:   $shim_srv"
+          echo "server direct: $direct_srv"
+          test "$shim_srv" = "$direct_srv"
+
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -117,8 +188,6 @@ jobs:
         run: bun i
       - name: build web client
         run: bun run build:web
-      - name: build cli binary
-        run: bun run build:cli
       - name: cross-client test (web + cli)
         run: bun run test:cross
 

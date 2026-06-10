@@ -38,6 +38,8 @@ server/             Bun WebSocket server
 web/                Vite + vanilla TS web client
 cli/                compiled Bun binary, custom zero-dependency TUI
 lib/                shared crypto session layer (consumed by web and cli)
+scripts/            root tooling: build orchestrator, version codegen,
+                    npm staging, release versionbump, dev launcher
 docker/             Dockerfile, Caddyfile template, entrypoint
 docs/               protocol, cryptography reference, threat model, CLI design
 package.json        Bun workspace root
@@ -60,13 +62,86 @@ bun start:server       # build server
 bun build:web          # build standalone web client
 bun build:cli          # compile CLI binary for current platform
 bun build:cli:all      # compile CLI binaries for all target platforms
-bun test               # run all tests across all packages
+bun build:server       # compile server binary for current platform
+bun build:server:all   # compile server binaries for all release targets
+bun bake               # web SPA + every binary target + npm staging
+bun run test           # all unit suites in parallel, failures aggregated
 bun test:server        # server tests only
 bun test:lib           # shared lib tests only
+bun test:server:bin    # compile host server binary, run server suite against it
 bun fix                # eslint autofix. run before marking any task done
 bun build:docker       # build Docker image
 bun run:docker         # run container locally for integration testing
 ```
+
+`bun run test` fans out all four workspace suites concurrently and aggregates
+failures. One broken suite does not stop the others, and the exit code is
+still nonzero. Each output line carries a `@covcom/<app>:test |` prefix. The
+per-app `test:<app>` aliases remain the single-suite loop for focused work.
+The fanout flags (`--parallel`, `--no-exit-on-error`, `--workspaces`,
+`--if-present`) require the bun version pinned in `packageManager`; do not
+run the suite with an older bun.
+
+### Build System
+
+All build aliases dispatch through the root orchestrator:
+
+```sh
+bun scripts/build.ts <all|cli|server|web> [--kind binary|npm|spa]
+                     [--targets all|<suffix,...>] [--codegen]
+```
+
+The orchestrator has two phases and no app knowledge beyond dispatch.
+Phase one runs codegen for every selected app: an app exporting
+`codegen()` from its `build.ts` owns its full generation set (cli's
+covers the banner plus the version module); apps without one get the
+shared `bundleVersion()` default from `scripts/version.ts`. Phase two
+imports each app's `build.ts` and awaits its exported `build()`. Codegen
+precedes all builds as a hard invariant: `web/vite.config.ts` imports
+`src/version.ts` at config-load time. Do not add a build path that
+compiles without running codegen first.
+
+Generated files are gitignored and never committed: `cli/src/version.ts`,
+`server/src/version.ts`, `web/src/version.ts`, and `cli/src/tui/banner.ts`
+exist only as codegen output. Codegen-first is load-bearing, not a
+convention: a fresh clone has none of these files, so `check`, the root
+`typecheck`, and each app's `test` script run codegen before anything that
+imports them. The entry points are `bun scripts/build.ts <sel> --codegen`
+from the root and bare `bun build.ts` inside an app directory.
+
+A binary build resolving to an app's full target set clears that app's
+`dist/` before compiling; a single-target or host build overwrites its own
+outfile in place. `bake` output is therefore clean by construction while a
+host build (e.g. `test:cross`'s) coexists with just-baked release
+binaries.
+
+Every app `build.ts` exports the same contract:
+
+```ts
+export const TARGETS: Target[];
+export async function build(opts: {
+	kind: 'binary' | 'npm' | 'spa';
+	targets?: string[];   // suffixes; default: host only
+}): Promise<void>;
+```
+
+Target lists are data. `TARGETS` carries the npm platform key, the bun
+compile target, the release binary filename, and the os/cpu/libc manifest
+fields. The compile loop, the npm manifest generator, and the launcher
+shim's platform map all consume it, so adding a target is a one-line table
+change. Do not hardcode a target name in any consumer.
+
+Standalone invocations work from each app directory: `bun build.ts`
+(codegen only), `bun build.ts --compile` (host binary), plus `--targets
+all|<suffix,...>` and `--kind npm`. The npm kind stages publish-ready
+package trees under `dist/npm/` and always runs the binary kind first in
+the same invocation. The web app builds only the `spa` kind, and vite
+always runs as a spawned child, never through its JS API.
+
+Published npm names (`covcom`, `covcom-server`, `@covcom/*`) exist only in
+generated manifests under `dist/npm/`. Workspace package.json files stay
+`@covcom/*` and `private: true`; never put a publishable name in a tree
+manifest.
 
 **Never run raw package-level commands like `cd server && bun run dev` directly.**
 The root shorthands handle workspace context correctly. The raw equivalents may
@@ -75,7 +150,7 @@ skip steps or run with wrong environment configuration.
 Always capture test output to a log file and inspect from there:
 
 ```sh
-bun test 2>&1 | tee /tmp/test.log
+bun run test 2>&1 | tee /tmp/test.log
 grep -E "passed|failed|error" /tmp/test.log
 ```
 
@@ -155,6 +230,14 @@ job is to make the changes; the commit is not yours to make. This applies
 without exception. Do not commit even if the task file says the work is
 complete.
 
+### 8. Never revert with `git checkout --` over a dirty tree
+
+Never revert files with `git checkout --` while the tree carries
+staged-plus-unstaged work; it silently restores the index copy and destroys
+the unstaged half. Revert probes and experiments with `cp` backups or
+`git stash` instead. This destroyed unstaged work in two sessions in a
+single day.
+
 ---
 
 ## Code Style
@@ -197,6 +280,15 @@ first.
   Do not delete rooms in `handleClose`.
 - `handleCreate` does NOT add the creator's WebSocket to `room.conns`. The
   creator joins via a normal `join` message after receiving `room_created`.
+- The server ships from one entrypoint in two launch modes: `bun run
+  src/index.ts` and a compiled binary (`bun build:server`). One behavior,
+  two launchers: no compiled-only or source-only code paths, and flags and
+  env vars behave identically in both. `server/test/util.ts` runs the same
+  black-box suite against either mode, selected by `COVCOM_SERVER_BIN`.
+- The server reads nothing from disk and never resolves paths via
+  `import.meta.dir`, because compiled binaries map source paths into an
+  embedded virtual filesystem. Any future config file support must use
+  explicit cwd or XDG paths.
 
 **Create and join entry points converge on a single post-`joined` path**
 

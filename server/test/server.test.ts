@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { PROTOCOL_VERSION } from '@covcom/lib';
-import { startServer } from '../src/index.ts';
+import { startTestServer } from './util.ts';
+import type { TestServer } from './util.ts';
 
 type AnyMsg = Record<string, unknown>
 
@@ -101,14 +102,14 @@ async function createAndJoin(port: number): Promise<{ ws: TestWS; roomId: string
 
 describe('server: default config', () => {
 	let port: number;
-	let server: ReturnType<typeof startServer>;
+	let server: TestServer;
 
-	beforeAll(() => {
-		server = startServer({ port: 0 });
-		port = server.port as number;
+	beforeAll(async () => {
+		server = await startTestServer();
+		port = server.port;
 	});
 
-	afterAll(() => server.stop(true));
+	afterAll(() => server.stop());
 
 	test('1. room creation', async () => {
 		const a = await connect(port);
@@ -562,14 +563,14 @@ describe('server: default config', () => {
 
 describe('server: room capacity', () => {
 	let port: number;
-	let server: ReturnType<typeof startServer>;
+	let server: TestServer;
 
-	beforeAll(() => {
-		server = startServer({ port: 0, maxRoomSize: 2 });
-		port = server.port as number;
+	beforeAll(async () => {
+		server = await startTestServer({ maxRoomSize: 2 });
+		port = server.port;
 	});
 
-	afterAll(() => server.stop(true));
+	afterAll(() => server.stop());
 
 	test('8. room full', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
@@ -596,14 +597,14 @@ describe('server: room capacity', () => {
 
 describe('server: adminToken', () => {
 	let port: number;
-	let server: ReturnType<typeof startServer>;
+	let server: TestServer;
 
-	beforeAll(() => {
-		server = startServer({ port: 0, adminToken: 'test-admin' });
-		port = server.port as number;
+	beforeAll(async () => {
+		server = await startTestServer({ adminToken: 'test-admin' });
+		port = server.port;
 	});
 
-	afterAll(() => server.stop(true));
+	afterAll(() => server.stop());
 
 	test('15. adminToken gates room creation', async () => {
 		// no adminToken field, rejected
@@ -633,14 +634,14 @@ describe('server: adminToken', () => {
 
 describe('unauthenticated message drop', () => {
 	let port: number;
-	let server: ReturnType<typeof startServer>;
+	let server: TestServer;
 
-	beforeAll(() => {
-		server = startServer({ port: 0 });
-		port = server.port as number;
+	beforeAll(async () => {
+		server = await startTestServer();
+		port = server.port;
 	});
 
-	afterAll(() => server.stop(true));
+	afterAll(() => server.stop());
 
 	test('broadcast dropped for unidentified sender', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
@@ -711,14 +712,14 @@ describe('unauthenticated message drop', () => {
 
 describe('join guard', () => {
 	let port: number;
-	let server: ReturnType<typeof startServer>;
+	let server: TestServer;
 
-	beforeAll(() => {
-		server = startServer({ port: 0 });
-		port = server.port as number;
+	beforeAll(async () => {
+		server = await startTestServer();
+		port = server.port;
 	});
 
-	afterAll(() => server.stop(true));
+	afterAll(() => server.stop());
 
 	test('second join on same connection returns forbidden', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
@@ -735,20 +736,14 @@ describe('join guard', () => {
 
 describe('identify validation', () => {
 	let port: number;
-	let server: ReturnType<typeof startServer>;
+	let server: TestServer;
 
-	beforeAll(() => {
-		server = startServer({ port: 0 });
-		port = server.port as number;
+	beforeAll(async () => {
+		server = await startTestServer();
+		port = server.port;
 	});
 
-	afterAll(() => {
-		const stop = server.stop.bind(server);
-		return Promise.race([
-			stop(true),
-			new Promise<void>(resolve => setTimeout(resolve, 500)),
-		]);
-	});
+	afterAll(() => server.stop());
 
 	test('empty username: no peer_joined delivered', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
@@ -924,20 +919,14 @@ describe('identify validation', () => {
 
 describe('identify cleanup', () => {
 	let port: number;
-	let server: ReturnType<typeof startServer>;
+	let server: TestServer;
 
-	beforeAll(() => {
-		server = startServer({ port: 0, maxRoomSize: 1 });
-		port = server.port as number;
+	beforeAll(async () => {
+		server = await startTestServer({ maxRoomSize: 1 });
+		port = server.port;
 	});
 
-	afterAll(() => {
-		const stop = server.stop.bind(server);
-		return Promise.race([
-			stop(true),
-			new Promise<void>(resolve => setTimeout(resolve, 500)),
-		]);
-	});
+	afterAll(() => server.stop());
 
 	test('zombie close frees room slot', async () => {
 		const { ws: a, roomId, roomSecret } = await createAndJoin(port);
@@ -963,23 +952,14 @@ describe('identify cleanup', () => {
 
 describe('protocol version negotiation', () => {
 	let port: number;
-	let server: ReturnType<typeof startServer>;
+	let server: TestServer;
 
-	beforeAll(() => {
-		server = startServer({ port: 0 });
-		port = server.port as number;
+	beforeAll(async () => {
+		server = await startTestServer();
+		port = server.port;
 	});
 
-	// Server-initiated closes (version_mismatch) can leave a socket half-closed,
-	// so stop(true) may hang; race it with a short timeout, as the zombie-close
-	// block does for the same reason.
-	afterAll(() => {
-		const stop = server.stop.bind(server);
-		return Promise.race([
-			stop(true),
-			new Promise<void>(resolve => setTimeout(resolve, 500)),
-		]);
-	});
+	afterAll(() => server.stop());
 
 	test('room_created and joined carry serverVersion', async () => {
 		const a = await connect(port);

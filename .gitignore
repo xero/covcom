@@ -1,6 +1,10 @@
 # 𝙄𝙂𝙉𝙊𝙍𝙀 𝙈𝙀! 🙈
 node_modules/
 **/node_modules/
+cli/src/version.ts
+server/src/version.ts
+web/src/version.ts
+cli/src/tui/banner.ts
 build/
 dist/
 src/ts/embedded/

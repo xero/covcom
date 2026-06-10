@@ -60,13 +60,19 @@ What each suite owns:
   N=2 and N>2, out-of-order delivery and the skipped-key store, epoch math and
   late-join sync, teardown and key wiping, the invite codec, chunked file
   transfer with AEAD integrity, the markup parser, and unicode sanitizing.
-- **`server/test/`** drives a live in-process relay over real WebSockets. It
-  covers message routing (relay, broadcast, and ratchet fan-out), room lifecycle,
+- **`server/test/`** drives a live relay over real WebSockets. It covers
+  message routing (relay, broadcast, and ratchet fan-out), room lifecycle,
   capacity, and persistence, the auth gates (`ADMIN_TOKEN`, unauthenticated-sender
   drops, the second-join guard), identify validation (length, unicode, bidi, and
   control-char rejection), protocol-version negotiation, and the HTTP routes.
   Because the server stores nothing, these assert routing and rejection, never
-  payload content.
+  payload content. The suite is dual-mode: by default it runs the server
+  in-process, and with `COVCOM_SERVER_BIN` pointed at a compiled binary it
+  spawns that binary with config passed as flags instead
+  (`server/test/util.ts`). The assertions never differ between modes; CI
+  runs both on every push. `bun run test:server:bin` is the one-command front
+  door for binary mode; it compiles the host binary, then runs the suite
+  against it.
 - **`web/test/`** runs under `bun test` with a happy-dom DOM and an in-memory
   WebSocket broker. The broker (`mock-ws.ts`) mirrors the server's routing exactly,
   so two real `CovcomSession` instances complete a full handshake and exchange real
@@ -94,8 +100,17 @@ Run one package or all of them:
 
 ```sh
 bun run test:lib        # one package
-bun run test            # server, lib, web, and cli
+bun run test            # all four suites in parallel
 ```
+
+`bun run test` fans out the server, lib, web, and cli suites concurrently and
+aggregates failures. One broken suite does not stop the others, and the run
+exits nonzero if any suite failed. Output interleaves with a
+`@covcom/<app>:test |` prefix on every line. To read one suite's output, grep
+its prefix; to spot failures, grep for `(fail)` markers. A suite that never
+prints its `Done in` line failed. The fanout flags require the bun version
+pinned in the root `packageManager` field; do not run the suite with an older
+bun.
 
 > [!IMPORTANT]
 > Run the suites through `bun run test`, not a bare `bun test` from the repo
@@ -279,7 +294,9 @@ Dockerfile changes on `main`. The `docker` job runs on the bare runner, since it
 builds the production image itself.
 
 - **`quality`** runs the linter and the typechecker.
-- **`unit`** runs every package's unit suite.
+- **`unit`** runs every package's unit suite in one parallel fanout.
+- **`binary`** compiles the host server binary and reruns the relay suite
+  against it via `test:server:bin`.
 - **`e2e`** runs the Playwright suite across a Chromium, Firefox, and WebKit
   matrix and uploads timing data.
 - **`e2e-timing-summary`** parses the timing artifacts into a job summary.
@@ -293,16 +310,29 @@ builds the production image itself.
 
 | Command | What it runs |
 | --- | --- |
-| `bun run test` | All unit suites: server, lib, web, and cli |
+| `bun run test` | All unit suites in parallel: server, lib, web, and cli |
 | `bun run test:lib` | The crypto library unit suite |
 | `bun run test:server` | The relay unit suite |
+| `bun run test:server:bin` | Compile the host server binary, then the relay suite against it |
 | `bun run test:web` | The web client unit suite |
 | `bun run test:cli` | The CLI unit suite |
 | `bun run test:e2e` | The Playwright web suite across all engines |
 | `bun run test:cross` | The cross-client web and CLI interop test |
-| `bun run test:all` | Every unit suite plus the web end-to-end suite |
-| `bun run typecheck` | Every package and test tsconfig |
+| `bun run test:all` | The unit fanout, then the cross-client test, then the e2e suite |
+| `bun run typecheck` | The root tsconfig, then every workspace's projects in parallel |
 | `bun run lint` | ESLint across the repo |
+
+`test:e2e` and `test:cross` run against built artifacts: the e2e suite serves
+the built web client, and the cross-client test drives the compiled CLI
+binary. Build first (`bun bake`, or `build:web` plus `build:cli`); `bun run
+check` orders the build before these suites for you.
+
+`bun run typecheck` checks the root tsconfig first, then fans out the
+workspace `typecheck` scripts in parallel. The serial root run also installs
+the compiler into bunx's cache; the workspace scripts pass `--no-install` so
+the concurrent runs read that cache without racing to reinstall it. Run the
+fanout through the root alias; a standalone workspace `typecheck` fails fast
+on a machine whose bunx cache has never seen `tsc`.
 
 ---
 

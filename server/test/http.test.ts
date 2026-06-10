@@ -1,18 +1,19 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { startServer } from '../src/index.ts';
+import { startTestServer } from './util.ts';
+import type { TestServer } from './util.ts';
 
 // The HTTP surface of the broker (server.test.ts covers the WebSocket protocol).
 // Only /health_check and /ws are real routes; everything else is 404.
 
 let port:   number;
-let server: ReturnType<typeof startServer>;
+let server: TestServer;
 
-beforeAll(() => {
-	server = startServer({ port: 0 });
-	port   = server.port as number;
+beforeAll(async () => {
+	server = await startTestServer();
+	port   = server.port;
 });
 
-afterAll(() => server.stop(true));
+afterAll(() => server.stop());
 
 describe('HTTP routes', () => {
 	test('GET /health_check → 200 OK with permissive CORS', async () => {

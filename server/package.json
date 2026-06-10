@@ -4,7 +4,16 @@
 	"scripts": {
 		"dev": "bun run --watch src/index.ts",
 		"start": "bun run src/index.ts",
-		"test": "bun test"
+		"test": "bun build.ts && bun test",
+		"typecheck": "bunx --no-install tsc --noEmit -p tsconfig.json",
+		"bundle": "bun build.ts",
+		"build": "bun build.ts --compile",
+		"build:all": "bun build.ts --compile --targets all",
+		"build:linux-x64": "bun build.ts --compile --targets linux-x64",
+		"build:linux-x64-musl": "bun build.ts --compile --targets linux-x64-musl",
+		"build:linux-arm64": "bun build.ts --compile --targets linux-arm64",
+		"build:linux-arm64-musl": "bun build.ts --compile --targets linux-arm64-musl",
+		"build:mac-arm": "bun build.ts --compile --targets darwin-arm64"
 	},
 	"dependencies": {
 		"@covcom/lib": "workspace:*"

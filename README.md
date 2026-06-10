@@ -31,6 +31,8 @@
 >   - [Docker](#docker)
 >   - [Docker (raw)](#docker-raw)
 >   - [Production (no docker)](#production-no-docker)
+>   - [Standalone binary](#standalone-binary)
+>   - [npm](#npm)
 >   - [Development](#development)
 >   - [Environment variables](#environment-variables)
 > - [Web client](#web-client)
@@ -112,6 +114,14 @@ Open https://chat.example.com in a browser. Create a room, share the invite, & c
 git clone https://github.com/xero/covcom
 cd covcom
 bun i
+```
+
+Or skip the checkout and install the published clients from npm. The
+packages carry prebuilt binaries, so npm installs need no Bun:
+
+```sh
+npm i -g covcom         # CLI client
+npm i -g covcom-server  # relay server
 ```
 
 ---
@@ -213,6 +223,29 @@ This invokes `bun run src/index.ts` in the `server/` workspace and listens
 on `127.0.0.1:$PORT` (default `1337`). Set `HOST=0.0.0.0` to bind all
 interfaces when your reverse proxy lives on another host.
 
+### Standalone binary
+
+Every release also attaches compiled server and CLI binaries (server:
+Linux x64/arm64 in glibc and musl flavors, plus macOS arm64) next to the
+Docker images. One downloaded file, no bun install, same flags and env
+vars as source mode. See
+[USAGE.md](./docs/USAGE.md#standalone-binary) for verification and
+target details, or compile your own with `bun build:server`.
+
+### npm
+
+The same compiled binary also installs from npm:
+
+```sh
+npm i -g covcom-server
+covcom-server --port 1337
+```
+
+The `covcom-server` meta package pulls the matching
+`@covcom/server-<platform>` package for your os, cpu, and libc, and a
+small shim execs the binary. The shim runs on Node 18 or newer, or on
+Bun; the binary embeds its own runtime, so Bun is never required.
+
 ### Development
 
 Runs the server in watch mode, useful for local testing where clients
@@ -305,6 +338,19 @@ message box to open the keys-display (`R` ratchet, `E` events, `V` verify,
 ## CLI client
 
 The CLI is a compiled Bun binary with a custom zero-dependency TUI.
+
+**Install from npm:**
+
+```sh
+npm i -g covcom
+covcom
+```
+
+Prebuilt binaries ship as `@covcom/cli-<platform>` packages for macOS
+arm64 and x64, Linux x64 (glibc), and Windows x64; the install needs no
+Bun. Other platforms can grab a
+[release binary](https://github.com/xero/covcom/releases) or build from
+source below.
 
 **Run from source:**
 
@@ -572,8 +618,10 @@ this separately.
 bun bake
 ```
 
-Builds the inlined web bundle and every CLI binary (`build:web`,
-`bundle:cli`, then `build:cli:all`).
+One invocation of the root orchestrator
+(`bun scripts/build.ts all --kind npm --targets all`) builds the inlined
+web bundle, every CLI and server binary target, and stages the
+publish-ready npm package trees under `dist/npm/`.
 
 **Full pre-release check:**
 
@@ -581,8 +629,11 @@ Builds the inlined web bundle and every CLI binary (`build:web`,
 bun check
 ```
 
-Runs `lint`, `typecheck`, `bake`, and the full test suite in one pass. This
-is the single gate to validate a release candidate.
+Runs codegen, `lint`, `typecheck`, `bake`, and the full test suite in one
+pass. This is the single gate to validate a release candidate. Codegen runs
+first so a fresh clone passes with no manual step: the generated
+`src/version.ts` modules and the CLI banner are gitignored, never
+committed.
 
 **Repository layout:**
 
@@ -591,6 +642,7 @@ server/    WebSocket broker (Bun)
 lib/       Shared crypto session layer
 web/       Vite + vanilla TS web client
 cli/       Custom zero-dependency TUI
+scripts/   Root tooling: build orchestrator, npm staging, release scripts
 docker/    Dockerfile, Caddyfile template, entrypoint
 docs/      Project documentation / Wiki sources
 ```

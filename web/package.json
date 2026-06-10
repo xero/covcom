@@ -3,10 +3,11 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev":     "vite",
-		"build":   "vite build",
-		"preview": "vite preview",
-		"test":    "bun test"
+		"dev":       "vite",
+		"build":     "bun build.ts --kind spa",
+		"preview":   "vite preview",
+		"test":      "bun build.ts && bun test",
+		"typecheck": "bunx --no-install tsc --noEmit -p tsconfig.json && bunx --no-install tsc --noEmit -p tsconfig.tools.json && bunx --no-install tsc --noEmit -p test/e2e/tsconfig.json && bunx --no-install tsc --noEmit -p test/cross/tsconfig.json"
 	},
 	"dependencies": {
 		"@covcom/lib": "workspace:*"

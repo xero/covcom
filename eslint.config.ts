@@ -17,6 +17,8 @@ export default defineConfig([
 			'eslint.config.ts',
 			'cli/src/tui/banner.ts',
 			'cli/src/version.ts',
+			'server/src/version.ts',
+			'web/src/version.ts',
 		],
 	},
 
@@ -32,11 +34,11 @@ export default defineConfig([
 			parser: tseslint.parser,
 			parserOptions: {
 				// projectService auto-discovers each file's nearest tsconfig.json.
-				// The web build-glue file lives in tsconfig.tools.json (not an
-				// auto-discovered name), so allow it onto the inferred default
-				// project rather than excluding it from lint.
+				// The web build-glue files live in tsconfig.tools.json (not an
+				// auto-discovered name), so allow them onto the inferred default
+				// project rather than excluding them from lint.
 				projectService: {
-					allowDefaultProject: ['web/vite.config.ts'],
+					allowDefaultProject: ['web/vite.config.ts', 'web/build.ts'],
 				},
 				tsconfigRootDir: fileURLToPath(new URL('.', import.meta.url)),
 			},

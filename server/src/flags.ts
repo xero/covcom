@@ -13,6 +13,7 @@ const options = {
 	'admin-token': { type: 'string' },
 	'room-ttl': { type: 'string' },
 	help: { type: 'boolean', short: 'h' },
+	version: { type: 'boolean', short: 'v' },
 } as const;
 
 export const USAGE = `covcom server - post-quantum E2EE chat relay
@@ -26,6 +27,7 @@ Options:
       --admin-token <s>    Token required to create rooms (env ADMIN_TOKEN, default unset)
       --room-ttl <n>       Hours before an empty room is pruned, 0 = never (env ROOM_TTL, default 24)
   -h, --help               Show this help and exit
+  -v, --version            Print the version and protocol byte and exit
 
 Precedence: flag > environment variable > default.
 
@@ -41,9 +43,10 @@ function toNum(raw: string): number | null {
 }
 
 export interface ParseResult {
-	config: ServerConfig
-	help?:  string
-	error?: string
+	config:   ServerConfig
+	help?:    string
+	error?:   string
+	version?: true
 }
 
 export function parseFlags(argv: string[]): ParseResult {
@@ -54,6 +57,9 @@ export function parseFlags(argv: string[]): ParseResult {
 		return { config: {}, error: `${(e as Error).message}\n\n${USAGE}` };
 	}
 
+	// A marker, not the text to print: the parser stays pure, so the entry
+	// point owns the baked-in version constants and the printing.
+	if (values.version) return { config: {}, version: true };
 	if (values.help) return { config: {}, help: USAGE };
 
 	const fail = (flag: string, raw: string): ParseResult =>

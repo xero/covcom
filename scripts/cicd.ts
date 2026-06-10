@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 /**
- * cicd.ts - repo-root release tooling for covcom, run with Bun.
+ * cicd.ts - release tooling for covcom, run with Bun.
  *
  * Usage:
- *   bun run cicd.ts --versionbump <major|minor|patch> <reason>
+ *   bun scripts/cicd.ts --versionbump <major|minor|patch> <reason>
  *
  * versionbump bumps package.json via `npm version --no-git-tag-version`, then in
  * SECURITY.md and docker/DOCKERHUB.md demotes the current "Latest version" row
@@ -12,7 +12,12 @@
  * actions and leaves the working tree dirty for manual review.
  */
 
-const REPO_FILES = ['SECURITY.md', 'docker/DOCKERHUB.md'];
+import { join } from 'node:path';
+
+// All file access is anchored to the repo root so the script behaves the same
+// from any cwd.
+const ROOT = join(import.meta.dir, '..');
+const REPO_FILES = [join(ROOT, 'SECURITY.md'), join(ROOT, 'docker/DOCKERHUB.md')];
 const BUMP_TYPES = ['major', 'minor', 'patch'];
 const SUPPORTED_MARK = '✓ supported';
 // Matches the displayed version in a table cell: `[v3.0.1]...` or `[3.0.0]...`.
@@ -24,7 +29,7 @@ function die(msg: string, code = 1): never {
 }
 
 function usage(): never {
-	process.stderr.write('usage: bun run cicd.ts --versionbump <major|minor|patch> <reason>\n');
+	process.stderr.write('usage: bun scripts/cicd.ts --versionbump <major|minor|patch> <reason>\n');
 	process.exit(1);
 }
 
@@ -63,7 +68,7 @@ function bumpVersionTable(content: string, oldVersion: string, newVersion: strin
 }
 
 async function readVersion(): Promise<string> {
-	const pkg = JSON.parse(await Bun.file('package.json').text());
+	const pkg = JSON.parse(await Bun.file(join(ROOT, 'package.json')).text());
 	return pkg.version;
 }
 
@@ -94,7 +99,7 @@ async function versionbump(bumpType: string, reason: string): Promise<void> {
 
 	const result = Bun.spawnSync(
 		['npm', 'version', bumpType, '--no-git-tag-version'],
-		{ stdout: 'inherit', stderr: 'inherit' },
+		{ cwd: ROOT, stdout: 'inherit', stderr: 'inherit' },
 	);
 	if (!result.success) {
 		die('npm version failed', result.exitCode ?? 1);

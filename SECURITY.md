@@ -2,6 +2,7 @@
 
 > ### Table of Contents
 > - [Supported Versions]
+>   - [Compiled Binaries]
 > - [Reporting a Vulnerability]
 >   - [Scope]
 > - [Cryptographic Foundations]
@@ -27,6 +28,27 @@ version.
 
 > [!CAUTION]
 > Deprecated versions receive no patches. Upgrade promptly.
+
+Deprecation lands on every channel at once: the outgoing Docker tag is
+replaced by a tombstone image, and the outgoing `covcom` and
+`covcom-server` npm versions are deprecated in lockstep with the same
+reason string.
+
+### Compiled Binaries
+
+The standalone server and CLI binaries embed the Bun runtime they were
+compiled with. A Bun security fix that touches the network, TLS, or WebSocket
+stack does not reach a published binary until the project rebuilds it, so a
+relevant Bun security release triggers a COVCOM patch release. The rolling
+policy above covers the rest: only the current release's binaries are
+supported, and the current release always carries the current runtime.
+The npm platform packages (`@covcom/cli-*`, `@covcom/server-*`) wrap these
+same binaries and carry the same frozen runtime, so the policy covers them
+identically.
+
+The other run modes patch on their own channels. Source mode picks up Bun
+fixes when the host's bun updates; the Docker image picks them up on each
+image rebuild.
 
 ---
 
@@ -197,6 +219,7 @@ into an image layer. The runtime image carries no build or development tooling.
 > equivalent security headers yourself.
 
 [supported versions]:         #supported-versions
+[compiled binaries]:          #compiled-binaries
 [reporting a vulnerability]:  #reporting-a-vulnerability
 [scope]:                      #scope
 [cryptographic foundations]:  #cryptographic-foundations

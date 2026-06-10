@@ -12,15 +12,22 @@
  * Ctrl+C (SIGINT/SIGTERM), or either child exiting, brings both down.
  */
 
+import { join } from 'node:path';
+
 const port  = process.env.PORT ?? '1337';
 const relay = `127.0.0.1:${port}`;
+// Children resolve the root package.json scripts via cwd, so anchor them to
+// the repo root rather than wherever this script was invoked from.
+const root  = join(import.meta.dir, '..');
 
 const procs = [
 	Bun.spawn(['bun', 'run', 'dev:server'], {
+		cwd: root,
 		env: { ...process.env, PORT: port },
 		stdio: ['inherit', 'inherit', 'inherit'],
 	}),
 	Bun.spawn(['bun', 'run', 'dev:web'], {
+		cwd: root,
 		env: { ...process.env, VITE_DEFAULT_SERVER: relay },
 		stdio: ['inherit', 'inherit', 'inherit'],
 	}),

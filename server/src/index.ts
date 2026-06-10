@@ -12,6 +12,7 @@ import {
 } from './relay.ts';
 import type { InboundMsg } from './types.ts';
 import { parseFlags } from './flags.ts';
+import { PROTOCOL_HEX, VERSION } from './version.ts';
 
 function parseMaxRoomSize(): number {
 	const raw = parseInt(process.env.MAX_ROOM_SIZE ?? '20', 10);
@@ -112,7 +113,11 @@ export function startServer(config: ServerConfig = {}) {
 }
 
 if (import.meta.main) {
-	const { config, help, error } = parseFlags(process.argv.slice(2));
+	const { config, help, error, version } = parseFlags(process.argv.slice(2));
+	if (version) {
+		console.log(`COVCOM v${VERSION} (protocol ${PROTOCOL_HEX})`);
+		process.exit(0);
+	}
 	if (help) {
 		console.log(help);
 		process.exit(0);

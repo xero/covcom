@@ -37,7 +37,7 @@ if (opts.help) {
 
 // --version prints the baked-in version facts and exits before any TUI setup.
 if (opts.version) {
-	process.stdout.write(`COVCOM v${VERSION}\nprotocol ${PROTOCOL_HEX}\n`);
+	process.stdout.write(`COVCOM v${VERSION} (protocol ${PROTOCOL_HEX})\n`);
 	process.exit(0);
 }
 

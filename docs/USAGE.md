@@ -14,9 +14,12 @@ XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-p
 > - [requirements](#requirements)
 > - [installation](#installation)
 > - [server](#server)
+>   - [run modes](#run-modes)
 >   - [docker](#docker)
 >   - [docker (raw)](#docker-raw)
 >   - [production (no docker)](#production-no-docker)
+>   - [standalone binary](#standalone-binary)
+>   - [npm](#npm)
 >   - [development](#development)
 >   - [environment variables](#environment-variables)
 > - [web client](#web-client)
@@ -99,9 +102,35 @@ cd covcom
 bun i
 ```
 
+Or install the published clients from npm without a checkout. The packages
+carry prebuilt binaries with the runtime embedded, so npm installs need no
+Bun:
+
+```sh
+npm i -g covcom         # CLI client
+npm i -g covcom-server  # relay server
+```
+
 ---
 
 ## server
+
+### run modes
+
+The server ships three ways. Same code, same flags and env vars, same wire
+contract; the rows differ only in how you launch it and how it picks up
+security fixes.
+
+| Mode   | Launch                                | Requires | Patched by                              |
+|--------|---------------------------------------|----------|------------------------------------------|
+| source | `bun start:server`                    | bun      | updating bun and pulling the repo        |
+| binary | `./covcom-server-<target>`            | nothing  | downloading the next release's binary    |
+| npm    | `npm i -g covcom-server`              | node 18+ | updating the package each release        |
+| docker | `bun run:docker` or a published image | docker   | pulling the rebuilt image each release   |
+
+All three read the same configuration; see
+[command-line flags](#command-line-flags) for the flags, the env vars, and
+the precedence between them.
 
 ### docker
 
@@ -232,6 +261,85 @@ on `localhost:$PORT` (default `1337`).
 > proxy must terminate TLS and set the equivalent security headers. See
 > [Deployment Hardening](../SECURITY.md#deployment-hardening).
 
+### standalone binary
+
+Every release attaches compiled server binaries, so a deployment is one
+downloaded file: no bun, no node, no npm. Assets are xz-compressed and
+covered by a `SHA256SUMS` file and a GitHub build-provenance attestation.
+
+| Asset                            | Target                       |
+|----------------------------------|------------------------------|
+| `covcom-server-linux-x64`        | Linux x86_64, glibc          |
+| `covcom-server-linux-x64-musl`   | Linux x86_64, musl (alpine)  |
+| `covcom-server-linux-arm64`      | Linux arm64, glibc           |
+| `covcom-server-linux-arm64-musl` | Linux arm64, musl (alpine)   |
+| `covcom-server-macos-arm64`      | macOS Apple Silicon          |
+
+Verify the compressed asset before unpacking, since the checksums and the
+attestation cover the `.xz`:
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing
+gh attestation verify covcom-server-linux-x64-musl.xz --repo xero/covcom
+```
+
+Then unpack and run:
+
+```sh
+xz -d covcom-server-linux-x64-musl.xz
+chmod +x covcom-server-linux-x64-musl
+./covcom-server-linux-x64-musl --port 1337
+```
+
+The binary takes the same flags and env vars as source mode, reports its
+baked-in version with `--version`, and auto-loads `.env` from its working
+directory; see [command-line flags](#command-line-flags).
+
+The musl builds link the C++ support libraries dynamically, so a stock
+alpine container needs `apk add libstdc++ libgcc` before the binary runs.
+The glibc builds run on mainstream distros as-is.
+
+Build locally instead of downloading:
+
+```sh
+bun build:server      # host target → server/dist/covcom-server
+bun build:server:all  # all five release targets
+```
+
+> [!WARNING]
+> Like the no-docker path above, the binary serves plain HTTP on localhost.
+> Your reverse proxy must terminate TLS and set the security headers; see
+> [Deployment Hardening](../SECURITY.md#deployment-hardening).
+
+### npm
+
+The same compiled binaries publish to npm on every release:
+
+```sh
+npm i -g covcom-server
+covcom-server --port 1337
+```
+
+The `covcom-server` meta package lists one
+`@covcom/server-<platform>` package per target as an optional dependency;
+npm installs only the one matching your os, cpu, and libc, and a small
+shim execs the binary. The shim runs on Node 18 or newer, or on Bun; the
+binary embeds its own runtime, so Bun is never required. On linux the
+shim picks the glibc or musl package by probing `process.report`.
+
+| platform | libc | package |
+|----------|------|---------|
+| linux-x64 | glibc | `@covcom/server-linux-x64` |
+| linux-x64-musl | musl | `@covcom/server-linux-x64-musl` |
+| linux-arm64 | glibc | `@covcom/server-linux-arm64` |
+| linux-arm64-musl | musl | `@covcom/server-linux-arm64-musl` |
+| darwin-arm64 | - | `@covcom/server-darwin-arm64` |
+
+The musl packages carry the same dynamic-linking caveat as the release
+binaries: a stock alpine container needs `apk add libstdc++ libgcc`
+first. The same warning as above applies too: the server speaks plain
+HTTP and expects your reverse proxy to terminate TLS.
+
 ### development
 
 Runs the server in watch mode, useful for local testing where clients
@@ -272,11 +380,26 @@ or to the compiled binary.
 | `--admin-token`   | -     | `ADMIN_TOKEN`   | unset       | Token required to create rooms               |
 | `--room-ttl`      | -     | `ROOM_TTL`      | `24`        | Hours before an empty room is pruned. `0` is never |
 | `--help`          | `-h`  | -               | -           | Print the usage screen and exit              |
+| `--version`       | `-v`  | -               | -           | Print the version and protocol byte and exit |
 
 Precedence is **flag > environment variable > default**: a provided flag
 overrides its env var, and an absent flag leaves the env behavior untouched.
 Flags fail loudly: a non-numeric or negative numeric value, or an unknown
 flag, prints usage to stderr and exits 1.
+
+Flags and environment variables are the whole configuration interface, and
+they behave identically whether the server runs from source or as a compiled
+binary. That includes `.env` handling: Bun auto-loads a `.env` file from the
+working directory in both modes, verified on Bun 1.3.14, the version pinned
+by `packageManager`. Loaded `.env` values rank below real environment
+variables, so the full chain is flag > environment variable > `.env` >
+default.
+
+> [!CAUTION]
+> A `.env` file in the directory you launch from configures the server
+> silently, in binary mode too. Audit the working directory of a production
+> deployment, or pass explicit env vars or flags, which always win over
+> `.env` values.
 
 > [!WARNING]
 > `--admin-token` is visible in process listings (`ps`) and shell history.
@@ -462,6 +585,20 @@ fresh.
 ## cli client
 
 The CLI is a compiled Bun binary with a custom zero-dependency TUI.
+
+**Install from npm:**
+
+```sh
+npm i -g covcom
+covcom
+```
+
+The `covcom` meta package pulls the prebuilt `@covcom/cli-<platform>`
+binary for macOS arm64 or x64, Linux x64 (glibc), or Windows x64; the
+install needs Node 18 or newer (or Bun) for the launcher shim and nothing
+else. Other platforms can use a
+[release binary](https://github.com/xero/covcom/releases) or build from
+source below.
 
 **Run from source:**
 

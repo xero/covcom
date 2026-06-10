@@ -1,25 +1,12 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { parseFlags, USAGE } from '../src/flags.ts';
 import { startServer } from '../src/index.ts';
+import { pickPort, spawnServer as spawnEntry, waitForHealth } from './util.ts';
 
 // Pure-parser unit tests plus precedence (in-process) and subprocess smoke
 // tests. The parser never exits or reads env; the entry point owns that.
-
-function pickPort(): number {
-	return 40000 + Math.floor(Math.random() * 5000);
-}
-
-async function waitForHealth(port: number, timeoutMs = 5000): Promise<boolean> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		try {
-			const res = await fetch(`http://127.0.0.1:${port}/health_check`);
-			if (res.status === 200) return true;
-		} catch { /* not up yet */ }
-		await Bun.sleep(50);
-	}
-	return false;
-}
+// The subprocess tests run against `bun run src/index.ts` or the compiled
+// binary, selected by COVCOM_SERVER_BIN (see util.ts).
 
 describe('parseFlags: each flag maps to its config key', () => {
 	test('--port / -p', () => {
@@ -62,7 +49,7 @@ describe('parseFlags: help', () => {
 		expect(parseFlags(['-h']).help).toBe(USAGE);
 	});
 	test('usage mentions every flag', () => {
-		for (const flag of ['--port', '--host', '--max-room-size', '--admin-token', '--room-ttl', '--help'])
+		for (const flag of ['--port', '--host', '--max-room-size', '--admin-token', '--room-ttl', '--help', '--version'])
 			expect(USAGE).toContain(flag);
 	});
 	test('usage mentions every env var name', () => {
@@ -71,6 +58,22 @@ describe('parseFlags: help', () => {
 	});
 	test('usage states the precedence order', () => {
 		expect(USAGE).toContain('flag > environment variable > default');
+	});
+});
+
+describe('parseFlags: version', () => {
+	test('--version and -v set the marker, nothing else', () => {
+		for (const argv of [['--version'], ['-v']]) {
+			const r = parseFlags(argv);
+			expect(r.version).toBe(true);
+			expect(r.help).toBeUndefined();
+			expect(r.error).toBeUndefined();
+		}
+	});
+	test('--version wins when --help is also passed (matches the entry point order)', () => {
+		const r = parseFlags(['--help', '--version']);
+		expect(r.version).toBe(true);
+		expect(r.help).toBeUndefined();
 	});
 });
 
@@ -143,11 +146,7 @@ describe('subprocess smoke tests', () => {
 	const procs: ReturnType<typeof Bun.spawn>[] = [];
 
 	function spawnServer(args: string[], env?: Record<string, string>): ReturnType<typeof Bun.spawn> {
-		const proc = Bun.spawn(['bun', 'run', 'src/index.ts', ...args], {
-			env: { ...process.env, ...env },
-			stdout: 'pipe',
-			stderr: 'pipe',
-		});
+		const proc = spawnEntry(args, env);
 		procs.push(proc);
 		return proc;
 	}
@@ -176,6 +175,14 @@ describe('subprocess smoke tests', () => {
 		expect(code).toBe(0);
 		expect(out).toContain('Usage:');
 		expect(out).toContain('flag > environment variable > default');
+	});
+
+	test('--version exits 0 with the version line on stdout', async () => {
+		const proc = spawnServer(['--version']);
+		const code = await proc.exited;
+		const out  = await new Response(proc.stdout as ReadableStream).text();
+		expect(code).toBe(0);
+		expect(out).toMatch(/^COVCOM v\d+\.\d+\.\d+ \(protocol 0x[0-9a-f]{2}\)$/m);
 	});
 
 	test('--port abc exits 1 with usage on stderr', async () => {
