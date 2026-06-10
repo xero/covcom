@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { chatLayout, chatFocusIds, keyHints } from '../src/tui/views.ts';
+import { chatLayout, chatFocusIds, keyHints, centerBannerBlock, BANNER_W, BANNER_H, BANNER_FORM_GAP } from '../src/tui/views.ts';
 import { FocusRing } from '../src/tui/focus.ts';
 import { SIDEBAR_MIN_COLS } from '../src/config.ts';
 
@@ -111,5 +111,38 @@ describe('focus ring composition from chatFocusIds', () => {
 		r.next(); expect(r.current()).toBe('msgArea');
 		r.next(); expect(r.current()).toBe('sidebar');
 		r.next(); expect(r.current()).toBe('chatInput');
+	});
+});
+
+describe('centerBannerBlock', () => {
+	const formH = 18;  // a tall form, like the join screen
+
+	test('on a wide, tall terminal the banner + form block is vertically centered', () => {
+		const { bannerTop, formY } = centerBannerBlock(120, 50, formH);
+		const blockH = BANNER_H + BANNER_FORM_GAP + formH;
+		expect(bannerTop).toBe(Math.floor((50 - blockH) / 2));
+		// the form sits a fixed gap below the banner
+		expect(formY).toBe(bannerTop + BANNER_H + BANNER_FORM_GAP);
+		// equal-ish margins above the banner and below the form
+		const marginBelow = 50 - (formY + formH);
+		expect(Math.abs(marginBelow - bannerTop)).toBeLessThanOrEqual(1);
+	});
+
+	test('a terminal too narrow for the banner centers the form alone', () => {
+		const { bannerTop, formY } = centerBannerBlock(BANNER_W + 3, 50, formH);
+		expect(bannerTop).toBe(-1);
+		expect(formY).toBe(Math.floor((50 - formH) / 2));
+	});
+
+	test('a terminal too short for the whole block drops the banner so the form fits', () => {
+		// block height exceeds 24 rows, so the banner is hidden and the form centers
+		const { bannerTop, formY } = centerBannerBlock(120, 24, formH);
+		expect(bannerTop).toBe(-1);
+		expect(formY).toBe(Math.floor((24 - formH) / 2));
+	});
+
+	test('never positions content above the first row', () => {
+		expect(centerBannerBlock(120, 5, formH).formY).toBeGreaterThanOrEqual(1);
+		expect(centerBannerBlock(40, 50, 6).formY).toBeGreaterThanOrEqual(1);
 	});
 });

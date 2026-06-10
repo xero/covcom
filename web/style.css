@@ -291,12 +291,12 @@ label {
 }
 
 .invite-qr {
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
 	display: block;
-	width: 100%;
+	width: 60%;
 	height: auto;
 	max-width: 100%;
+	min-width: 55px;
+	margin: auto;
 }
 
 .crypto-summary {
@@ -305,6 +305,8 @@ label {
 	display: grid;
 	grid-template-columns: auto 1fr;
 	gap: 0.1rem 0.5rem;
+	width: fit-content;
+  margin: auto;
 
 	dt {
 		font-weight: bold;
@@ -315,9 +317,12 @@ label {
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--text);
-		padding-bottom: 0.2rem;
-		margin-bottom: 0.2rem;
-		border-bottom: 1px solid var(--border);
+		background: var(--border);
+		padding-top: 2px;
+	}
+	dd,
+	dt {
+		padding: 0 16px 0 6px;
 	}
 }
 

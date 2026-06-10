@@ -301,19 +301,34 @@ export interface ModalOpts {
 	accent?: ColorValue
 }
 
+// Long-time minimum inner width; the modal never wraps narrower than this when
+// the terminal has room for it.
+export const MODAL_MIN_INNER = 24;
+// Share of the terminal width the modal grows to use before its content caps it.
+export const MODAL_WIDTH_RATIO = 0.6;
+
+// Pure layout for a modal: wrap the body and compute the inner content width.
+// The wrap width scales with the terminal but never below MODAL_MIN_INNER (nor
+// narrower than the title), and never past the screen-bounded cap. The box then
+// shrinks to the longest wrapped line, so short messages stay compact while long
+// ones spread across the wider wrap width instead of stacking into a tall column.
+export function layoutModal(screenW: number, title: string, body: string): { lines: string[]; innerW: number } {
+	const maxInner    = Math.max(8, screenW - 12);
+	const targetInner = Math.min(maxInner, Math.max(MODAL_MIN_INNER, title.length, Math.floor(screenW * MODAL_WIDTH_RATIO)));
+	const lines: string[] = [];
+	for (const seg of body.split('\n')) {
+		for (const line of wordWrap(seg, targetInner)) lines.push(line);
+	}
+	const longest = lines.reduce((m, l) => Math.max(m, l.length), 0);
+	const innerW  = Math.min(maxInner, Math.max(title.length, longest, MODAL_MIN_INNER));
+	return { lines, innerW };
+}
+
 export function drawModal(scr: Screen, theme: Theme, opts: ModalOpts): void {
 	const border  = opts.accent ?? theme.modalBorder;
 	const titleFg = opts.accent ?? theme.modalTitle;
 
-	const maxInner = Math.max(8, scr.w - 12);
-	const targetInner = Math.min(maxInner, Math.max(24, opts.title.length));
-	const rawLines: string[] = [];
-	for (const seg of opts.body.split('\n')) {
-		for (const line of wordWrap(seg, targetInner)) rawLines.push(line);
-	}
-	const longest = rawLines.reduce((m, l) => Math.max(m, l.length), 0);
-	const innerW  = Math.min(maxInner, Math.max(opts.title.length, longest, 24));
-
+	const { lines: rawLines, innerW } = layoutModal(scr.w, opts.title, opts.body);
 	const boxW = innerW + 4;
 	const boxH = rawLines.length + 5;
 	const ox   = Math.max(1, Math.floor((scr.w - boxW) / 2));

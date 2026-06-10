@@ -168,6 +168,20 @@ other setting persists as normal.
 
 ### Changed
 
+**Create and Join screens center vertically.** The create-room and join-room
+forms now center the banner and form together as one block, the same way the
+landing screen does, instead of pinning the banner to the top with the form
+floating below. On a terminal too narrow or too short for the banner, it drops
+out and the form centers on its own so a tall form still fits. The QR waiting
+screen is unchanged.
+
+**Modals scale with the terminal.** Modal dialogs wrapped their body at a fixed
+24 columns regardless of terminal size, so a long message stacked into a tall,
+narrow column. The body now wraps at roughly 60% of the terminal width, bounded
+by the screen, and the box still shrinks to its content. Short messages stay
+compact at the same 24-column minimum as before; long ones spread out instead of
+stacking.
+
 **Config location is XDG-based.** The covcom-specific `COVCOM_CONFIG_DIR`
 environment variable is removed. Point covcom at a different config with the new
 `--config <path>` flag, or set `$XDG_CONFIG_HOME` to relocate the whole

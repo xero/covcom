@@ -16,10 +16,9 @@ import { BANNER } from './banner.js';
 // ─── banner ──────────────────────────────────────────────────────────────────
 
 const BANNER_LINES    = BANNER.split('\n').filter(l => l.length > 0);
-const BANNER_W        = 56;  // visible cell width of the banner
-const BANNER_H        = BANNER_LINES.length;  // derived, so the banner can grow or shrink
-const BANNER_TOP      = 2;   // pinned row offset for the taller create/join forms
-const BANNER_FORM_GAP = 4;   // blank rows between the banner and the form below it
+export const BANNER_W        = 56;  // visible cell width of the banner
+export const BANNER_H        = BANNER_LINES.length;  // derived, so the banner can grow or shrink
+export const BANNER_FORM_GAP = 4;   // blank rows between the banner and the form below it
 
 // draw the banner with its first row at `top`. skips silently when the terminal
 // is too narrow or `top` is off-screen.
@@ -32,23 +31,18 @@ function drawBannerAt(scr: Screen, top: number): void {
 	}
 }
 
-// pinned-top banner for the create/join forms. formY is the form's first row;
-// the banner only renders if it won't collide with it.
-function drawBanner(scr: Screen, formY: number): void {
-	if (formY < BANNER_TOP + BANNER_H + 1) return;
-	drawBannerAt(scr, BANNER_TOP);
-}
-
 // Center the banner + form as one block: equal margin above the banner and
 // below the form, with BANNER_FORM_GAP rows between them. formH is the form's
-// own height; when the terminal is too narrow for the banner the form centers
-// on its own. Returns the banner's top row (-1 when hidden) and the form's
-// first row.
-function centerBannerBlock(scr: Screen, formH: number): { bannerTop: number; formY: number } {
-	const showBanner = scr.w >= BANNER_W + 4;
-	const blockH     = showBanner ? BANNER_H + BANNER_FORM_GAP + formH : formH;
-	const top        = Math.max(1, Math.floor((scr.h - blockH) / 2));
-	if (!showBanner) return { bannerTop: -1, formY: top };
+// own height. The banner is dropped (and the form centers on its own) when the
+// terminal is too narrow for it or too short to hold the whole block, so a tall
+// form still fits instead of overflowing. Pure in (screenW, screenH, formH) so
+// it can be unit-tested. Returns the banner's top row (-1 when hidden) and the
+// form's first row.
+export function centerBannerBlock(screenW: number, screenH: number, formH: number): { bannerTop: number; formY: number } {
+	const blockH     = BANNER_H + BANNER_FORM_GAP + formH;
+	const showBanner = screenW >= BANNER_W + 4 && blockH <= screenH;
+	if (!showBanner) return { bannerTop: -1, formY: Math.max(1, Math.floor((screenH - formH) / 2)) };
+	const top = Math.max(1, Math.floor((screenH - blockH) / 2));
 	return { bannerTop: top, formY: top + BANNER_H + BANNER_FORM_GAP };
 }
 
@@ -316,7 +310,7 @@ export function renderLanding(
 		const cw = Math.min(scr.w - 8, 44);
 		const ox = Math.floor((scr.w - cw) / 2);
 		// form occupies 6 rows: label, input, gap, buttons, gap, error.
-		const { bannerTop, formY: oy } = centerBannerBlock(scr, 6);
+		const { bannerTop, formY: oy } = centerBannerBlock(scr.w, scr.h, 6);
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
 		drawBannerAt(scr, bannerTop);
@@ -439,10 +433,13 @@ export function renderCreate(
 		scr.hideCursor();
 		const cw = Math.min(scr.w - 8, 44);
 		const ox = Math.floor((scr.w - cw) / 2);
-		const oy = Math.max(1, Math.floor((scr.h - 16) / 2));
+		// form height: 11 rows collapsed (last is the error row), 14 expanded
+		// (the optional token label + input add 3). centers banner + form together.
+		const formH = showToken ? 14 : 11;
+		const { bannerTop, formY: oy } = centerBannerBlock(scr.w, scr.h, formH);
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
-		drawBanner(scr, oy);
+		drawBannerAt(scr, bannerTop);
 
 		scr.moveTo(ox, oy); scr.write(colorFg(theme.fg) + 'Username:' + ansi.reset);
 		usernameInput.render(scr, { x: ox, y: oy + 1, w: cw, h: 1 }, ring.isFocused('username'), theme);
@@ -715,10 +712,12 @@ export function renderJoin(
 		scr.hideCursor();
 		const cw = Math.min(scr.w - 8, 52);
 		const ox = Math.floor((scr.w - cw) / 2);
-		const oy = Math.max(1, Math.floor((scr.h - 22) / 2));
+		// form spans 18 rows: username, path + browse, the 5-row invite area, the
+		// error row, and the buttons. centers banner + form together.
+		const { bannerTop, formY: oy } = centerBannerBlock(scr.w, scr.h, 18);
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
-		drawBanner(scr, oy);
+		drawBannerAt(scr, bannerTop);
 
 		scr.moveTo(ox, oy); scr.write(colorFg(theme.fg) + 'Username:' + ansi.reset);
 		usernameInput.render(scr, { x: ox, y: oy + 1, w: cw, h: 1 }, ring.isFocused('username'), theme);

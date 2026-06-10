@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { Button, TextArea, TextInput } from '../src/tui/widgets.ts';
+import { Button, TextArea, TextInput, layoutModal, MODAL_MIN_INNER } from '../src/tui/widgets.ts';
 import type { Key } from '../src/tui/keys.ts';
 
 const key = (name: string, opts: Partial<Key> = {}): Key => ({ name, ch: opts.ch, ctrl: opts.ctrl ?? false, shift: opts.shift ?? false, meta: opts.meta ?? false });
@@ -88,5 +88,36 @@ describe('Button.onKey', () => {
 		expect(b.onKey(key('enter'))).toBe(false);
 		b.onClick();
 		expect(fired).toBe(0);
+	});
+});
+
+describe('layoutModal', () => {
+	const longBody = 'word '.repeat(80).trim();  // ~400 cols of wrappable text
+
+	test('short body holds the minimum inner width, even on a wide terminal', () => {
+		expect(layoutModal(200, 'ok', 'hi').innerW).toBe(MODAL_MIN_INNER);
+	});
+
+	test('a title wider than the minimum widens the box', () => {
+		const title = 'x'.repeat(40);
+		expect(layoutModal(120, title, 'hi').innerW).toBe(40);
+	});
+
+	test('long body wraps wider as the terminal grows', () => {
+		const at80  = layoutModal(80, 'title', longBody);
+		const at200 = layoutModal(200, 'title', longBody);
+		// every wrapped line stays within the scaled wrap target (floor(w * 0.6))
+		expect(Math.max(...at80.lines.map((l) => l.length))).toBeLessThanOrEqual(48);
+		expect(Math.max(...at200.lines.map((l) => l.length))).toBeLessThanOrEqual(120);
+		// wider terminal => wider box and fewer wrapped lines
+		expect(at200.innerW).toBeGreaterThan(at80.innerW);
+		expect(at200.lines.length).toBeLessThan(at80.lines.length);
+		// and it actually scales past the old fixed 24-column behavior
+		expect(at80.innerW).toBeGreaterThan(MODAL_MIN_INNER);
+	});
+
+	test('a tiny terminal caps the width below the minimum rather than overflowing', () => {
+		// maxInner = w - 12 = 18, which is below MODAL_MIN_INNER
+		expect(layoutModal(30, 'title', longBody).innerW).toBe(18);
 	});
 });
