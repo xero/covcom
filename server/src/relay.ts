@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from 'bun';
-import { PROTOCOL_VERSION } from '@covcom/lib';
+import { PROTOCOL_VERSION, hasUnsafeFormatChars } from '@covcom/lib';
 import { createRoom, getRoom } from './rooms.ts';
 import type { ConnData, Room } from './rooms.ts';
 import type {
@@ -13,23 +13,6 @@ import type {
 	RekeyMsg,
 	RelayMsg,
 } from './types.ts';
-
-// Bidi controls + zero-width format chars that enable display-name spoofing
-// (text reordering / homoglyph handles) without being C0/C1. Mirrors
-// @covcom/lib's stripFormatChars; duplicated here so the relay can reject unsafe
-// usernames without importing the client's sanitizer. ZWNJ/ZWJ (U+200C/D) and
-// variation selectors are intentionally allowed: legitimate in emoji and
-// Persian/Arabic/Indic text.
-
-const UNSAFE_FORMAT_CP: ReadonlySet<number> = new Set([
-	0x061c,
-	0x200b,
-	0x200e, 0x200f,
-	0x202a, 0x202b, 0x202c, 0x202d, 0x202e,
-	0x2060,
-	0x2066, 0x2067, 0x2068, 0x2069,
-	0xfeff,
-]);
 
 function send(ws: ServerWebSocket<ConnData>, msg: OutboundMsg): void {
 	ws.send(JSON.stringify(msg));
@@ -122,12 +105,11 @@ export function handleIdentify(
 	// Reject (never strip) bidi controls + zero-width format chars too: they
 	// enable display-name spoofing (text reordering / homoglyph handles)
 	// without being C0/C1. Same reject-don't-strip rationale as the control-char
-	// check above (keeps the handle bound to the signed claim).
-	for (const ch of uname) {
-		// All targets are BMP; charCodeAt(0) (always a number) equals the code point.
-		if (UNSAFE_FORMAT_CP.has(ch.charCodeAt(0))) {
-			ws.close(); return;
-		}
+	// check above (keeps the handle bound to the signed claim). Shares @covcom/lib's
+	// code-point list via hasUnsafeFormatChars so the relay and client sanitizer
+	// can't drift.
+	if (hasUnsafeFormatChars(uname)) {
+		ws.close(); return;
 	}
 	if (msg.ek.length !== 1580)                {
 		ws.close(); return;

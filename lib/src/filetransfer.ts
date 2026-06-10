@@ -68,6 +68,11 @@ export function prefixTag(tag: number, body: Uint8Array): Uint8Array {
 }
 
 export function readRelayTag(payload: Uint8Array): { tag: number; body: Uint8Array } {
+	// An empty payload has no tag byte: a hostile/buggy peer can send base64 "".
+	// Route it to the file-ack path rather than the chain-seed path so it lands in
+	// decodeFileAck's hardened parse (which drops it) and never reaches
+	// unwrapChainSeed, where a zero-length seed would throw and DoS the receiver.
+	if (payload.length === 0) return { tag: RELAY_TAG_FILE_ACK, body: payload };
 	return { tag: payload[0], body: payload.subarray(1) };
 }
 

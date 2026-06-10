@@ -150,6 +150,16 @@ describe('relay tag framing + file ack codec', () => {
 		expect(p.body).toEqual(Uint8Array.from([9, 8, 7]));
 	});
 
+	test('empty payload routes to the ack path, never to seed handling', () => {
+		// A hostile/buggy peer can send base64 "" (zero bytes, no tag). It must not
+		// surface as a chain seed (tag !== RELAY_TAG_SEED), or unwrapChainSeed would
+		// throw on a zero-length seed and DoS the receiver. decodeFileAck then drops it.
+		const { tag, body } = readRelayTag(new Uint8Array(0));
+		expect(tag).toBe(RELAY_TAG_FILE_ACK);
+		expect(tag).not.toBe(RELAY_TAG_SEED);
+		expect(decodeFileAck(body)).toEqual({ fileId: '', seq: -1 });
+	});
+
 	test('encode/decode file ack round-trips a real uuid + large seq', () => {
 		const fileId = crypto.randomUUID();
 		const seq    = 16_383;
