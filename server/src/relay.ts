@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from 'bun';
-import { PROTOCOL_VERSION, hasUnsafeFormatChars } from '@covcom/lib';
+import { PROTOCOL_VERSION, hasUnsafeFormatChars, constantTimeEqual } from '@covcom/lib';
 import { createRoom, getRoom } from './rooms.ts';
 import type { ConnData, Room } from './rooms.ts';
 import type {
@@ -13,6 +13,8 @@ import type {
 	RekeyMsg,
 	RelayMsg,
 } from './types.ts';
+
+const enc = new TextEncoder();
 
 function send(ws: ServerWebSocket<ConnData>, msg: OutboundMsg): void {
 	ws.send(JSON.stringify(msg));
@@ -59,7 +61,16 @@ export function handleJoin(
 	if (!room) {
 		send(ws, { type: 'error', reason: 'not_found' }); return;
 	}
-	if (msg.roomSecret !== room.roomSecret) {
+	// Constant-time secret check via leviathan's cte (routed through @covcom/lib
+	// so the lib stays the single leviathan-crypto owner). A `!==` early-exits on
+	// the first differing byte and leaks a match-prefix length; a 128-bit random
+	// secret over the network makes that impractical to exploit, but the timing-
+	// safe compare costs nothing and removes the side channel entirely. The base64
+	// strings are compared byte-for-byte (decoding would let distinct encodings of
+	// the same bytes collide). Non-string input yields an empty buffer, which the
+	// length check rejects as a mismatch.
+	const got = typeof msg.roomSecret === 'string' ? enc.encode(msg.roomSecret) : new Uint8Array();
+	if (!constantTimeEqual(got, enc.encode(room.roomSecret))) {
 		send(ws, { type: 'error', reason: 'forbidden' });
 		return;
 	}

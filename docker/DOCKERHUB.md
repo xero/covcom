@@ -16,9 +16,13 @@
   unreadable and secure against future cryptanalysis.
 ```
 
-## https://xero.github.io/covcom/
-
 [![GitHub Release](https://img.shields.io/github/v/release/xero/covcom?display_name=release&style=flat-square&logo=contributorcovenant&logoColor=%23bcb83a&color=%2378740b)](https://github.com/xero/covcom/releases/latest) [![Container Image Size](https://img.shields.io/docker/image-size/xerostyle/covcom/latest?arch=amd64&style=flat-square&logo=developmentcontainers&logoColor=%23bcb83a&color=%2378740b)](https://hub.docker.com/r/xerostyle/covcom) [![GitHub Wiki Publish](https://img.shields.io/github/actions/workflow/status/xero/covcom/wiki.yml?branch=main&style=flat-square&logo=gitbook&logoColor=%23bcb83a&label=wiki&color=%2378740b)](https://github.com/xero/covcom/wiki) [![MIT Licensed](https://img.shields.io/badge/MIT-License?style=flat-square&logo=internetarchive&logoColor=%23bcb83a&label=License&color=%2378740b)](https://github.com/xero/covcom/blob/main/LICENSE)
+
+**CLI & Web Client Previews**
+
+[![cli and web client previews](https://raw.githubusercontent.com/wiki/xero/covcom/log.png)](https://raw.githubusercontent.com/wiki/xero/covcom/log.png)
+
+## https://xero.github.io/covcom/
 
 - **Code:** https://github.com/xero/covcom
 - **Docs:** https://github.com/xero/covcom/wiki
@@ -96,4 +100,9 @@ Open https://chat.example.com in a browser. Create a room, share the invite, & c
 
 ## License
 
+```
+▄─┐ ▄─┐ ▄ ╷ ▄─┐ ▄─┐ ▄─┌┐
+█   █ │ █ │ █   █ │ █ ╵│
+▀─┘ ▀─┘  ▀┘ ▀─┘ ▀─┘ ▀  ╵
+```
 **COVCOM** is released under the [MIT license](https://github.com/xero/covcom/blob/main/LICENSE)

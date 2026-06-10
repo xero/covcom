@@ -9,7 +9,7 @@ export type { Span, Block, Doc, RichText } from './markup.js';
 export { stripFormatChars, hasUnsafeFormatChars } from './sanitize.js';
 export type { KeyPair, InvitePayload, MessageEnvelope } from './types.js';
 export type { ClaimPayload, FingerprintSurface } from './identity.js';
-export { init, SealStream, OpenStream, XChaCha20Cipher } from 'leviathan-crypto';
+export { init, SealStream, OpenStream, XChaCha20Cipher, constantTimeEqual } from 'leviathan-crypto';
 export type { CipherSuite } from 'leviathan-crypto';
 export {
 	FILE_CHUNK_SIZE, forEachChunk, WINDOW, ACK_INTERVAL,

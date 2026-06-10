@@ -630,4 +630,4 @@ left side is the CLI client (custom theme) / right side is the web client
 █   █ │ █ │ █   █ │ █ ╵│
 ▀─┘ ▀─┘  ▀┘ ▀─┘ ▀─┘ ▀  ╵
 ```
-released under the [MIT license](./LICENSE).
+Released under the [MIT license](./LICENSE).
