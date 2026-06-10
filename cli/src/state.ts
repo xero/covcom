@@ -31,6 +31,7 @@ import { WS } from './ws.js';
 import type { InboundMsg, OutboundMsg } from './ws.js';
 import { b64enc, b64dec, wsUrl, resolveUniqueFilename } from './util.js';
 import { readConfig, writeConfig } from './config.js';
+import { loadTheme, themeErrors, type Theme } from './tui/screen.js';
 import { registerCleanup } from './lifecycle.js';
 import { renderLanding, renderCreate } from './tui/landing.js';
 import { renderWaiting } from './tui/waiting.js';
@@ -210,8 +211,11 @@ export function mount(
     username?: string;
     showSystem?: boolean;
     icons?: { keys?: string };
+    theme?: Partial<Theme>;
   },
 	joinArg?: string,
+	parseFailed = false,
+	invalidFields: string[] = [],
 ): void {
 	_screen = screen;
 	_showSystem = config.showSystem !== false;
@@ -236,7 +240,11 @@ export function mount(
 		renderLanding(_screen, {
 			config: { username: username ?? config.username },
 			onCreateClick: (u) => goCreate(u),
-			onJoinClick: (u) => goJoin(u),
+			// Carry a --join path through Landing so it still prefills the Join
+			// screen when there is no saved username to skip Landing with (a fresh
+			// setup, or --clean/--anon suppressing it). joinArg is undefined on a
+			// normal run, so this is a no-op there.
+			onJoinClick: (u) => goJoin(u, joinArg),
 		});
 	};
 	_navLanding = goLanding;
@@ -261,6 +269,18 @@ export function mount(
 		goJoin(config.username, joinArg);
 	} else {
 		goLanding();
+	}
+
+	// Surface config problems once, over the now-rendered initial view. Bad values
+	// are already dropped back to defaults (top-level fields by sanitizeConfig,
+	// theme slots by loadTheme); here we just name what was ignored. The accent
+	// paints the modal border/title in the error color.
+	const badKeys = [...invalidFields, ...themeErrors(config)];
+	const accent  = loadTheme(config).error;
+	if (parseFailed) {
+		showModal({ title: 'config error', body: 'config.json is not valid json; using defaults.', accent });
+	} else if (badKeys.length) {
+		showModal({ title: 'config errors', body: `ignored invalid settings: ${badKeys.join(', ')}.`, accent });
 	}
 }
 
@@ -988,7 +1008,7 @@ function startReconnect(
 
 // Generic on-screen copy: no version numbers (the event-log sidebar isn't
 // available at landing anyway). Exact numbers go to stderr for debugging.
-const VERSION_MISMATCH_MSG = 'This server is running a different version.';
+const VERSION_MISMATCH_MSG = 'This server is running a different version. See https://github.com/xero/covcom/wiki/PROTOCOL';
 const USERNAME_TAKEN_MSG = 'That username is taken in this room.';
 
 // Auth-phase fatal (username taken, version mismatch). Route the message to the

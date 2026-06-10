@@ -136,6 +136,8 @@ Keys group messaging model.
 
 **Untrusted-content rendering.** Peer-controlled display text (usernames, message bodies, filenames) never becomes markup in the web client or terminal escapes in the CLI. This defeats XSS, terminal escape injection, and bidi or homoglyph display-name spoofing.
 
+**Validated client configuration.** The CLI parses its config file defensively. Theme colors must match a closed set of forms (`ansi16` 0-15, `256` 0-255, or `#rrggbb` hex), so a config value can never reach the terminal as an arbitrary escape sequence through the color path. An invalid value falls back to its slot default instead of emitting a broken escape, and a config file that fails to parse falls back to defaults rather than being silently discarded. The ignored settings are named in a modal on launch, so the problem is visible instead of manifesting as garbled output.
+
 **Clean teardown.** Session keys live only in memory and are wiped on every exit path (`Ctrl+C`, `/exit`, `SIGTERM`, and fatal errors), not just a graceful disconnect. The CLI also restores the terminal on the way out, leaving no chat transcript on screen or in scrollback.
 
 ### The protocol does not protect against

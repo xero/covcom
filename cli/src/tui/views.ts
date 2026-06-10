@@ -15,22 +15,41 @@ import { BANNER } from './banner.js';
 
 // ─── banner ──────────────────────────────────────────────────────────────────
 
-const BANNER_LINES = BANNER.split('\n').filter(l => l.length > 0);
-const BANNER_W     = 56;  // visible cell width of the banner
-const BANNER_H     = BANNER_LINES.length;
-const BANNER_TOP   = 2;   // row offset from top of screen
+const BANNER_LINES    = BANNER.split('\n').filter(l => l.length > 0);
+const BANNER_W        = 56;  // visible cell width of the banner
+const BANNER_H        = BANNER_LINES.length;  // derived, so the banner can grow or shrink
+const BANNER_TOP      = 2;   // pinned row offset for the taller create/join forms
+const BANNER_FORM_GAP = 4;   // blank rows between the banner and the form below it
 
-// draw the banner if there's room; skips silently when terminal is too small.
-// formY is the first row of the form below it. The banner only renders if it
-// won't collide.
-function drawBanner(scr: Screen, formY: number): void {
-	if (scr.w < BANNER_W + 4) return;
-	if (formY < BANNER_TOP + BANNER_H + 1) return;
+// draw the banner with its first row at `top`. skips silently when the terminal
+// is too narrow or `top` is off-screen.
+function drawBannerAt(scr: Screen, top: number): void {
+	if (top < 1 || scr.w < BANNER_W + 4) return;
 	const ox = Math.floor((scr.w - BANNER_W) / 2);
 	for (let i = 0; i < BANNER_LINES.length; i++) {
-		scr.moveTo(ox, BANNER_TOP + i);
+		scr.moveTo(ox, top + i);
 		scr.write(BANNER_LINES[i] + ansi.reset);
 	}
+}
+
+// pinned-top banner for the create/join forms. formY is the form's first row;
+// the banner only renders if it won't collide with it.
+function drawBanner(scr: Screen, formY: number): void {
+	if (formY < BANNER_TOP + BANNER_H + 1) return;
+	drawBannerAt(scr, BANNER_TOP);
+}
+
+// Center the banner + form as one block: equal margin above the banner and
+// below the form, with BANNER_FORM_GAP rows between them. formH is the form's
+// own height; when the terminal is too narrow for the banner the form centers
+// on its own. Returns the banner's top row (-1 when hidden) and the form's
+// first row.
+function centerBannerBlock(scr: Screen, formH: number): { bannerTop: number; formY: number } {
+	const showBanner = scr.w >= BANNER_W + 4;
+	const blockH     = showBanner ? BANNER_H + BANNER_FORM_GAP + formH : formH;
+	const top        = Math.max(1, Math.floor((scr.h - blockH) / 2));
+	if (!showBanner) return { bannerTop: -1, formY: top };
+	return { bannerTop: top, formY: top + BANNER_H + BANNER_FORM_GAP };
 }
 
 // ─── chat layout decision ────────────────────────────────────────────────────
@@ -296,10 +315,11 @@ export function renderLanding(
 		scr.hideCursor();
 		const cw = Math.min(scr.w - 8, 44);
 		const ox = Math.floor((scr.w - cw) / 2);
-		const oy = Math.max(1, Math.floor((scr.h - 8) / 2));
+		// form occupies 6 rows: label, input, gap, buttons, gap, error.
+		const { bannerTop, formY: oy } = centerBannerBlock(scr, 6);
 
 		scr.fillRect(1, 1, scr.w, scr.h, theme.bg);
-		drawBanner(scr, oy);
+		drawBannerAt(scr, bannerTop);
 
 		scr.moveTo(ox, oy); scr.write(colorFg(theme.fg) + 'Username:' + ansi.reset);
 		usernameInput.render(scr, { x: ox, y: oy + 1, w: cw, h: 1 }, ring.isFocused('username'), theme);

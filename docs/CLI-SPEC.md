@@ -34,22 +34,35 @@ cli app design doc. covers architecture, rendering, input, widgets, views, and c
 
 ```
 src/tui/
-├── screen.ts     terminal primitives, alternate buffer, cursor, fill, ANSI helpers
+├── screen.ts     terminal primitives, alternate buffer, cursor, fill, ANSI helpers, theme + color system
 ├── keys.ts       raw keypress + mouse event parser
 ├── focus.ts      focus ring, tab/shift-tab cycling, direct set-by-id
-├── widgets.ts    TextInput, TextArea, Button, ScrollView, Sidebar, FilePicker
-└── views.ts      LoginView, WaitingView, JoinView, ChatView
+├── banner.ts     the ASCII banner string drawn at the top of the lobby views
+├── qr.ts         half-block terminal renderer for the shared qrMatrix encoder
+├── widgets.ts    TextInput, TextArea, Button, ScrollView, Sidebar, drawModal, markup + wrap helpers
+├── views.ts      renderLanding, renderCreate, renderWaiting, renderJoin, renderChat
+├── landing.ts    barrel: re-exports renderLanding, renderCreate from views.ts
+├── join.ts       barrel: re-exports renderJoin from views.ts
+├── waiting.ts    barrel: re-exports renderWaiting from views.ts
+└── chat.ts       barrel: re-exports renderChat, appendMessage, appendFile, showModal from views.ts
 ```
 
-app entrypoint creates a `Screen`, initializes the first view, enters the event loop.
-view transitions are just swapping which view handles render and input:
+views are render functions, not classes. each one wires up its widgets and a
+`FocusRing`, then hands a render callback and an input handler to the shared
+`setupView`, which owns the stdin/resize listeners and the render loop.
+`state.ts` drives the transitions by calling the next render function. the
+barrels exist so `state.ts` imports each view from a file named for it; they add
+no behavior.
 
 ```
-LoginView → WaitingView   (create room)
-LoginView → JoinView      (join room)
-WaitingView → ChatView    (peer connected)
-JoinView → ChatView       (connect successful)
+Landing → Create → Waiting → Chat   (create room)
+Landing → Join → Chat               (join room)
 ```
+
+Create and Join both return to Landing on Cancel. Waiting returns to Landing on
+Cancel. Waiting advances to Chat automatically when a peer connects, and Join
+advances to Chat once the invite parses and the connection succeeds, both driven
+by `state.ts`.
 
 ---
 
@@ -59,8 +72,8 @@ one instance for the app lifetime. owns the terminal.
 
 ```ts
 class Screen {
-  w: number   // columns
-  h: number   // rows
+  w = 80   // columns, until the first measure() reports the real size
+  h = 24   // rows
   private dirty = true
 
   constructor() {
@@ -76,8 +89,8 @@ class Screen {
   }
 
   measure() {
-    this.w = process.stdout.columns
-    this.h = process.stdout.rows
+    this.w = process.stdout.columns || 80
+    this.h = process.stdout.rows    || 24
   }
 
   moveTo(x: number, y: number) {
@@ -85,9 +98,11 @@ class Screen {
   }
 
   // fill a rectangle with a bg color. used for all widget backgrounds.
-  fillRect(x: number, y: number, w: number, h: number, bg: number | null) {
-    const bgSeq = bg !== null ? ansi.bg(bg) : ''
-    const row = ' '.repeat(w)
+  // bg is a ColorValue (see the color system), so the helper resolves ansi16,
+  // 256, hex, or null via colorBg().
+  fillRect(x: number, y: number, w: number, h: number, bg: ColorValue) {
+    const bgSeq = colorBg(bg)
+    const row = ' '.repeat(Math.max(0, w))
     for (let r = 0; r < h; r++) {
       this.moveTo(x, y + r)
       process.stdout.write(bgSeq + row + ansi.reset)
@@ -132,9 +147,10 @@ indices 0-15, which can get remapped in tmux/ssh chains).
 
 ```ts
 const ansi = {
-  reset: '\x1b[0m',
-  bold:  '\x1b[1m',
-  dim:   '\x1b[2m',
+  reset:  '\x1b[0m',
+  bold:   '\x1b[1m',
+  dim:    '\x1b[2m',
+  italic: '\x1b[3m',
 
   // fg: 0-7 normal, 8-15 bright
   fg(n: number): string {
@@ -175,15 +191,17 @@ type Key = {
 key cases handled:
 
 - ctrl+c → exit
-- arrow keys (`\x1b[A/B/C/D`)
+- arrow keys, both normal (`\x1b[A/B/C/D`) and application-cursor (`\x1bOA/B/C/D`)
 - shift+tab (`\x1b[Z`)
 - home/end (`\x1b[H`, `\x1b[F`, `\x1b[1~`, `\x1b[4~`)
 - pageup/pagedown (`\x1b[5~`, `\x1b[6~`)
-- enter (`\r`, `\n`), tab (`\t`), backspace (`\x7f`, `\x08`), escape (`\x1b`)
+- delete (`\x1b[3~`), insert (`\x1b[2~`)
+- enter (`\r`, `\r\n`), tab (`\t`), backspace (`\x7f`, `\x08`), escape (`\x1b`)
 - ctrl+letter (bytes 0x01-0x1a)
 - bracketed paste: `\x1b[200~` ... `\x1b[201~` → emitted as a single `paste` event
   with the full pasted string, never parsed as individual keystrokes
-- printable chars
+- printable chars: a single code point is a keypress; an unbracketed multi-code-point
+  run is treated as a `paste` event, the fallback for terminals without bracketed paste
 
 ### mouse events
 
@@ -268,19 +286,25 @@ single-line. tracks value + cursor position.
 - renders as `fillRect` with `inputBg`, then writes value text in `inputFg`
 - cursor shown as the character at cursor position rendered with inverted colors,
   or a space if at end of string
-- backspace, left/right arrows, home/end, ctrl+a/e, ctrl+k (clear to end),
+- backspace, delete, left/right arrows, home/end, ctrl+a/e, ctrl+k (clear to end),
   ctrl+u (clear to start) all handled
+- optional `mask` flag renders every character as `*` (the Create view's Server
+  Password field uses it, matching the web client's `type="password"`). the
+  stored value stays plaintext; masking is display-only
 - enter: does not consume, propagates to view to trigger form action
-- paste: inserts pasted text at cursor position
+- paste: strips newlines, then inserts at cursor position
 
 ### `TextArea`
 
-multiline. used for the invite paste box in JoinView and the attach FilePicker.
+multiline. used for the invite paste box in the Join view. the FilePicker path
+field is a single-line `TextInput`, not a `TextArea`.
 
 - same as TextInput but enter inserts `\n` instead of propagating
 - tracks lines + vertical scroll offset
-- up/down arrows move between lines
-- paste works naturally (bun delivers pasted text as single data event)
+- up/down arrows move between lines, home/end jump within the current line
+- delete and backspace both handled
+- paste inserts verbatim, newlines included (bun delivers pasted text as a
+  single data event)
 
 ### `Button`
 
@@ -290,16 +314,19 @@ class Button implements Widget {
   label:    string
   rect:     Rect = { x:0, y:0, w:0, h:0 }
   disabled: boolean = false
+  bar:      boolean = false   // true for the send/attach/ratchet/cancel bar buttons
   action:   () => void
 
   render(scr: Screen, rect: Rect, focused: boolean, theme: Theme) {
     this.rect = rect
+    // bar buttons draw from the bar palette (barBtn*) so they blend into the
+    // chat input bar; everything else uses the standard btn* slots.
     const bg = this.disabled ? theme.btnDisabledBg
-             : focused       ? theme.btnFocusBg
-             :                 theme.btnBg
+             : focused       ? (this.bar ? theme.barBtnFocusBg : theme.btnFocusBg)
+             :                 (this.bar ? theme.barBtnBg      : theme.btnBg)
     const fg = this.disabled ? theme.btnDisabledFg
-             : focused       ? theme.btnFocusFg
-             :                 theme.btnFg
+             : focused       ? (this.bar ? theme.barBtnFocusFg : theme.btnFocusFg)
+             :                 (this.bar ? theme.barBtnFg      : theme.btnFg)
     scr.fillRect(rect.x, rect.y, rect.w, rect.h, bg)
     // write label centered within rect
     const label = ` ${this.label} `
@@ -325,74 +352,87 @@ invisible, just a gray slab. clearly inert.
 
 ### `ScrollView`
 
-chat message display. tracks a buffer of pre-rendered lines.
+chat message display. stores messages, not pre-rendered lines, and recomputes
+the wrapped lines on every render so a resize reflows for free.
 
 ```ts
-type ChatLine = {
-  text:        string
-  isSelf:      boolean
-  attachment?: { filename: string; id: string }
-}
+type StoredMsg =
+  | { isFile: false; sender: string; text: string; isSelf: boolean
+      senderIndex: number; system?: boolean; ratchet?: boolean; ratchetIcon?: string }
+  | { isFile: true; sender: string; filename: string; size: number; mime: string
+      isSelf: boolean; senderIndex: number; saved?: string
+      download?: () => Promise<string> }
 
 type RenderedLine = {
-  bufferIdx:   number       // index in this.lines[]
-  screenY:     number       // row this line was drawn at during last render
-  attachment?: { filename: string; id: string }
+  screenY:     number   // row this line was drawn at during the last render
+  attachment?: {        // present only on an attachment-chip row
+    filename: string
+    chipX1:   number    // absolute screen column the chip starts at
+    chipX2:   number    // absolute screen column the chip ends at
+    saved?:   string    // local path once the file has been written
+    msgIdx:   number    // index into msgs[], for selection + download
+  }
 }
 ```
 
 key behaviors:
 
-- new messages appended to `lines[]`. each body is sanitized for terminal
-  escape injection (ANSI/CSI/OSC sequences, stray control bytes, and the shared
+- new messages appended to `msgs[]`. each body is sanitized for terminal escape
+  injection (ANSI/CSI/OSC sequences, stray control bytes, and the shared
   bidi/zero-width spoofing characters are stripped), then parsed by the shared
   markup model and rendered to our own SGR: bold (`*`), italic (`_`),
   bold+italic (`_*`/`*_`), inline code, and fenced ` ``` ` blocks. peer
   usernames and filenames pass through the same sanitizer before they reach the
-  line buffer.
+  buffer, so their visible width drives the prefix and chip math correctly.
+- the sender prefix `name: ` is colored by sender: self uses `peer0`, peers use
+  their assigned `peerColor`, and a system message uses `system`. the body uses
+  `yourMsg` for self, `peerMsg` for peers, and `system` for system messages.
+- a ratchet notice (`ratchet: true`) renders as a single clipped line: the
+  sender, an optional key icon in `keyFg`, and the text in `ratchetTxtFg`.
 - wrapping counts display columns, not code points, so CJK and wide emoji wrap
   and pad correctly and a surrogate pair is never severed
 - `autoScroll = true` by default, so new messages scroll to bottom
 - scrolling up (keyboard or mouse wheel) disables autoScroll
 - scrolling back to bottom re-enables autoScroll
-- during render, fills each visible row with spaces at default bg (terminal inherits),
-  writes line content. populates `renderedLines[]` as it goes.
+- during render, fills each visible row at the theme `bg`, writes line content,
+  and populates `renderedLines[]` as it goes
 - scroll indicator: single `█` on the right edge, positioned proportionally
 
 **attachment chip rendering:**
 
-```
-  you: ┤ filename.ext ├
-```
-
-actually simpler, just an inline color change mid-line:
+an attachment line is the colored sender prefix, then a filled chip, then a
+dimmed byte count:
 
 ```
-  you:  filename.ext
-       ^            ^
-    attachBg      reset
+  alice: filename.ext (12.4 KB)
+         ^          ^ ^        ^
+       attachBg   reset disabled
 ```
 
-rendered as part of the line text with ANSI color wrapping. `renderedLines[]`
-records the screen row and attachment metadata so hit testing can find it.
+the chip is ` filename ` painted on `attachBg`/`attachFg`. when the attachment is
+the selected one (msgArea focused), it switches to `attachSelectedBg`/
+`attachSelectedFg`. the byte count is `formatBytes(size)` in the `disabled`
+color. `renderedLines[]` records the chip's absolute column range and `msgIdx`
+so hit testing and keyboard selection can find it.
 
 **hit testing:**
 
 ```ts
-hitTest(x: number, y: number): { attachment: Attachment } | null {
+hitTest(x: number, y: number): { attachment: RenderedLine['attachment'] } | null {
   for (const rl of this.renderedLines) {
-    if (rl.screenY === y && rl.attachment) {
-      // check if x falls within the chip's column range
-      // chip range is also stored in RenderedLine during render
+    if (rl.screenY === y && rl.attachment &&
+        x >= rl.attachment.chipX1 && x <= rl.attachment.chipX2)
       return { attachment: rl.attachment }
-    }
   }
   return null
 }
 ```
 
-**keyboard:** up/down scroll by 1, pgup/pgdn by 10. view routes these to scrollView
-only when scrollView is focused.
+**keyboard:** when the buffer has at least one attachment, up/down move the
+attachment selection and Enter downloads the selected file (calls its `download`
+callback, then records the saved path via `markSaved`). with no attachments,
+up/down scroll by 1. pgup/pgdn always scroll by 10. the view routes these to
+scrollView only when it is focused.
 
 **mouse wheel:** scroll events whose `(x, y)` falls inside `scrollView.rect` always
 route to scrollView regardless of focus.
@@ -404,7 +444,8 @@ showing the `event-log` (live session activity feed), or showing `verify` (the
 local + per-peer fingerprints as colored swatches + hex). data comes from the
 shared `eventLog.ts` ring buffer (subscribed to in `attach()`) and a
 `getFingerprints()` callback from `state.ts`. width is a percentage of the
-screen, persisted to `~/.config/covcom/config.json` under `sidebar.width`.
+screen, persisted to the config file under `sidebar.width` (see
+[USAGE configuration](./USAGE.md#configuration) for the path resolution).
 
 ```ts
 type SidebarMode = 'event-log' | 'verify' | null
@@ -426,6 +467,10 @@ class Sidebar implements Widget {
 }
 ```
 
+the first body row is a tab strip: ` events ` and ` verify `, the active mode
+filled with `btnFocusBg`/`btnFocusFg` and the inactive one with `btnBg`/`btnFg`.
+the mode's content fills the rows beneath it.
+
 event-log row layout (one line per entry, expanded entries insert detail
 lines beneath the header):
 
@@ -436,17 +481,22 @@ HH:MM:SS  ·  join       peer2 joined
 ```
 
 - direction glyph: `→` out, `←` in, `·` local
-- `kind` column padded to 9 cols; error kinds (`fatal`, `error`) render in `theme.error`
-- summary truncated to remaining width with a trailing `…`
+- `kind` column padded to 9 cols and colored by class: member kinds (`join`,
+  `part`, `rejoin`, `peer_joined`, `peer_left`) use `evtKindMember`, ratchet
+  kinds use `evtKindRatchet`, error kinds (`error`, `fatal`, `decrypt-fail`,
+  `send-fail`, and the like) use `evtKindError`, everything else `evtKindDefault`
+- summary truncated to remaining width with a trailing `…`. when it parses as
+  `name: rest`, the name is colored `evtSelf` for you or `evtPeer` for a peer
 - selected row (when sidebar focused) gets a `btnFocusBg` fill
 - enter on selected row toggles `expanded`; details render as `  key: value`
-  lines beneath the row in `theme.disabled`
+  lines beneath the row, the key in `evtKey` and the value in `evtVal`
 - auto-scrolls to bottom unless the user has scrolled away from the tail
 
-verify layout: ` You` heading, 8 colored 2-col swatches drawn with truecolor
-hex from `FingerprintSurface.swatches[]`, 16-char hex below. blank line, then
-each peer in the same shape with their username heading. no `[verified]`
-marker; verification is out-of-band, matching the web.
+verify layout: ` You` heading, up to 8 colored 2-col swatches drawn with
+truecolor hex from `FingerprintSurface.swatches[]` (as many as fit the pane
+width), 16-char hex below. blank line, then each peer in the same shape under
+their username heading, or `(no peers yet)` when none have joined. no
+`[verified]` marker; verification is out-of-band, matching the web.
 
 **toggling and keybindings (handled in `renderChat`):**
 - the keys-display (`E`/`V`) and the `/events` / `/verify` commands toggle the
@@ -506,8 +556,9 @@ the path input is a `TextInput` with tab-completion behavior layered on top:
 
 - on Tab keypress, reads the current value up to the last `/`, calls `fs.readdirSync`
   on that directory (or cwd if no `/`), filters entries by the typed prefix
-- first Tab: complete to longest common prefix of matches
-- subsequent Tabs on same prefix: cycle through matches
+- each Tab replaces the value with the next match and cycles through them. the
+  match set is recomputed whenever the value changes from the last completion.
+  longest-common-prefix completion is deferred (see open / deferred)
 - Esc: cancel, restore normal bar
 - Enter: confirm path, exit FilePicker mode, trigger upload callback
 
@@ -524,136 +575,219 @@ no file tree. no GUI. just a text input that knows about the filesystem.
 
 ## views
 
-each view:
-- owns a `FocusRing`
-- owns a flat array of `Widget[]` (everything registered for hit testing)
+each view is a render function (`renderLanding`, `renderCreate`, `renderWaiting`,
+`renderJoin`, `renderChat`). a view:
+- builds its widgets and a `FocusRing` in tab order
 - computes layout from `screen.w` / `screen.h` on each render
-- delegates `InputEvent` to focused widget first, then handles globally (tab, etc.)
+- passes a render callback and an input handler to the shared `setupView`
 
-```ts
-interface View {
-  render(scr: Screen): void
-  onInput(ev: InputEvent, scr: Screen): void
-}
-```
+`setupView` owns the stdin and resize listeners and the render loop. the input
+handler delegates the `InputEvent` to the focused widget first, then falls back
+to global keys (Tab, Shift+Tab, Ctrl+C). it also runs the shared modal layer: a
+single modal can overlay any view, and while one is shown every key dismisses it
+except Ctrl+C. the first Ctrl+C arms a `quit covcom?` confirm modal; a second
+Ctrl+C emits `SIGINT` and exits.
 
-### `LoginView`
+the lobby views (Landing, Create, Join) draw the ASCII banner from `banner.ts`
+above their form when the terminal is tall and wide enough; it is skipped
+silently otherwise.
+
+### `renderLanding`
+
+the entry view. collects a username and routes to Create or Join. server DNS and
+the optional auth token moved to the Create view, so Landing is just the name and
+the two paths.
 
 ```
 layout (centered on screen):
-  content width  = min(screen.w - 8, 44)
-  content height = 14
-  origin x       = Math.floor((screen.w - contentW) / 2)
-  origin y       = Math.floor((screen.h - contentH) / 2)
+  content width = min(screen.w - 8, 44)
+  origin x      = Math.floor((screen.w - contentW) / 2)
+  origin y      = Math.max(1, Math.floor((screen.h - 8) / 2))
 
-  label "Server DNS:"           @ (ox, oy)
-  serverInput    [TextInput]    @ (ox, oy+1)      h=1
-  label "Username:"             @ (ox, oy+3)
-  usernameInput  [TextInput]    @ (ox, oy+4)      h=1
-  label "Auth Token (optional)" @ (ox, oy+6)
-  tokenInput     [TextInput]    @ (ox, oy+7)      h=1
-  createBtn      [Button]       @ (ox, oy+10)     w=14 h=1
-  joinBtn        [Button]       @ (ox+16, oy+10)  w=12 h=1
+  label "Username:"            @ (ox, oy)
+  usernameInput  [TextInput]   @ (ox, oy+1)      h=1
+  createBtn      [Button]      @ (ox, oy+3)      w=14  label="Create Room"
+  joinBtn        [Button]      @ (ox+16, oy+3)   w=12  label="Join Room"
+  errorLine                    @ (ox, oy+5)      shown in theme.error when set
 
-tab order: serverInput → usernameInput → tokenInput → createBtn → joinBtn
+tab order: usernameInput → createBtn → joinBtn
 ```
 
-enter on any input: focuses next input (same as Tab), or triggers action if on last.
+either button requires a non-empty username, surfacing `Username is required`
+inline when blank. enter on the username input advances focus (same as Tab).
 
-### `JoinView`
+### `renderCreate`
+
+reached from Landing's Create Room. collects the server and confirms the
+username, with an optional masked password behind an Advanced toggle.
 
 ```
-layout (centered, slightly taller):
-  pathInput      [TextInput]    file path
-  loadBtn        [Button]       loads .room file
-  inviteArea     [TextArea]     paste invite block. multiline.
-  parseBtn       [Button]       parses invite text from inviteArea
-  connectBtn     [Button]       disabled until a room is parsed/loaded
-  statusLine                    plain text: "Server: ... / Room: ..."
+layout (centered on screen):
+  content width = min(screen.w - 8, 44)
+  origin x      = Math.floor((screen.w - contentW) / 2)
+  origin y      = Math.max(1, Math.floor((screen.h - 16) / 2))
 
-tab order: pathInput → loadBtn → inviteArea → parseBtn → connectBtn
+  label "Username:"                     @ (ox, oy)
+  usernameInput  [TextInput]            @ (ox, oy+1)    h=1
+  label "Server DNS:"                   @ (ox, oy+3)
+  serverInput    [TextInput]            @ (ox, oy+4)    h=1
+  advancedBtn    [Button]               @ (ox, oy+6)    w=14  label="Advanced >"
 
-connectBtn.disabled = true until either:
-  - loadBtn successfully reads a .room file, or
-  - parseBtn successfully parses a valid room from inviteArea
+  if expanded:
+    label "Server Password (optional):" @ (ox, oy+8)
+    tokenInput   [TextInput, masked]    @ (ox, oy+9)    h=1
+    createBtn / cancelBtn               @ row oy+11
+  else:
+    createBtn / cancelBtn               @ row oy+8
+
+  createBtn      [Button]               w=14  label="Create Room"
+  cancelBtn      [Button]               w=10  label="Cancel"
+
+tab order: usernameInput → server → advanced [→ authToken] → create → cancel
 ```
 
-### `WaitingView`
+the token row joins the focus ring only while expanded, so Tab never lands on a
+hidden field. Create requires both server and username, surfacing
+`Server and username are required` when either is blank. system errors from the
+connect attempt (server error, connection failed, version mismatch) render
+inline via `_errorDisplay`, so the user stays here with their entries intact.
+Cancel returns to Landing.
 
-shown after create room succeeds. receives `armoredInvite` string and `roomId`.
-transitions automatically to ChatView when peer connects (driven by state.ts).
+### `renderJoin`
+
+reached from Landing's Join Room. takes an invite, either pasted or loaded from a
+`.room` file.
 
 ```
 layout (centered on screen):
   content width = min(screen.w - 8, 52)
   origin x      = Math.floor((screen.w - contentW) / 2)
-  origin y      = Math.floor((screen.h - contentH) / 2)
+  origin y      = Math.max(1, Math.floor((screen.h - 22) / 2))
 
-  heading "Room Code Generated Successfully"   @ (ox, oy)     fg=fg
-  subhead "Waiting for peer(s) to connect"     @ (ox, oy+1)   fg=disabled
+  label "Username:"             @ (ox, oy)
+  usernameInput  [TextInput]    @ (ox, oy+1)     h=1
+  label "Path to .room file:"   @ (ox, oy+3)
+  pathInput      [TextInput]    @ (ox, oy+4)     h=1
+  browseBtn      [Button]       @ (ox, oy+6)     w=10  label="Browse"
+  label "Or paste invite text:" @ (ox, oy+8)
+  inviteArea     [TextArea]     @ (ox, oy+9)     w=cw  h=5
+  errorLine                     @ (ox, oy+15)    shown in theme.error when set
+  joinBtn        [Button]       @ (ox, oy+17)    w=12  label="Join Room"
+  cancelBtn      [Button]       @ (ox+14, oy+17) w=10  label="Cancel"
 
-  copyBtn        [Button]   @ (ox, oy+3)        w=14  label="Copy Code"
-  downloadBtn    [Button]   @ (ox+16, oy+3)     w=14  label="Download"
-
-  callout        [Callout]  @ (ox, oy+5)        conditionally rendered (see below)
-
-  table                     @ (ox, oy+7) or (ox, oy+5) if no callout
-    ┌────────┬───────────────────────┐
-    │ cipher │  XChaCha20-Poly1305   │
-    │ kem    │  ML-KEM-768           │
-    │ format │  0x03                 │
-    └────────┴───────────────────────┘
-
-tab order: copyBtn → downloadBtn
-table is inert (not focusable).
+tab order: username → path → browse → invite → join → cancel
 ```
 
-the cipher name, KEM name, and format byte come from the `PROTOCOL` manifest in
-`lib/src/protocol.ts`, the same source the web client reads. the format byte is
-derived from the cipher suite, so the table tracks the cipher in use and cannot
-drift from the web display.
+`inviteArea` is the single source the invite parses from. Browse reads the file
+at `pathInput` into `inviteArea`; a `prefillPath` is loaded into it on mount. Join
+Room requires a username and non-empty invite text, then parses it with
+`parseArmoredInvite`, surfacing any parse or read error inline. there is no
+separate parse step and no disabled-until-loaded button; parsing happens on the
+Join Room click. Cancel returns to Landing.
 
-**callout states:**
+### `renderWaiting`
 
-the callout region renders one of three states. on first load it is empty (no
-callout rendered, table moves up by 2 rows). each button action replaces whatever
-callout was previously showing. only one callout is ever visible at a time.
+shown after Create Room succeeds. receives `armoredInvite`, `roomId`, and an
+`onCancel`. transitions automatically to Chat when a peer connects (driven by
+state.ts). the block stacks, centered, top to bottom: heading, subhead, a row of
+three buttons, an optional scannable QR, and the crypto table.
 
 ```
-copy success:
-  [Code copied to your clipboard]
-  bg=calloutBg, fg=calloutFg
+heading "Room Code Generated Successfully"   bold, fg=fg
+subhead "Waiting for peer(s) to connect..."  fg=disabled
 
-copy failure:
-  [Failed to find a clipboard manager]
-  bg=calloutBg, fg=calloutFg    (same color, content communicates state)
+copyBtn      [Button]  w=14  label="Copy Code"
+downloadBtn  [Button]  w=14  label="Download"
+cancelBtn    [Button]  w=10  label="Cancel"
 
-download success (path wraps continuously, no truncation):
-  [file downloaded to:          ]
-  [/full/path/to/roomId.room    ]
-  [ ...continues if path long   ]
-  bg=calloutBg, fg=calloutFg
+QR     optional, centered one blank row above the table (see below)
+
+table  the shared crypto table (see below)
+  ┌───────────────────────┬────────────────────┐
+  │ COMPONENT             │ PRIMITIVE          │
+  ├───────────────────────┼────────────────────┤
+  │ AEAD cipher           │ XChaCha20-Poly1305 │
+  │ key derivation        │ HKDF-SHA-256       │
+  │ key encapsulation     │ ML-KEM-768         │
+  │ signatures            │ Ed25519            │
+  │ fingerprint           │ BLAKE3             │
+  │ transparency chain    │ SHA-256 Merkle     │
+  │ group model           │ sender keys, O(N)  │
+  │ forward secrecy + PCS │ sparse PQ ratchet  │
+  │ protocol format       │ 0xNN               │
+  └───────────────────────┴────────────────────┘
+
+tab order: copyBtn → downloadBtn → cancelBtn
+the QR and table are inert (not focusable). Cancel returns to Landing.
 ```
 
-the callout is rendered as filled rows of width `contentW`. each row is padded
-with spaces to fill the full width. path lines wrap purely by character count,
-with no ellipsis and no truncation. tmux users can select the path directly.
+**crypto table:** rows come from `CRYPTO_TABLE` in `lib/src/protocol.ts`, the
+same array the web client's definition list maps over, so the two cannot drift.
+the cipher name, KEM name, and the `protocol format` byte derive from the
+`PROTOCOL` manifest; the rest are curated strings. the format byte is covcom's
+own wire-protocol version (`PROTOCOL_VERSION`), a hand-bumped integer kept
+deliberately separate from the cipher suite. inner column widths are 23 (label)
+and 20 (value), sized to the longest entries. the box-drawing characters here are
+the only ones in the app, per the goals above. see [PROTOCOL](./PROTOCOL.md) for
+the versioning system.
 
-**download behavior:**
-- writes `<inviteFilename()>.room` to `process.cwd()`
-- uses `resolveUniqueFilename` (already in `cli/src/util.ts`) if the file exists
-- shows the full absolute resolved path in the callout
+**QR code:** a scannable QR of the same armored invite, encoded by the shared
+`qrMatrix` (`lib/src/qr.ts`) and rendered by `qrHalfBlock` (`tui/qr.ts`), which
+packs two module rows per text row with half-block glyphs and adds a quiet zone.
+it renders forced black-on-white regardless of theme for scanner contrast. it
+sits one blank row above the table, and the whole centered block recomputes to
+include it. it is omitted when the invite is too large to encode (matching the
+web client hiding its canvas) or when it would not fit the terminal, falling back
+to the table-only layout.
+
+Example:
+```
+
+ █▀▀▀▀▀█ █▀ █▀ █▄  ▀▄▀███▄ █ █ █ ▀▀ ▄▀ █▀▀▀▀▀█
+ █ ███ █ █▄▄ ▄▄▀▀█  ▀▄ █  █▀█▄███▀█ █▄ █ ███ █
+ █ ▀▀▀ █ ▄▀█ ▀▀ █▄▀▀▄█▀▀▀██▀█▄▀▀▄▀█▀▀▀ █ ▀▀▀ █
+ ▀▀▀▀▀▀▀ ▀ █ █ █ █ ▀ █ ▀ █ ▀▄▀▄█ █▄▀▄▀ ▀▀▀▀▀▀▀
+ ██ ▄█▀▀ ▄▀▀  ▄▄▄▄██ ▀▀█▀█▄██ ▄▄▀██ ▄█ ▄▀ ███▀
+   ▀ █▄▀█ ▄███▀▀▀ ███ ▀█ ▄███ ▀ █████   ▀▀▀▀▄
+  ▄▄█▄▀▀▄▀ █ █▄██ ▀█▀ █ ▄█▄█ ▄▄█▀▀▄▀█▄ ██▄▄  ▄
+  ▀▄ ▀█▀▄███▀ ▄ ▀ ▄ ▄ ▀▄▄▄ ▀▀▄█ ▀▄  ██ ▀▄▀▄ █
+ ▄▀▀▀▄ ▀ ▄█▀█ ▀█  ▀█ ▀ ▄ █▀█▀ ██▀█▄▀ ▄ ▄ ▄▄ ▄▀
+  █▄▀▀ ▀ █  ▄ ███ ▄ ▄  █▄ ▄▄██  ▀▀▄▀ ▄▄▄   ▀▄
+ ▄▀█▀█▀▀▀██▄ ▀ █▄ ▀▀▄█▀▀▀█▄█▄▄▄█ █▄  █▀▀▀██▀▄▄
+ ▄▄▀▄█ ▀ █▀█▀█▀█ █  ▄█ ▀ █▄█▀▀▀▀ ▄ ▄██ ▀ █  ▀
+ ▄▄█▀▀▀▀▀▀▀▄▀█▄▄   ▀▀▀█▀▀█▀▄▄ █▄▀█▄▀▀▀█▀▀▀ ██▀
+  ▄ ▄█ ▀▄▄▄█▄ ▀  ▀▄  ▀▀▀▄▀▄█▀▀ ▄▀█▀██▄▀▄ ██▀▄
+ ▀█████▀█▄▀ ▄█▄█▀▀▀▀▄▀▀ █▀ █▄ █▄ ▀▄▀▄   ▄  ▄
+   ▄▄▄▀▀ ▄█▀██▄  ▄ ▀  ▄██▀ ▄ ▄▄▀ ▄▄▀ ▀█ ▄▀▀▀▀
+ ▄█▄█▀▄▀ ▀▄▀▄▀▀█ ▀ ▀█ █ ▄█▀▄▀▄▄▄▀██ ▄▄▀▄▄▀ ▀█
+  ▄▄▄█ ▀▄▄▄▀▀█ ▄ ▀ ▀ ▀  ▀ ▄ █▄████▄▀█▄▀▄▀█ ▀
+ ▀  ▀▀ ▀ █▄▀▄█▄▀▄▀▀███▀▀▀█ █▀▄▄█▄▀▀ ▄█▀▀▀█▄▄▀█
+ █▀▀▀▀▀█ ▄▄██▄▀█▀█ ▀▀█ ▀ █ ▄█ █▄▀▄ ▄▄█ ▀ █  █
+ █ ███ █ ▀▄ ▀█▄▄ ▀ ▀▀██▀█▀ █▀▄██▀█▄ ▄▀▀█▀▀ ▀ █
+ █ ▀▀▀ █ ▄ █▄  █ ▀ ████▀▄ ██▀  ▄▀ ██▄▄▄▀ ▀   ▀
+ ▀▀▀▀▀▀▀ ▀▀    ▀▀ ▀▀▀▀▀ ▀▀▀ ▀ ▀▀ ▀ ▀  ▀▀▀    ▀
+
+```
+
+**copy / download feedback:** both actions report through the shared modal layer,
+not an inline callout.
+
+- copy: a `Copied` modal on success, a `Copy Failed` modal with the error accent
+  when no clipboard binary is found.
+- download: writes `inviteFilename(roomId)` (`covcom-<roomId>.room`) to
+  `process.cwd()`, using `resolveUniqueFilename` (`cli/src/util.ts`) to avoid
+  clobbering an existing file, then shows an `Invite Downloaded` modal with the
+  full resolved path.
 
 **copy behavior:**
 - checks config `copyCmd` first (user-supplied binary + flags, e.g. `"xsel -b"`)
 - if not set, probes for known bins in order: `pbcopy`, `xclip -selection clipboard`,
   `xsel -b`, `wl-copy`
-- spawns the found command, pipes the armored invite to stdin
-- on failure to find any bin: renders the failure callout
-- on spawn error: renders failure callout with the error reason if short enough,
-  otherwise generic message
+- spawns each in turn, piping the armored invite to stdin, and stops at the first
+  that exits 0
+- if none succeed, shows the `Copy Failed` modal
 
-### `ChatView`
+### `renderChat`
 
 ```
 layout (sidebar closed, full screen):
@@ -711,28 +845,32 @@ tab order: chatInput → sendBtn → attachBtn → rotateBtn → msgArea → sid
 - see the `Sidebar` widget section above for in-pane bindings
 
 **FilePicker mode (attach):**
-- attachBtn.onClick() → ChatView enters `picking` state
-- chatInput hidden, sendBtn hidden, attachBtn replaced with `cancelBtn`
-- `pathInput [TextInput]` takes chatInput's rect, with tab-completion active
-- enter → confirms path, calls upload handler, exits picking state
+- attachBtn.onClick() → renderChat enters `picking` state
+- the input bar is replaced with the attach icon, a path `TextInput`, and a
+  `cancelBtn` (`x`); the normal input and send/ratchet buttons are hidden
+- the path input carries tab-completion (see the FilePicker widget section)
+- enter → validates the path, calls the upload handler, exits picking state
 - esc → cancels, exits picking state
-- sidebar remains rendered (its toggles still work) but is unfocusable while
+- sidebar stays rendered (its toggles still work) but is unfocusable while
   picking; the focus ring is reduced to `pathInput → cancelBtn`
 
-**attach click in chat:**
-- mouse click on an attachment chip → calls download handler for that attachment id
-- no focus change, no keyboard equivalent needed for this action
+**attachments in chat (select, download, open):**
+- the buffer drives selection: with focus on msgArea, up/down move the selected
+  attachment and Enter downloads it (calls the file's `download` callback)
+- a click on an attachment chip focuses msgArea; once a file has been saved,
+  clicking its chip opens it with the OS opener (`open` on macOS, `xdg-open`
+  elsewhere)
 
 **file download flow:**
-- the download handler decrypts the file payload, resolves a non-colliding
-  path in `process.cwd()` via `resolveUniqueFilename` (existing filenames
-  receive a `_1`, `_2`, … suffix), and writes the plaintext via
-  `Bun.write`
-- on success: a Modal renders with title `File Downloaded` and a body of
-  `<filename>\n<resolved absolute path>`. an event-log entry is appended
-  with `direction: 'in'`, `kind: 'file'`
-- on failure: a system message is appended to the chat scroll with the
-  resolved path and the error reason; no modal renders
+- the `download` callback (supplied by state.ts) decrypts the file payload,
+  resolves a non-colliding path in `process.cwd()` via `resolveUniqueFilename`
+  (existing filenames receive a `_1`, `_2`, … suffix), writes the plaintext via
+  `Bun.write`, and returns the saved path
+- on success: `ScrollView.markSaved` records the path on the message so the chip
+  becomes openable, state.ts renders a `File Downloaded` modal, and an event-log
+  entry is appended with `direction: 'in'`, `kind: 'file'`
+- on failure: a system message is appended to the chat scroll with the resolved
+  path and the error reason; no modal renders
 
 ---
 
@@ -842,8 +980,8 @@ const defaultTheme: Theme = {
   barBtnFocusFg: { type: 'ansi16', n: 15 },   // bright white (mirrors btnFocusFg)
 
   yourMsg:       { type: 'ansi16', n: 7  },   // white (muted)
-  peer0:         { type: 'ansi16', n: 14 },   // bright cyan (self)
-  peer1:         { type: 'ansi16', n: 10 },   // bright green
+  peer0:         { type: 'ansi16', n: 10 },   // bright green (self)
+  peer1:         { type: 'ansi16', n: 14 },   // bright cyan
   peer2:         { type: 'ansi16', n: 12 },   // bright blue
   peer3:         { type: 'ansi16', n: 13 },   // bright magenta
   peer4:         { type: 'ansi16', n: 11 },   // bright yellow
@@ -943,9 +1081,10 @@ called with the computed cursor position of that input. no other widget shows a 
 every way the app can quit routes through one teardown. `main.ts` registers
 `SIGINT`, `SIGTERM`, and `exit` handlers that all call `doCleanup()` from
 `lifecycle.ts`. the fatal-error catch and its `process.exit(1)` reach the same
-place through the `exit` event. ctrl+c and the `/exit` family (`/quit`, `/q`,
-`/part`) emit `SIGINT` rather than exiting on their own, so they land on that
-single path too.
+place through the `exit` event. the `/exit` family (`/quit`, `/q`, `/part`) emits
+`SIGINT` rather than exiting on its own, so it lands on that single path too.
+ctrl+c is guarded: the first press arms a `quit covcom?` confirm modal and the
+second press emits `SIGINT`, so an accidental ctrl+c does not drop the session.
 
 `state.ts` registers the one cleanup function in `mount()`, before any view
 renders. it reads the module-level `current` phase, so it covers landing, join,
@@ -984,15 +1123,14 @@ wipe that scrollback.
   than the pane is hard-split on code-point boundaries, never mid-surrogate.
   multi-code-point ZWJ grapheme clusters (e.g. family emoji) still over-count
   their parts; terminals disagree on those anyway.
-- **tab completion UX:** implement simple cycle first (each Tab advances to next match),
-  revisit bash-style longest-common-prefix later once it's usable.
+- **tab completion UX:** the FilePicker ships the simple cycle (each Tab advances
+  to the next match). bash-style longest-common-prefix completion is still
+  deferred.
 - **resize handling:** SIGWINCH → `screen.measure()` → `screen.markDirty()`.
   views recompute layout from `screen.w/h` on every render so resize is free.
 - **mouse in tmux over ssh:** mouse events work but the user cannot hold shift to
   select text with the terminal's native selection while mouse mode is on.
   consider a toggle (e.g. ctrl+m) to disable/re-enable mouse reporting.
-- **QR code:** v2. WaitingView layout should leave space below the table for it.
-  implementation: pure-TS QR matrix generator rendered with unicode half-blocks.
 
 ---
 

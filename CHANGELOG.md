@@ -96,6 +96,39 @@ into `keyFg` for the key glyph and `ratchetTxtFg` for the label. System notices
 and `/help` output get their own `system` slot, split out from `disabled` so the
 two roles recolor independently.
 
+**CLI config validation.** The config is checked on launch so a bad file can
+never crash the client. Every top-level field is type-checked (`server`,
+`username`, and `copyCmd` must be strings, `showSystem` a boolean, `sidebar` and
+`icons` objects), and each theme color must be a valid `ansi16` (0 to 15),
+256-color (0 to 255), or `#RRGGBB` hex. An invalid value is dropped back to its
+default instead of crashing a consumer or rendering as a broken escape, and the
+unparseable config file as a whole falls back to defaults rather than being
+silently ignored. When anything is wrong, a modal on startup names the ignored
+settings so a typo like `##00ff00` is easy to spot. Unknown keys, including your
+own `_comment` keys, are left untouched.
+
+**CLI config file location.** A new `--config <path>` flag points covcom at a
+specific config file. Without it, the path follows the XDG base directory
+spec: `$XDG_CONFIG_HOME/covcom/config.json` when that variable is set, otherwise
+`~/.config/covcom/config.json`.
+
+**CLI `--help` flag.** `covcom --help` (or `-h`) prints the banner and a
+GNU-style usage summary of every option, then exits without starting the TUI.
+
+**CLI `--version` flag.** `covcom --version` prints the version and protocol byte
+and exits without starting the TUI. Both values are baked in at build time, the
+version from the project root `package.json` and the protocol byte from the
+shared protocol manifest.
+
+**Short flags for every CLI option.** Each invocation flag now has a short form:
+`-v` (`--version`), `-c` (`--config`), `-j` (`--join`), `-x` (`--clean`), and
+`-a` (`--anon`). `--clean` takes `-x` because `-c` belongs to `--config`. The
+parser is getopt-style: long flags accept a value after a space or an `=`
+(`--config <path>` or `--config=<path>`), short flags accept the same plus a
+glued value (`-c<path>`), short booleans bundle (`-xa`), and a value flag can end
+a bundle (`-xac <path>`). A value that looks like another flag is treated as
+missing, so a flag is never swallowed as a path.
+
 **Receiver flow control for file transfer.** The receiver acknowledges consumed
 chunks over the peer-to-peer relay channel and the sender holds a bounded window
 of chunks ahead of the slowest recipient, so a large transfer survives a slow or
@@ -134,6 +167,12 @@ only the saved server and username, leaving them untouched on disk while every
 other setting persists as normal.
 
 ### Changed
+
+**Config location is XDG-based.** The covcom-specific `COVCOM_CONFIG_DIR`
+environment variable is removed. Point covcom at a different config with the new
+`--config <path>` flag, or set `$XDG_CONFIG_HOME` to relocate the whole
+`covcom/config.json` tree. With neither set, the path stays
+`~/.config/covcom/config.json`.
 
 **Unified sender-color names across both clients.** The web's `--sender-0`
 through `--sender-7` CSS variables are now `--peer0` through `--peer7`, and the

@@ -14,6 +14,7 @@ XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-p
 > stays ignorant, and where the design makes deliberate tradeoffs.
 
 > ### Table of Contents
+> - [versioning](#versioning)
 > - [the cipher](#the-cipher)
 > - [the chain](#the-chain)
 > - [the ratchet](#the-ratchet)
@@ -25,6 +26,40 @@ XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-p
 > - [identity claims](#identity-claims)
 > - [security properties](#security-properties)
 > - [honest limitations](#honest-limitations)
+
+---
+
+## versioning
+
+> [!IMPORTANT]
+> This document describes the COVCOM wire protocol at version `0x03`. Each
+> protocol bump updates this callout to the version it documents. To read about
+> an earlier version, read this file's history in git.
+
+COVCOM carries its own wire-contract version, `PROTOCOL_VERSION`, a hand-bumped
+integer defined in `lib/src/protocol.ts`. That file is the single source of
+truth: clients and the server read the value from it instead of copying
+literals, so the version cannot drift between artifacts. It is deliberately
+separate from the leviathan-crypto version, because the covcom wire contract can
+break for reasons unrelated to the cipher, and the cipher can change without
+breaking covcom.
+
+Alongside the integer, the v3 wire format is version-locked to leviathan-crypto's
+v3 signing API surface. All covcom ctx strings carry `-v3` suffixes
+(`covcom-identity-claim-v3`, `covcom-message-sig-v3`). Future breaking changes in
+either project bump both in lockstep.
+
+The version is negotiated at join. The client sends `protocolVersion` on
+`create` and `join`, and the server stamps `serverVersion` on `room_created` and
+`joined`. Either side rejects a missing or mismatched version with a
+`version_mismatch` error and returns to the start screen, so a skew is caught at
+join with a clear message rather than as a cryptic failure deeper in the
+handshake. The check is bidirectional: the newer side recognizes the skew, since
+an older peer either omits the field or sends a value it cannot match.
+
+The version travels in plaintext as a compatibility gate. A hostile server can
+lie about it, which is exactly why the signed identity claims, not the version,
+carry the security guarantees.
 
 ---
 
@@ -205,12 +240,12 @@ on the seed, and set up a receive chain for each sender at whatever epoch
 they are actually at. If Alice is at epoch 3 and Bob is at epoch 1, you
 enter at exactly those positions, not at epoch 0.
 
-Once you have received a seed from every current member, you fire the
-welcome ratchet. The joiner always initiates this step, not the existing
-members. The joiner is the only principal guaranteed to be present at join
-time, so no host election is needed and the protocol stays symmetric. Your
-epoch advances, and you broadcast your fresh chain credentials to the group. Existing members set up receive chains for you
-and can now decrypt your messages. You are in.
+Once you have received a seed from every current member, you fire the welcome
+ratchet. The joiner always initiates this step, not the existing members. The
+joiner is the only principal guaranteed to be present at join time, so no host
+election is needed and the protocol stays symmetric. Your epoch advances, and
+you broadcast your fresh chain credentials to the group. Existing members set
+up receive chains for you and can now decrypt your messages. You are in.
 
 Messages sent while you were joining are not recoverable. You were not
 there; those XChaCha20 keys are gone. This is correct forward secrecy
@@ -449,26 +484,6 @@ principle, swap the very first `identify` claim seen by a fresh joiner,
 because the joiner has no prior session pk for that peer. Out-of-band
 fingerprint comparison is the only mitigation against first-contact
 substitution, which is why the color row exists.
-
-**Versioning.** The v3 wire format is version-locked to leviathan-crypto's
-v3 signing API surface. All covcom ctx strings carry `-v3` suffixes
-(`covcom-identity-claim-v3`, `covcom-message-sig-v3`). Future breaking
-changes in either project bump both in lockstep.
-
-Alongside the ctx-string lock, covcom carries its own wire-contract version,
-`PROTOCOL_VERSION`, a hand-bumped integer defined in `lib/src/protocol.ts`. It
-is deliberately separate from the leviathan-crypto version, because the covcom
-wire contract can break for reasons unrelated to the cipher, and the cipher can
-change without breaking covcom. The client sends `protocolVersion` on `create`
-and `join`, and the server stamps `serverVersion` on `room_created` and
-`joined`. Either side rejects a missing or mismatched version with a
-`version_mismatch` error and returns to the start screen, so a skew is caught at
-join with a clear message rather than as a cryptic failure deeper in the
-handshake. The check is bidirectional: the newer side recognizes the skew, since
-an older peer either omits the field or sends a value it cannot match. The
-version travels in plaintext as a compatibility gate. A hostile server can lie
-about it, which is why the signed identity claims, not the version, carry the
-security guarantees.
 
 ---
 

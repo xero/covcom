@@ -250,8 +250,40 @@ export class Screen {
 	}
 }
 
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+// A theme value is valid when it is null (terminal default) or a well-formed
+// color object: ansi16 with n in 0..15, 256 with n in 0..255, or hex #RRGGBB.
+function isValidColor(cv: unknown): cv is ColorValue {
+	if (cv === null) return true;
+	if (typeof cv !== 'object') return false;
+	const c = cv as { type?: unknown; n?: unknown; value?: unknown };
+	if (c.type === 'ansi16') return typeof c.n === 'number' && Number.isInteger(c.n) && c.n >= 0 && c.n <= 15;
+	if (c.type === '256')    return typeof c.n === 'number' && Number.isInteger(c.n) && c.n >= 0 && c.n <= 255;
+	if (c.type === 'hex')    return typeof c.value === 'string' && HEX_RE.test(c.value);
+	return false;
+}
+
+// Merge overrides over the defaults, but only for known theme keys that hold a
+// valid color. Invalid values fall back to the default so a typo can never reach
+// the terminal as a broken escape. Unknown keys (e.g. _comment keys) are ignored.
 export function loadTheme(config: { theme?: Partial<Theme> }): Theme {
-	return { ...defaultTheme, ...(config.theme ?? {}) };
+	const out = { ...defaultTheme };
+	const overrides = config.theme ?? {};
+	for (const key of Object.keys(defaultTheme) as (keyof Theme)[]) {
+		const v = overrides[key];
+		if (key in overrides && isValidColor(v)) out[key] = v;
+	}
+	return out;
+}
+
+// The known theme keys whose overrides are present but invalid, in defaultTheme
+// order. Used to report ignored settings to the user.
+export function themeErrors(config: { theme?: Partial<Theme> }): string[] {
+	const overrides = config.theme ?? {};
+	return (Object.keys(defaultTheme) as (keyof Theme)[])
+		.filter((key) => key in overrides && !isValidColor(overrides[key]))
+		.map(String);
 }
 
 export function createScreen(): Screen {

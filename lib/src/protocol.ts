@@ -7,8 +7,7 @@
 // covcom's own wire contract, hand-bumped. Deliberately an integer, not derived
 // from a crypto enum: the wire contract can break for reasons unrelated to the
 // cipher (a new handshake field, a changed message schema), and leviathan can
-// bump a format enum without breaking covcom. Coupling them would make the
-// version lie in both directions.
+// bump a format enum without breaking covcom.
 export const PROTOCOL_VERSION = 3;
 
 // '0x' + zero-padded byte. Computed once here so the version byte is never

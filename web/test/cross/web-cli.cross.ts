@@ -108,17 +108,17 @@ test('web and CLI clients exchange end-to-end encrypted messages through the rel
 	writeFileSync(roomFile, invite);
 	writeFileSync(join(cfgDir, 'config.json'), JSON.stringify({ username: 'bob-cli' }), { flag: 'w' });
 
-	// ── CLI Bob joins. With COVCOM_CONFIG_DIR carrying a username, `--join`
-	// routes straight to JoinView. The auto-load of the prefill path does not
-	// repaint, so we drive the Browse button (deterministic read into the
-	// textarea + repaint) and wait for the armored text before joining. There is
-	// no parse step now: Join Room parses the textarea and connects. ──
+	// ── CLI Bob joins. With `--config` pointing at a file that carries a
+	// username, `--join` routes straight to JoinView. The auto-load of the
+	// prefill path does not repaint, so we drive the Browse button (deterministic
+	// read into the textarea + repaint) and wait for the armored text before
+	// joining. There is no parse step now: Join Room parses the textarea and
+	// connects. ──
 	// cwd is the temp dir so files the CLI saves on receive land there (and are
 	// cleaned up in afterAll), never in the repo. Absolute paths (roomFile, the
 	// attached file) are unaffected.
-	cli = startCliSession(CLI_BIN, ['--join', roomFile], {
+	cli = startCliSession(CLI_BIN, ['--config', join(cfgDir, 'config.json'), '--join', roomFile], {
 		cwd: tmp,
-		env: { COVCOM_CONFIG_DIR: cfgDir },
 	});
 	await cli.waitFor('Path to .room file:');   // JoinView mounted (username focused)
 

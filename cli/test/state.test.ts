@@ -114,7 +114,7 @@ describe('version mismatch', () => {
 		expect(find(sock.sent, 'identify')).toBeUndefined();
 		expect(renderWaiting).not.toHaveBeenCalled();
 		// stays on the create screen (never re-rendered to landing); message inline
-		expect(systemMsgs().map(m => m.text)).toContain('This server is running a different version.');
+		expect(systemMsgs().some(m => m.text.startsWith('This server is running a different version.'))).toBe(true);
 	});
 
 	test('server version_mismatch error surfaces the error inline', () => {
@@ -125,7 +125,7 @@ describe('version mismatch', () => {
 		sock.emit({ type: 'error', reason: 'version_mismatch', serverVersion: PROTOCOL_VERSION });
 
 		expect(renderWaiting).not.toHaveBeenCalled();
-		expect(systemMsgs().map(m => m.text)).toContain('This server is running a different version.');
+		expect(systemMsgs().some(m => m.text.startsWith('This server is running a different version.'))).toBe(true);
 	});
 });
 

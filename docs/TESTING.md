@@ -86,7 +86,7 @@ What each suite owns:
 
 The web and CLI suites each load a preload that sets up their harness. `web/test/setup.ts`
 registers happy-dom globals so DOM-building code runs without a browser.
-`cli/test/setup.ts` points `COVCOM_CONFIG_DIR` at a throwaway temp directory before
+`cli/test/setup.ts` points `XDG_CONFIG_HOME` at a throwaway temp directory before
 any test runs, so the suite never reads or overwrites your real
 `~/.config/covcom/config.json`.
 
@@ -230,8 +230,8 @@ up inside the pasted text and nothing sends.
 **First frame is slow.** WASM crypto init takes one to two seconds before the
 first frame paints, so the test polls for it rather than sleeping a fixed amount.
 
-**Join is deterministic.** Passing `--join <file>` with a `COVCOM_CONFIG_DIR`
-that carries a username routes straight to the join view. The prefill auto-parse
+**Join is deterministic.** Passing `--join <file>` with a `--config` file that
+carries a username routes straight to the join view. The prefill auto-parse
 does not repaint, so the test clicks the Load button and waits for the parsed
 `Room:` status line before tabbing to Connect.
 

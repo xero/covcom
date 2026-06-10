@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import type { Theme } from './tui/screen.js';
 
 export interface Config {
@@ -31,14 +31,27 @@ export function writeSidebarWidth(width: number): void {
 	writeConfig({ ...cfg, sidebar: { ...(cfg.sidebar ?? {}), width: clamped } });
 }
 
-// COVCOM_CONFIG_DIR overrides the config location; defaults to ~/.config/covcom.
-// Resolved per call rather than captured at load so the override is honoured
-// even when this module is imported before the variable is set.
-function configDir(): string {
-	return process.env.COVCOM_CONFIG_DIR ?? join(homedir(), '.config', 'covcom');
+// Explicit config-file path from the --config flag; set once at startup. Takes
+// precedence over the XDG resolution below.
+let configPathOverride: string | undefined;
+
+export function setConfigPath(path: string | undefined): void {
+	configPathOverride = path;
 }
+
+// Resolve the config file path. Precedence:
+//   1. --config <path>                       (used verbatim)
+//   2. $XDG_CONFIG_HOME/covcom/config.json
+//   3. ~/.config/covcom/config.json          (the XDG default base)
+// Resolved per call rather than captured at load so an override or env set after
+// this module is imported is still honoured.
 function configFile(): string {
-	return join(configDir(), 'config.json');
+	if (configPathOverride) return configPathOverride;
+	const base = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+	return join(base, 'covcom', 'config.json');
+}
+function configDir(): string {
+	return dirname(configFile());
 }
 
 // clean mode; the config file is ignored entirely: never read, never written.
@@ -67,6 +80,62 @@ function readDiskConfig(): Config {
 	}
 }
 
+const ICON_KEYS = ['send', 'attach', 'ratchet', 'keys', 'events', 'verify', 'escape'] as const;
+
+function isObject(v: unknown): v is Record<string, unknown> {
+	return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+// Validate the known top-level fields, dropping any that are present with the
+// wrong type so a malformed-but-parseable config can never crash a consumer.
+// theme is validated separately (loadTheme/themeErrors), and unknown keys (e.g.
+// `_comment` keys) pass through untouched, so a read-merge save never clobbers a
+// user's colors or comments. Returns the dropped keys for startup reporting.
+function sanitizeConfig(raw: Config): { config: Config; badFields: string[] } {
+	const cfg: Config = { ...raw };
+	const badFields: string[] = [];
+	const isStr = (v: unknown): boolean => typeof v === 'string';
+	if ('server' in cfg && !isStr(cfg.server)) {
+		delete cfg.server;
+		badFields.push('server');
+	}
+	if ('username' in cfg && !isStr(cfg.username)) {
+		delete cfg.username;
+		badFields.push('username');
+	}
+	if ('copyCmd' in cfg && !isStr(cfg.copyCmd)) {
+		delete cfg.copyCmd;
+		badFields.push('copyCmd');
+	}
+	if ('showSystem' in cfg && typeof cfg.showSystem !== 'boolean') {
+		delete cfg.showSystem;
+		badFields.push('showSystem');
+	}
+	// width range is clamped on read (readSidebarWidth); here we only guard shape.
+	if ('sidebar' in cfg && !isObject(cfg.sidebar)) {
+		delete cfg.sidebar;
+		badFields.push('sidebar');
+	}
+	if ('icons' in cfg && !isObject(cfg.icons)) {
+		delete cfg.icons;
+		badFields.push('icons');
+	} else if (isObject(cfg.icons)) {
+		// Rebuild rather than delete in place: keep every valid known icon plus
+		// all unknown/comment keys, and drop only the wrong-typed known ones.
+		const src   = cfg.icons as Record<string, unknown>;
+		const icons: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(src)) {
+			if ((ICON_KEYS as readonly string[]).includes(k) && !isStr(v)) {
+				badFields.push(`icons.${k}`);
+				continue;
+			}
+			icons[k] = v;
+		}
+		cfg.icons = icons as Config['icons'];
+	}
+	return { config: cfg, badFields };
+}
+
 export function readConfig(): Config {
 	if (cleanMode) return {};
 	const cfg = readDiskConfig();
@@ -74,7 +143,28 @@ export function readConfig(): Config {
 		delete cfg.server;
 		delete cfg.username;
 	}
-	return cfg;
+	return sanitizeConfig(cfg).config;
+}
+
+// Startup read that distinguishes a missing config file (normal) from one that
+// is present but fails to parse (an error worth surfacing). readConfig stays the
+// silent {}-on-failure path for the many in-app re-reads.
+export function readConfigChecked(): { config: Config; parseFailed: boolean; badFields: string[] } {
+	if (cleanMode) return { config: {}, parseFailed: false, badFields: [] };
+	let config: Config = {};
+	let parseFailed = false;
+	try {
+		config = JSON.parse(readFileSync(configFile(), 'utf8')) as Config;
+	} catch (e) {
+		// a missing file is normal; anything else means the file is broken
+		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') parseFailed = true;
+	}
+	if (anonMode) {
+		delete config.server;
+		delete config.username;
+	}
+	const { config: sanitized, badFields } = sanitizeConfig(config);
+	return { config: sanitized, parseFailed, badFields };
 }
 
 export function writeConfig(cfg: Config): void {

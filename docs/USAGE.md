@@ -37,7 +37,7 @@ XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-p
 >     - [sidebar](#sidebar-1)
 >     - [icons](#icons)
 >     - [theme](#theme)
->     - [example](#example)
+>     - [examples](#examples)
 >   - [navigation](#navigation)
 > - [starting a session](#starting-a-session)
 > - [formatting messages](#formatting-messages)
@@ -477,36 +477,57 @@ bun build:cli:all
 ### invocation
 
 ```
-covcom [--clean] [--anon] [--join <path>]
+covcom [-h|--help] [-v|--version] [-x|--clean] [-a|--anon] [-c|--config <path>] [-j|--join <path>]
 ```
 
-all flags are optional and order-independent. unknown args are ignored.
+all flags are optional and order-independent. unknown args are ignored. each
+flag has a short and a long form, and the two value flags accept either a space
+or an `=` between the flag and its value (`--config <path>` or `--config=<path>`,
+`-c <path>`, `-c=<path>`, or the glued `-c<path>`).
 
-| flag            | argument | notes                                                                                          |
-|-----------------|----------|------------------------------------------------------------------------------------------------|
-| `--join`        | path     | path to a `.room` invite file. the file is read at startup and routes the user straight to `JoinView` with the invite prefilled, skipping `LoginView`. without it, the user starts on `LoginView`. a missing or dangling value (e.g. `--join --clean`) is ignored rather than treated as a path. |
-| `--clean`       | none     | disables config persistence entirely for the run. see [configuration](#configuration).         |
-| `--anon`        | none     | narrower variant of `--clean` scoped to `server` and `username`. see [configuration](#configuration). |
+short flags bundle the usual way: `-xa` is `-x -a`, and a value flag can end a
+bundle, taking the rest of the token or the next argument as its value (`-xac
+<path>` is `-x -a -c <path>`). a value that looks like another flag is treated
+as missing, so a flag is never read as a path (`--join --clean` leaves the join
+path unset).
+
+| flag                 | argument | notes                                                                                          |
+|----------------------|----------|------------------------------------------------------------------------------------------------|
+| `-h`, `--help`       | none     | prints the banner and a usage summary, then exits without starting the TUI. |
+| `-v`, `--version`    | none     | prints the covcom version and protocol byte, then exits without starting the TUI. the values are baked in at build time. |
+| `-c`, `--config`     | path     | path to the config file, used in place of the default location. see [configuration](#configuration). a missing or dangling value (e.g. `--config --clean`) is ignored. |
+| `-j`, `--join`       | path     | path to a `.room` invite file, read at startup. with a username already saved in config, it routes the user straight to the Join screen with the invite prefilled, skipping Landing. without a saved username (a fresh setup, or `--clean`/`--anon` suppressing it) the user lands on Landing to enter a username, then the Join screen opens with the invite prefilled. a missing or dangling value (e.g. `--join --clean`) is ignored rather than treated as a path. |
+| `-x`, `--clean`      | none     | disables config persistence entirely for the run. see [configuration](#configuration).         |
+| `-a`, `--anon`       | none     | narrower variant of `--clean` scoped to `server` and `username`. see [configuration](#configuration). |
 
 `--join` pairs with the paranoia flags for a fully ephemeral session, e.g. `covcom --clean --join /path/to/invite.room` joins from a file without reading or writing any config.
 
 ### configuration
 
-config is read from `~/.config/covcom/config.json` at startup and written
-back by the CLI when the user changes a persisted setting (currently just
-the sidebar width). every field is optional; missing fields fall back to
-the documented default.
+config is read at startup and written back by the CLI when the user changes a
+persisted setting (currently just the sidebar width). the config file path is
+resolved in this order:
+
+1. `--config <path>`, used verbatim.
+2. `$XDG_CONFIG_HOME/covcom/config.json` when `XDG_CONFIG_HOME` is set.
+3. `~/.config/covcom/config.json`, the XDG default.
+
+every field is optional; missing fields fall back to the documented default. a
+field present with the wrong type is dropped back to its default rather than
+crashing the client, and the ignored settings are named in a startup modal (see
+[theme](#theme) for the same treatment of color values). a config file that is
+not valid json falls back to defaults entirely.
 
 two paranoia level flags are exposed to control how the config file is used.
 
 passing the `--clean` CLI flag disables config persistence entirely for that
-run: the file is neither read (nothing is prefilled into the login screen, all
+run: the file is neither read (nothing is prefilled into the lobby screens, all
 fields fall back to defaults) nor written (no `server`/`username` save after a
 successful create, no sidebar-width persistence).
 
 passing the `--anon` CLI flag is a narrower variant scoped to `server` and
-`username` only: those two are neither read (not prefilled into the login
-screen) nor written (no save after a successful create, and the on-disk values
+`username` only: those two are neither read (not prefilled into the lobby
+screens) nor written (no save after a successful create, and the on-disk values
 are left untouched). all other fields (`theme`, `copyCmd`, `showSystem`,
 `sidebar`, `icons`), read and persist exactly as normal. if both flags are
 passed, `--clean` takes precedence.
@@ -520,7 +541,7 @@ passed, `--clean` takes precedence.
 | `copyCmd`        | string                  | unset   | clipboard command for "Copy Code". whitespace-split into argv. see [copyCmd](#copycmd).     |
 | `showSystem`     | boolean                 | `true`  | when `false`, system messages (`<peer> joined`, server errors, etc.) are not appended to the chat scroll. event log still receives them. |
 | `sidebar`        | `{ width?: number }`    | `{}`    | see [sidebar](#sidebar-1).                                                                  |
-| `icons`          | `{ send?, attach?, ratchet?, keys?: string }` | `{}` | glyph overrides for the chat input bar and key-rotation status. see [icons](#icons). |
+| `icons`          | `{ send?, attach?, ratchet?, keys?, events?, verify?, escape?: string }` | `{}` | glyph overrides for the chat input bar, key-rotation status, and the keys-display units. see [icons](#icons). |
 | `theme`          | `Partial<Theme>`        | `{}`    | per-slot color overrides. see [theme](#theme).                                              |
 
 #### copyCmd
@@ -599,6 +620,13 @@ prefer `ansi16` for consistency with the user's shell theme. `256` and
 `hex` are escape hatches for users who want a specific color independent
 of the terminal palette.
 
+each value is validated on launch: `ansi16` `n` must be 0-15, `256` `n`
+must be 0-255, and `hex` must be `#rrggbb`. an invalid value is dropped
+back to that slot's default rather than rendering as a broken escape, and
+a config file that is not valid json falls back to defaults entirely. when
+anything is ignored, a modal on startup names the offending settings. extra
+keys you add yourself (for example `_inputBg` comment keys) are left alone.
+
 | slot                | default (ansi16 n) | role                                              |
 |---------------------|--------------------|---------------------------------------------------|
 | `bg`                | `null`             | screen background. `null` keeps the terminal default. |
@@ -617,8 +645,8 @@ of the terminal palette.
 | `barBtnFg`          | 15 (bright white)  | unfocused foreground of the bar action buttons. Defaults to `btnFg`. |
 | `barBtnFocusBg`     | 4 (blue)           | focused background of the bar action buttons. Defaults to `btnFocusBg`. |
 | `barBtnFocusFg`     | 15 (bright white)  | focused foreground of the bar action buttons. Defaults to `btnFocusFg`. |
-| `peer0`             | 14 (bright cyan)   | **your own** username prefix in the chat scroll. Reserved for self; peers never use it, so no peer can wear your color. |
-| `peer1`             | 10 (bright green)  | peer username prefix in the chat scroll (and verify panel). Each peer is assigned one of `peer1`-`peer7` by join order, wrapping after 7 (so a peer never lands on `peer0` or the system color). |
+| `peer0`             | 10 (bright green)  | **your own** username prefix in the chat scroll. Reserved for self; peers never use it, so no peer can wear your color. |
+| `peer1`             | 14 (bright cyan)   | peer username prefix in the chat scroll (and verify panel). Each peer is assigned one of `peer1`-`peer7` by join order, wrapping after 7 (so a peer never lands on `peer0` or the system color). |
 | `peer2`             | 12 (bright blue)   | peer username color, slot 2 (see `peer1`).        |
 | `peer3`             | 13 (bright magenta)| peer username color, slot 3.                      |
 | `peer4`             | 11 (bright yellow) | peer username color, slot 4.                      |
@@ -636,8 +664,8 @@ of the terminal palette.
 | `attachSelectedBg`  | 2 (green)          | attachment chip background when keyboard-selected. |
 | `attachSelectedFg`  | 0 (black)          | attachment chip foreground when keyboard-selected. |
 | `barAttach`         | 6 (cyan)           | attach-mode icon prefacing the input box (foreground on `barBg`). Defaults to `attachBg`. |
-| `calloutBg`         | 3 (yellow)         | callout strip background in WaitingView.          |
-| `calloutFg`         | 0 (black)          | callout strip foreground.                         |
+| `calloutBg`         | 3 (yellow)         | legacy callout strip background. unused; the waiting screen reports copy/download through modals now. retained for config compatibility. |
+| `calloutFg`         | 0 (black)          | legacy callout strip foreground. unused (see `calloutBg`). |
 | `modalBg`           | 0 (black)          | modal body background.                            |
 | `modalFg`           | 15 (bright white)  | modal body foreground.                            |
 | `modalBorder`       | 6 (cyan)           | modal border ring.                                |
@@ -657,29 +685,97 @@ of the terminal palette.
 | `evtKindMember`     | 2 (green)          | event-log kind column for `join`, `rejoin`, `part`, `peer_joined`, `peer_left`. |
 | `evtKindRatchet`    | 3 (yellow)         | event-log kind column for `ratchet`, `ratchet-step`, `ratchet-step-fwd`, `ratchet_step`, `ratchet_step_fwd`. |
 
-#### example
+#### examples
 
+simple user config:
 ```json
 {
 	"server": "chat.example.com",
-		"username": "xero",
-		"copyCmd": "xsel -b",
-		"showSystem": true,
-		"sidebar": { "width": 35 },
-		"icons": {
-			"send": "󰒊",
-			"attach": "",
-			"ratchet": "󰒓",
-			"keys": "󱕵"
-		},
-		"theme": {
-			"btnFocusBg":     { "type": "256",    "n":33 },
-			"peer0":          { "type": "hex",    "value": "#ff8800" },
-			"peer1":          { "type": "ansi16", "n":13 },
-			"evtKindRatchet": { "type": "ansi16", "n":5 }
-		}
+	"username": "xero",
+	"copyCmd": "xsel -b",
+	"showSystem": true,
+	"icons": {
+		"send": "󰒊",
+		"attach": "",
+		"ratchet": "󰒓",
+		"keys": "󱕵",
+		"events": "",
+		"verify": "󰈷",
+		"escape": "󰌑"
+	},
+	"theme": {
+		"btnFocusBg":     { "type": "256",    "n":33 },
+		"peer0":          { "type": "hex",    "value": "#ff8800" },
+		"peer1":          { "type": "ansi16", "n":13 },
+		"evtKindRatchet": { "type": "ansi16", "n":5 }
+	}
 }
 ```
+
+(evangelion) color theme:
+```json
+{
+	"theme": {
+		"bg": null,
+		"fg": null,
+		"inputBg":          { "type": "hex", "value": "#39274C" },
+		"inputFg":          { "type": "hex", "value": "#E6BB85" },
+		"btnBg":            { "type": "hex", "value": "#483160" },
+		"btnFg":            { "type": "hex", "value": "#E1D6F8" },
+		"btnFocusBg":       { "type": "hex", "value": "#67478A" },
+		"btnFocusFg":       { "type": "hex", "value": "#E1D6F8" },
+		"btnDisabledBg":    { "type": "hex", "value": "#A1A0AD" },
+		"btnDisabledFg":    { "type": "hex", "value": "#222222" },
+		"barBg":            { "type": "hex", "value": "#483160" },
+		"barFg":            { "type": "hex", "value": "#E1D6F8" },
+		"barBtnBg":         { "type": "hex", "value": "#483160" },
+		"barBtnFg":         { "type": "hex", "value": "#87FF5F" },
+		"barBtnFocusBg":    { "type": "hex", "value": "#67478A" },
+		"barBtnFocusFg":    { "type": "hex", "value": "#E1D6F8" },
+		"system":           { "type": "hex", "value": "#A1A0AD" },
+		"peer0":            { "type": "hex", "value": "#8EDF5F" },
+		"peer1":            { "type": "hex", "value": "#A4D2EC" },
+		"peer2":            { "type": "hex", "value": "#AB92FC" },
+		"peer3":            { "type": "hex", "value": "#9F50E1" },
+		"peer4":            { "type": "hex", "value": "#C586C0" },
+		"peer5":            { "type": "hex", "value": "#E6BB85" },
+		"peer6":            { "type": "hex", "value": "#B968FC" },
+		"peer7":            { "type": "hex", "value": "#CE67F0" },
+		"yourMsg":          { "type": "hex", "value": "#D4D4D4" },
+		"peerMsg":          { "type": "hex", "value": "#E1D6F8" },
+		"codeFg":           { "type": "hex", "value": "#E1D6F8" },
+		"codeBg":           { "type": "hex", "value": "#39274C" },
+		"attachBg":         { "type": "hex", "value": "#67478A" },
+		"attachFg":         { "type": "hex", "value": "#E1D6F8" },
+		"attachSelectedBg": { "type": "hex", "value": "#87FF5F" },
+		"attachSelectedFg": { "type": "hex", "value": "#000000" },
+		"barAttach":        { "type": "hex", "value": "#67478A" },
+		"calloutBg":        { "type": "hex", "value": "#A4D2EC" },
+		"calloutFg":        { "type": "hex", "value": "#000000" },
+		"modalBg":          { "type": "hex", "value": "#201430" },
+		"modalFg":          { "type": "hex", "value": "#D4D4D4" },
+		"modalBorder":      { "type": "hex", "value": "#A4D2EC" },
+		"modalTitle":       { "type": "hex", "value": "#A4D2EC" },
+		"disabled":         { "type": "hex", "value": "#ADA4A0" },
+		"error":            { "type": "hex", "value": "#DB6088" },
+		"evtTime":          { "type": "hex", "value": "#43492A" },
+		"evtArrow":         { "type": "hex", "value": "#CE67F0" },
+		"evtMsg":           { "type": "hex", "value": "#ADA4A0" },
+		"evtKey":           { "type": "hex", "value": "#ADA4A0" },
+		"evtVal":           { "type": "hex", "value": "#D4D4D4" },
+		"evtSelf":          { "type": "hex", "value": "#87FF5F" },
+		"evtPeer":          { "type": "hex", "value": "#A4D2EC" },
+		"evtKindDefault":   { "type": "hex", "value": "#ADA4A0" },
+		"evtKindError":     { "type": "hex", "value": "#DB6088" },
+		"evtKindMember":    { "type": "hex", "value": "#8BD450" },
+		"evtKindRatchet":   { "type": "hex", "value": "#D99145" },
+		"keyFg":            { "type": "hex", "value": "#E6BB85" },
+		"ratchetTxtFg":     { "type": "hex", "value": "#A1A0AD" }
+	}
+}
+```
+> [!TIP]
+> See ./docs/example.config.json for a fully anotated config with all the default values.
 
 ### navigation
 
@@ -720,7 +816,8 @@ filenames get a numeric suffix.
    the relay in the single-container deployment; edit it to target a separate
    relay. An **Advanced** toggle reveals an optional server password.
 3. The lobby screen shows an armored invite block, a QR code of the same
-   bytes, and copy/download buttons. Share it via any channel.
+   bytes, and Copy, Download, and Cancel buttons. Share it via any channel;
+   Cancel tears down the room and returns to Landing.
 4. The screen waits until a peer joins.
 
 **Join a room:**

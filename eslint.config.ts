@@ -16,6 +16,7 @@ export default defineConfig([
 			'**/playwright.config.ts',
 			'eslint.config.ts',
 			'cli/src/tui/banner.ts',
+			'cli/src/version.ts',
 		],
 	},
 
