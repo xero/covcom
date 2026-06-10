@@ -127,5 +127,5 @@ if (import.meta.main) {
 		process.exit(1);
 	}
 	const server = startServer(config);
-	console.log(`Leviathan server listening on ${server.hostname}:${server.port}`);
+	console.log(`COVCOM server v${VERSION} (protocol ${PROTOCOL_HEX}) listening on ${server.hostname}:${server.port}`);
 }

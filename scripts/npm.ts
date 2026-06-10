@@ -20,23 +20,23 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path';
 
 export interface Target {
-	suffix: string; // npm platform key: 'linux-x64-musl'
-	bun: Bun.Build.CompileTarget; // bun compile target: 'bun-linux-x64-musl'
-	os: string; // npm os field: 'linux'
-	cpu: string; // npm cpu field: 'x64'
-	libc?: 'glibc' | 'musl'; // npm libc field, linux only
-	bin: string; // release binary filename: 'covcom-server-linux-x64-musl'
+	suffix: string;               // npm platform key
+	bun: Bun.Build.CompileTarget; // bun compile target
+	os: string;                   // npm os field
+	cpu: string;                  // npm cpu field
+	libc?: 'glibc' | 'musl';      // npm libc field (linux only)
+	bin: string;                  // release binary filename
 }
 
 export interface StageOpts {
-	metaName: string; // published meta package: 'covcom'
-	scope: string; // platform package stem: 'cli' → '@covcom/cli-<suffix>'
-	binName: string; // installed command name: 'covcom'
-	summary: string; // one-line description for the meta manifest and README
-	directory: string; // repository.directory for provenance: 'cli'
-	distDir: string; // absolute path to the app's compiled binaries
-	docker?: string; // docker hub URL, named in the shim's fallback message
-	targets: Target[]; // full target table; the meta manifest lists all of it
+	metaName: string;   // published meta package: 'covcom'
+	scope: string;      // platform package stem: 'cli' → '@covcom/cli-<suffix>'
+	binName: string;    // installed command name: 'covcom'
+	summary: string;    // one-line description for the meta manifest and README
+	directory: string;  // repository.directory for provenance
+	distDir: string;    // absolute path to the app's compiled binaries
+	docker?: string;    // docker hub URL, named in the shim's fallback message
+	targets: Target[];  // full target table; meta manifest list
 	suffixes: string[]; // platform packages to stage in this run
 }
 

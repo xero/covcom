@@ -123,13 +123,16 @@ jobs:
       - name: build all targets and stage npm packages (bake)
         run: bun run bake
 
-      - name: compress and checksum binaries
+      - name: compress and checksum release assets
         run: |
           mkdir -p dist/release
           cp cli/dist/covcom-* server/dist/covcom-server-* dist/release/
           cd dist/release
           xz -9 -T0 covcom-*
-          sha256sum covcom-*.xz > SHA256SUMS
+          # the web client ships uncompressed: covcom.html is a download-and-
+          # open artifact, so it must land here after the xz glob has run
+          cp ../../web/dist/index.html covcom.html
+          sha256sum covcom-*.xz covcom.html > SHA256SUMS
 
       # Keyless OIDC-backed provenance; consumers verify a download with
       # `gh attestation verify <asset> --repo xero/covcom`. No signing key
@@ -137,7 +140,9 @@ jobs:
       - name: attest binaries
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-path: dist/release/covcom-*.xz
+          subject-path: |
+            dist/release/covcom-*.xz
+            dist/release/covcom.html
 
       # Docker first: the most reversible registry. A retag on rerun simply
       # overwrites.
@@ -266,6 +271,7 @@ jobs:
             --generate-notes \
             --verify-tag \
             dist/release/covcom-*.xz \
+            dist/release/covcom.html \
             dist/release/SHA256SUMS
 
       - name: prepend deprecation banner to previous release
