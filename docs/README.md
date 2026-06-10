@@ -39,3 +39,7 @@ docker run -d \
 
 Open https://chat.example.com in a browser. Create a room, share the invite, & chat.
 
+## Client Previews
+
+[![cli and web client previews](https://raw.githubusercontent.com/wiki/xero/covcom/log.png)](https://github.com/xero/covcom/raw/main/docs/log.png)
+
