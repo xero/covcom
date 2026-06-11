@@ -315,7 +315,7 @@ Deeper references for users, auditors, contributors, and the curious.
 | [TESTING](https://github.com/xero/covcom/wiki/TESTING)           | Test layers, unit and end-to-end suites, cross-client interop, and CI |
 
 > [!TIP]
-> Documentation is available in the repo `https://github.com/xero/covcom/wiki` folder and published to the project [Wiki](https://github.com/xero/covcom/wiki).
+> Documentation is available in the repo `./docs` folder and published to the project [Wiki](https://github.com/xero/covcom/wiki).
 
 ---
 
