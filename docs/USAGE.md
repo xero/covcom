@@ -787,8 +787,9 @@ simple user config:
 	}
 }
 ```
+
 > [!TIP]
-> See [example.config.json](./example.config.json) for a fully annotated
+> See [example.config.json](https://github.com/xero/covcom/blob/main/docs/example.config.json) for a fully annotated
 > config with all the default values. The complete config surface and color
 > system are specified in [CLI-SPEC § defaults](./CLI-SPEC.md#defaults).
 

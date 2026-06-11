@@ -71,7 +71,7 @@ The signing public key derives a [fingerprint](https://github.com/xero/covcom/wi
 string. Compare it with your peers over a trusted channel to rule out a
 machine-in-the-middle.
 
-This implements the [Sparse Post-Quantum Ratchet](https://signal.org/docs/specifications/doubleratchet/#the-sparse-post-quantum-ratchet) from Signal's Double Ratchet spec (§5, Revision 4). For more detail, see [PROTOCOL.md](https://github.com/xero/covcom/wiki/PROTOCOL.md).
+This implements the [Sparse Post-Quantum Ratchet](https://signal.org/docs/specifications/doubleratchet/#the-sparse-post-quantum-ratchet) from Signal's Double Ratchet spec (§5, Revision 4). For more detail, see [PROTOCOL](https://github.com/xero/covcom/wiki/PROTOCOL).
 
 Cryptographic primitives are provided by [leviathan-crypto](https://github.com/xero/leviathan-crypto).
 
@@ -139,7 +139,7 @@ The server also ships as a Docker image (see [Quickstart](#quickstart)), and
 the web client as a single `covcom.html` page that opens straight from disk.
 Platform targets, server one-liners, and download verification (checksums
 and `gh attestation verify`) are in
-[USAGE § install](https://github.com/xero/covcom/wiki/USAGE.md#installation). Building from source is covered in
+[USAGE § install](https://github.com/xero/covcom/wiki/USAGE#installation). Building from source is covered in
 [Development](#development).
 
 ### Platform Support
@@ -167,13 +167,13 @@ client at your domain. It is published to
 `xerostyle/covcom` and [GHCR](https://github.com/xero/covcom/pkgs/container/covcom)
 as `ghcr.io/xero/covcom`. Pin a specific version (e.g. `:3.0.0`) in production
 so a vulnerability disclosure does not silently upgrade you. See
-[USAGE § Docker](https://github.com/xero/covcom/wiki/USAGE.md#docker) for tag conventions and how to extend the
+[USAGE § Docker](https://github.com/xero/covcom/wiki/USAGE#docker) for tag conventions and how to extend the
 image.
 
 **Standalone binary.** Every release attaches compiled server binaries
 (Linux x64/arm64 in glibc and musl flavors, macOS arm64 and x64, and
 Windows x64): one downloaded file, no bun, no node, no npm. See
-[USAGE § stand-alone-bin](https://github.com/xero/covcom/wiki/USAGE.md#standalone-binary) for verification and target
+[USAGE § stand-alone-bin](https://github.com/xero/covcom/wiki/USAGE#standalone-binary) for verification and target
 details.
 
 **npm.** `npm i -g covcom-server`, then `covcom-server --port 1337`. The
@@ -182,12 +182,12 @@ os, cpu, and libc, and a small shim execs it.
 
 **Behind your own proxy.** Outside the Docker image the server speaks plain
 HTTP on `127.0.0.1:1337`; your reverse proxy must terminate TLS and set the
-security headers. See [USAGE § prod-no-docker](https://github.com/xero/covcom/wiki/USAGE.md#production-no-docker).
+security headers. See [USAGE § prod-no-docker](https://github.com/xero/covcom/wiki/USAGE#production-no-docker).
 
 Configuration is flags and matching env vars (`--port`, `--host`,
 `--max-room-size`, `--admin-token`, `--room-ttl`, plus `--help` and
 `--version`; flags beat env vars), identical in every mode. See
-[USAGE § flags](https://github.com/xero/covcom/wiki/USAGE.md#command-line-flags) for the full tables and the
+[USAGE § flags](https://github.com/xero/covcom/wiki/USAGE#command-line-flags) for the full tables and the
 `ps`-visibility caveat on `--admin-token`.
 
 ---
@@ -214,7 +214,7 @@ message box to open the keys-display (`R` ratchet, `E` events, `V` verify,
 `Esc` return); the `/ratchet`, `/events`, and `/verify` commands work too.
 
 The full interface tour, panel reference, and command list are in
-[USAGE § interface](https://github.com/xero/covcom/wiki/USAGE.md#the-interface).
+[USAGE § interface](https://github.com/xero/covcom/wiki/USAGE#the-interface).
 
 ---
 
@@ -256,7 +256,7 @@ Settings persist to `~/.config/covcom/config.json`: server, username,
 clipboard command, sidebar width, button glyphs, and a full color theme
 (ansi16, xterm 256, or truecolor hex per slot). The flag reference, every
 config field, the theme slot table, and keyboard navigation are in
-[USAGE § cli-client](https://github.com/xero/covcom/wiki/USAGE.md#cli-client).
+[USAGE § cli-client](https://github.com/xero/covcom/wiki/USAGE#cli-client).
 
 ---
 
@@ -292,7 +292,7 @@ AWU5YTYyMWVhMzQwOTM2MDRkMTM5M2MxNTQ0ZDBjNjg0gCIiZMnOHFyPCn5zIfaLsGNvdmNvbS4zeGku
 Once both sides complete the handshake, the chat opens. The server has relayed
 a sequence of encrypted blobs and learned nothing about the content. Version
 negotiation, reconnect behavior, and late-join semantics are covered in
-[USAGE § starting-a-session](https://github.com/xero/covcom/wiki/USAGE.md#starting-a-session).
+[USAGE § starting-a-session](https://github.com/xero/covcom/wiki/USAGE#starting-a-session).
 
 ---
 
@@ -300,19 +300,19 @@ negotiation, reconnect behavior, and late-join semantics are covered in
 
 Deeper references for users, auditors, contributors, and the curious.
 
-| Document                                                            | Purpose                                                               |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| [USAGE](https://github.com/xero/covcom/wiki/USAGE.md)               | Install, configure, and run the server and clients; developer tooling |
-| [SECURITY-POLICY](./SECURITY.md)                                    | Supported versions, disclosure policy, cryptographic foundation       |
-| [DIAGRAM](https://xero.github.io/covcom/diagram.html)               | Animated and annotated visualization of a complete three peer session |
-| [PROTOCOL](https://github.com/xero/covcom/wiki/PROTOCOL.md)         | Cipher, chains, ratchet, group model, session lifecycle, server role  |
-| [CRYPTOGRAPHY](https://github.com/xero/covcom/wiki/CRYPTOGRAPHY.md) | Primitives, KDF chains, wire format, invite encoding                  |
-| [THREAT-MODEL](https://github.com/xero/covcom/wiki/THREAT-MODEL.md) | Principals, adversary tiers, guarantees, non-goals                    |
-| [LIB-SPEC](https://github.com/xero/covcom/wiki/LIB-SPEC.md)         | Shared library API, session and identity surface, invites, & files    |
-| [SERVER-SPEC](https://github.com/xero/covcom/wiki/SERVER-SPEC.md)   | Server wire contract, message handlers, room lifecycle, & config      |
-| [WEB-SPEC](https://github.com/xero/covcom/wiki/WEB-SPEC.md)         | Web client architecture, state, session, views, & single-file build   |
-| [CLI-SPEC](https://github.com/xero/covcom/wiki/CLI-SPEC.md)         | CLI architecture, rendering, input, widgets, views, & color system    |
-| [TESTING](https://github.com/xero/covcom/wiki/TESTING.md)           | Test layers, unit and end-to-end suites, cross-client interop, and CI |
+| Document                                                         | Purpose                                                               |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [USAGE](https://github.com/xero/covcom/wiki/USAGE)               | Install, configure, and run the server and clients; developer tooling |
+| [SECURITY-POLICY](./SECURITY.md)                                 | Supported versions, disclosure policy, cryptographic foundation       |
+| [DIAGRAM](https://xero.github.io/covcom/diagram.html)            | Animated and annotated visualization of a complete three peer session |
+| [PROTOCOL](https://github.com/xero/covcom/wiki/PROTOCOL)         | Cipher, chains, ratchet, group model, session lifecycle, server role  |
+| [CRYPTOGRAPHY](https://github.com/xero/covcom/wiki/CRYPTOGRAPHY) | Primitives, KDF chains, wire format, invite encoding                  |
+| [THREAT-MODEL](https://github.com/xero/covcom/wiki/THREAT-MODEL) | Principals, adversary tiers, guarantees, non-goals                    |
+| [LIB-SPEC](https://github.com/xero/covcom/wiki/LIB-SPEC)         | Shared library API, session and identity surface, invites, & files    |
+| [SERVER-SPEC](https://github.com/xero/covcom/wiki/SERVER-SPEC)   | Server wire contract, message handlers, room lifecycle, & config      |
+| [WEB-SPEC](https://github.com/xero/covcom/wiki/WEB-SPEC)         | Web client architecture, state, session, views, & single-file build   |
+| [CLI-SPEC](https://github.com/xero/covcom/wiki/CLI-SPEC)         | CLI architecture, rendering, input, widgets, views, & color system    |
+| [TESTING](https://github.com/xero/covcom/wiki/TESTING)           | Test layers, unit and end-to-end suites, cross-client interop, and CI |
 
 > [!TIP]
 > Documentation is available in the repo `https://github.com/xero/covcom/wiki` folder and published to the project [Wiki](https://github.com/xero/covcom/wiki).
@@ -351,8 +351,8 @@ docs/      Project documentation / Wiki sources
 The full developer reference (per-component and per-target builds, the
 local Docker build, single test suites, the cross-client interop and
 Playwright e2e runs, lint, typecheck, and release artifacts) is
-[USAGE § development ](https://github.com/xero/covcom/wiki/USAGE.md#development). The test architecture is
-[TESTING](https://github.com/xero/covcom/wiki/TESTING.md).
+[USAGE § development ](https://github.com/xero/covcom/wiki/USAGE#development). The test architecture is
+[TESTING](https://github.com/xero/covcom/wiki/TESTING).
 
 ---
 
