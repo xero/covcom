@@ -104,7 +104,7 @@ src/
 ```
 
 `main.ts` is the whole composition root: `initCrypto()`
-([LIB-SPEC §initialization](./LIB-SPEC.md#initialization)), one
+([LIB-SPEC § initialization](./LIB-SPEC.md#initialization)), one
 `new CovcomSession()`, `wireBridge(session)`, `mountShell(app, session)`,
 and a `beforeunload` listener that disposes the session, unwires the bridge,
 and resets the store. A failed crypto init replaces the body with an error
@@ -234,15 +234,15 @@ Create and join converge on `_onJoined`, the single post-`joined` handler
 
 1. dispose any previous lib session and build a fresh one:
    `new Session(generateKeypair(), room.id)`
-   ([LIB-SPEC §session](./LIB-SPEC.md#session)). Fresh keys on every connect,
+   ([LIB-SPEC § session](./LIB-SPEC.md#session)). Fresh keys on every connect,
    including reconnects.
 2. emit `local-fingerprint-changed`.
 3. send `identify` with the public `ek`, `ratchetEk`, and a signed identity
-   claim built by `buildClaim` ([LIB-SPEC §claims](./LIB-SPEC.md#claims)).
+   claim built by `buildClaim` ([LIB-SPEC § claims](./LIB-SPEC.md#claims)).
 4. for each member in the `joined` snapshot: `acceptClaim` (a rejected claim
    drops that peer, not the session), wrap a chain seed to their `ek` and
    relay it under `RELAY_TAG_SEED`
-   ([LIB-SPEC §chain seed handshake](./LIB-SPEC.md#chain-seed-handshake)),
+   ([LIB-SPEC § chain seed handshake](./LIB-SPEC.md#chain-seed-handshake)),
    cache their ratchet key, and emit `peer-joined` or `peer-known`.
 5. an empty room goes straight to `waiting`. With peers, the session stays
    in `joining` and counts inbound chain seeds; when the last expected seed
@@ -258,9 +258,9 @@ suppressed during reconnects so the chat view stays mounted through a drop.
 ### messages
 
 `sendMessage` seals with `sealMessage`
-([LIB-SPEC §sealing and opening](./LIB-SPEC.md#sealing-and-opening)), signs
+([LIB-SPEC § sealing and opening](./LIB-SPEC.md#sealing-and-opening)), signs
 the ciphertext metadata with `signMessage`
-([LIB-SPEC §message signatures](./LIB-SPEC.md#message-signatures)), and
+([LIB-SPEC § message signatures](./LIB-SPEC.md#message-signatures)), and
 broadcasts with a `MessageEnvelope` meta. Crossing
 `PROTOCOL.autoRatchetEvery` with peers present triggers an automatic ratchet
 first. The sender self-echoes the `message` event immediately rather than
@@ -276,7 +276,7 @@ and `file-chunk` envelopes route to the file path.
 Send streams the file as one signed `file-begin` (the `SealStream` preamble
 is the payload, and the signature covers it) followed by one signed
 `file-chunk` broadcast per `FILE_CHUNK_SIZE` slice, driven by `forEachChunk`
-over `File.slice` ([LIB-SPEC §file transfer](./LIB-SPEC.md#file-transfer)). Two pacing mechanisms keep memory and the
+over `File.slice` ([LIB-SPEC § file transfer](./LIB-SPEC.md#file-transfer)). Two pacing mechanisms keep memory and the
 broker honest:
 
 - **credit window.** Recipients are snapshotted at `file-begin` (a peer
@@ -292,20 +292,20 @@ On any failure the stream is disposed and the file key wiped in a `finally`.
 
 Receive keys in-flight transfers by `${from}|${fileId}`. `file-begin`
 checks out the file key (`openFileKey` returns a commit/rollback handle,
-[LIB-SPEC §file keys](./LIB-SPEC.md#file-keys)) and
+[LIB-SPEC § file keys](./LIB-SPEC.md#file-keys)) and
 constructs an `OpenStream`; each chunk must arrive exactly in sequence or
 the whole transfer is dropped and the key checkout rolled back. The final
 chunk commits the handle, assembles the `Blob`, and emits `file`. In-flight
 transfers from a peer are disposed when that peer leaves, and all of them on
 disconnect or teardown. The CLI surfaces the same inbound transfers as
 attachment chips with an explicit download step
-([CLI-SPEC §renderChat](./CLI-SPEC.md#renderchat)).
+([CLI-SPEC § renderChat](./CLI-SPEC.md#renderchat)).
 
 ### ratchet
 
 `_doRatchetStep` is the initiator side: one `performRatchetStep` per known
 peer into a `payloads` map, one `commitRatchetStep`
-([LIB-SPEC §ratchet step](./LIB-SPEC.md#ratchet-step)), then a single
+([LIB-SPEC § ratchet step](./LIB-SPEC.md#ratchet-step)), then a single
 `ratchet_step` frame carrying the map, the new `ratchetEk`, a fresh claim,
 and a sealed sentinel message at the new epoch. The sentinel exists so
 receivers can verify the new chain works; it is never surfaced as a
@@ -420,19 +420,19 @@ only by the `bun dev` launcher to point the Vite-served SPA at the separate
 dev relay, and production builds fall back to same-origin.
 
 `join.ts` owns invite intake: a paste textarea, a drop zone, and a hidden
-file picker. `parseArmoredInvite` ([LIB-SPEC §invites](./LIB-SPEC.md#invites))
+file picker. `parseArmoredInvite` ([LIB-SPEC § invites](./LIB-SPEC.md#invites))
 runs on submit and parse errors render inline; nothing leaves the view until
 the invite parses. The CLI gathers the same inputs across three separate
-views; see [CLI-SPEC §views](./CLI-SPEC.md#views).
+views; see [CLI-SPEC § views](./CLI-SPEC.md#views).
 
 ### waiting
 
 The creator's lobby before the first peer: the armored invite in a `<pre>`
 with copy (`navigator.clipboard.writeText`) and download buttons, the QR
 render of the same invite, and the crypto table mapped straight from
-`CRYPTO_TABLE` ([LIB-SPEC §protocol manifest](./LIB-SPEC.md#protocol-manifest)),
+`CRYPTO_TABLE` ([LIB-SPEC § protocol manifest](./LIB-SPEC.md#protocol-manifest)),
 so the web table and the CLI lobby table
-([CLI-SPEC §renderWaiting](./CLI-SPEC.md#renderwaiting)) cannot disagree.
+([CLI-SPEC § renderWaiting](./CLI-SPEC.md#renderwaiting)) cannot disagree.
 An invite too large for QR version 10 simply omits the QR pane. Cancel
 disposes the session and returns to landing with the username carried
 forward.
@@ -447,7 +447,7 @@ The transcript plus one bar slot holding one of three variants:
 - **lobby bar**: shown when the room is empty post-handshake; the invite
   with copy/download, mirroring the waiting view.
 - **keys modal**: the web counterpart of the CLI keys bar
-  ([CLI-SPEC §keys-display](./CLI-SPEC.md#keys-display-modal)). Keyboard-only:
+  ([CLI-SPEC § keys-display](./CLI-SPEC.md#keys-display-modal)). Keyboard-only:
   `r` ratchets, `e` and `v` toggle the sidebar sections, Escape returns to
   the input.
 
@@ -456,7 +456,7 @@ Slash commands typed into the regular bar: `/exit` (aliases `/quit`, `/q`,
 toggle the sidebar sections, `/help` (alias `/?`) prints the list. Unknown
 commands get a system line instead of being sent as messages. The command set
 is kept in lockstep with the CLI's
-([CLI-SPEC §renderChat](./CLI-SPEC.md#renderchat)).
+([CLI-SPEC § renderChat](./CLI-SPEC.md#renderchat)).
 
 Messages are delta-appended (only new `ChatItem`s render; history never
 reflows), scroll stays anchored to the bottom, and system lines respect the
@@ -480,10 +480,10 @@ that age out of the 500 cap, and autoscrolls while visible.
 
 `verify.ts` renders the local fingerprint and one row per peer: the eight
 swatches and the 16-hex string from `FingerprintSurface`
-([LIB-SPEC §fingerprints](./LIB-SPEC.md#fingerprints)), for out-of-band
+([LIB-SPEC § fingerprints](./LIB-SPEC.md#fingerprints)), for out-of-band
 comparison against what the peer reads aloud. Pane for pane, this sidebar
 trio mirrors the CLI's Sidebar widget
-([CLI-SPEC §Sidebar](./CLI-SPEC.md#sidebar)).
+([CLI-SPEC § Sidebar](./CLI-SPEC.md#sidebar)).
 
 `header-nav.ts` keeps the three header buttons in sync: the fingerprint
 button (badge-colored from the local fingerprint) toggles the verify pane
@@ -495,7 +495,7 @@ appear only while chat is mounted.
 ## rendering
 
 There is no HTML parsing anywhere in the message path. `parseMarkup` (from
-`@covcom/lib`, specified in [LIB-SPEC §markup](./LIB-SPEC.md#markup))
+`@covcom/lib`, specified in [LIB-SPEC § markup](./LIB-SPEC.md#markup))
 produces a token tree, and `rich.ts` walks it with `createElement` and
 `textContent`:
 
@@ -504,11 +504,11 @@ produces a token tree, and `rich.ts` walks it with `createElement` and
 - `renderRich(target, rich)` renders the inline-only `RichText` used by
   system messages and event-log summaries.
 - every text token passes through `stripFormatChars`
-  ([LIB-SPEC §sanitize](./LIB-SPEC.md#sanitize)) on the way in, killing bidi
+  ([LIB-SPEC § sanitize](./LIB-SPEC.md#sanitize)) on the way in, killing bidi
   and zero-width display spoofing at the render boundary.
 
 The CLI walks the same token tree into SGR sequences instead; see
-[CLI-SPEC §ScrollView](./CLI-SPEC.md#scrollview).
+[CLI-SPEC § ScrollView](./CLI-SPEC.md#scrollview).
 
 `safehtml.ts` is the single `innerHTML` sink in the client, gated by a
 branded `SafeHtml` type that only `trustedHtml()` can mint. The only
@@ -519,7 +519,7 @@ it that way.
 File items render as cards (name, `formatBytes` size, MIME) whose download
 button creates an object URL from the decrypted `Blob` and revokes it after
 the click. QR rendering (`qr.ts`) collapses the `qrMatrix`
-([LIB-SPEC §qr](./LIB-SPEC.md#qr)) modules into a single SVG `<path>`, fixed
+([LIB-SPEC § qr](./LIB-SPEC.md#qr)) modules into a single SVG `<path>`, fixed
 black-on-white for scannability in either theme.
 
 ---
@@ -598,7 +598,7 @@ separate gate.
   unwires the bridge, and resets the store on tab close, reload, or
   navigation.
 - `_teardown` disposes the lib `Session` (which wipes keys per
-  [LIB-SPEC §key hygiene](./LIB-SPEC.md#key-hygiene)), rolls back every
+  [LIB-SPEC § key hygiene](./LIB-SPEC.md#key-hygiene)), rolls back every
   in-flight file-key checkout, and clears the room secret reference.
 - every connect builds fresh keys; a reconnect is a new identity wearing
   the same username, which is why peers re-verify fingerprints
@@ -610,7 +610,7 @@ separate gate.
   `RESET` action.
 
 The CLI funnels every exit through a single teardown to the same end; see
-[CLI-SPEC §exit and teardown](./CLI-SPEC.md#exit-and-teardown).
+[CLI-SPEC § exit and teardown](./CLI-SPEC.md#exit-and-teardown).
 
 ---
 

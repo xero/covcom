@@ -163,9 +163,9 @@ disposed before returning; only the key bytes escape.
 `Session` is the per-client room state: one instance per joined room,
 constructed after `initCrypto` and disposed on teardown. It implements the
 Sender Keys model with the sparse post-quantum ratchet; the narrative is in
-[PROTOCOL §the chain](./PROTOCOL.md#the-chain) and
-[§the ratchet](./PROTOCOL.md#the-ratchet), the KDF labels and state table in
-[CRYPTOGRAPHY §key derivation chains](./CRYPTOGRAPHY.md#key-derivation-chains).
+[PROTOCOL § the chain](./PROTOCOL.md#the-chain) and
+[§ the ratchet](./PROTOCOL.md#the-ratchet), the KDF labels and state table in
+[CRYPTOGRAPHY § key derivation chains](./CRYPTOGRAPHY.md#key-derivation-chains).
 
 Every method throws if the session is disposed.
 
@@ -242,7 +242,7 @@ then AEAD) and records the resulting ratchet root for that peer.
 the per-peer receiving chain at the carried epoch, and records the decap
 root. Both sides tolerate re-runs for the same peer by wiping the old state
 first. The wrapped blob rides a `relay` frame under `RELAY_TAG_SEED`; see
-[CRYPTOGRAPHY §chain seed distribution](./CRYPTOGRAPHY.md#chain-seed-distribution).
+[CRYPTOGRAPHY § chain seed distribution](./CRYPTOGRAPHY.md#chain-seed-distribution).
 
 ### ratchet step
 
@@ -305,8 +305,8 @@ per-peer map, then disposes the identity. Both are idempotent.
 on it: identity claims, per-message signatures, and the fingerprint surface.
 Each `Session` creates one; it shares the session's lifetime and `dispose`
 path. The trust narrative is in
-[PROTOCOL §identity claims](./PROTOCOL.md#identity-claims); the claim byte
-layout is in [CRYPTOGRAPHY §identity claims](./CRYPTOGRAPHY.md#identity-claims).
+[PROTOCOL § identity claims](./PROTOCOL.md#identity-claims); the claim byte
+layout is in [CRYPTOGRAPHY § identity claims](./CRYPTOGRAPHY.md#identity-claims).
 
 ```ts
 class SessionIdentity {
@@ -404,7 +404,7 @@ same bytes: eight 16-bit chunks mapped through OKLCh into eight color
 swatches, and the raw 16 hex chars for reading aloud. `badge` is the first
 swatch, used as the peer's accent color in both clients. `peerFingerprint`
 returns `null` for unknown peers. Derivation details live in
-[CRYPTOGRAPHY §fingerprint derivation](./CRYPTOGRAPHY.md#fingerprint-derivation).
+[CRYPTOGRAPHY § fingerprint derivation](./CRYPTOGRAPHY.md#fingerprint-derivation).
 
 ---
 
@@ -436,7 +436,7 @@ missing markers, bad base64, truncation, or an unknown version byte.
 `inviteFilename` returns `covcom-${roomId}.room`.
 
 The byte layout is normative in
-[CRYPTOGRAPHY §invite encoding](./CRYPTOGRAPHY.md#invite-encoding).
+[CRYPTOGRAPHY § invite encoding](./CRYPTOGRAPHY.md#invite-encoding).
 
 ---
 
@@ -488,7 +488,7 @@ reads it, and a half-applied tag change breaks the chain-seed handshake, not
 just file transfer. `decodeFileAck` never throws: malformed acks come back
 as the `{ fileId: '', seq: -1 }` sentinel, which matches no transfer.
 Tagging is specified in
-[CRYPTOGRAPHY §relay payload tagging](./CRYPTOGRAPHY.md#relay-payload-tagging).
+[CRYPTOGRAPHY § relay payload tagging](./CRYPTOGRAPHY.md#relay-payload-tagging).
 
 ---
 
@@ -519,7 +519,7 @@ without breaking covcom. `autoRatchetEvery` is the message count that
 triggers an automatic ratchet. `CRYPTO_TABLE` is the nine-row component to
 primitive table the CLI lobby and the web client both render, so the two
 crypto tables cannot disagree. Versioning policy lives in
-[PROTOCOL §versioning](./PROTOCOL.md#versioning).
+[PROTOCOL § versioning](./PROTOCOL.md#versioning).
 
 ---
 
@@ -623,8 +623,8 @@ contract, enforced by tests:
 
 The clients hook these into their teardown paths (disconnect, unload,
 signal); the rationale and the full state inventory live in
-[CRYPTOGRAPHY §key hygiene](./CRYPTOGRAPHY.md#key-hygiene) and
-[§session state](./CRYPTOGRAPHY.md#session-state).
+[CRYPTOGRAPHY § key hygiene](./CRYPTOGRAPHY.md#key-hygiene) and
+[§ session state](./CRYPTOGRAPHY.md#session-state).
 
 ---
 

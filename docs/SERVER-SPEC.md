@@ -165,7 +165,7 @@ case 'rekey':        handleRekey(ws, msg, rooms);       break;
 `ratchet_step_fwd`, `ek_update_fwd`, `rekeyed`, `error`.
 
 The field-by-field tables live in
-[CRYPTOGRAPHY §wire format](./CRYPTOGRAPHY.md#wire-format); this document
+[CRYPTOGRAPHY § wire format](./CRYPTOGRAPHY.md#wire-format); this document
 covers what the server does with each message. Two structural notes matter
 here:
 
@@ -262,7 +262,7 @@ rejects rather than repairs.
 
 The `payload` carries a client-only one-byte tag (chain seed or file ack)
 that the server never reads. See
-[CRYPTOGRAPHY §relay payload tagging](./CRYPTOGRAPHY.md#relay-payload-tagging).
+[CRYPTOGRAPHY § relay payload tagging](./CRYPTOGRAPHY.md#relay-payload-tagging).
 
 ### broadcast
 

@@ -435,9 +435,9 @@ variables, so the full chain is flag > environment variable > `.env` >
 default.
 
 The behavior behind each setting (room caps, TTL pruning, admin gating) is
-specified in [SERVER-SPEC §configuration](./SERVER-SPEC.md#configuration),
+specified in [SERVER-SPEC § configuration](./SERVER-SPEC.md#configuration),
 and the binary, npm, and source entry paths in
-[SERVER-SPEC §launch modes](./SERVER-SPEC.md#launch-modes).
+[SERVER-SPEC § launch modes](./SERVER-SPEC.md#launch-modes).
 
 > [!CAUTION]
 > A `.env` file in the directory you launch from configures the server
@@ -529,9 +529,9 @@ the server does not control, and confirm theirs match what the panel shows. A
 mismatch means the session is not what one of you thinks it is. The derivation
 of these surfaces from the session signing key is described in
 [how it works](#how-it-works) and specified in
-[CRYPTOGRAPHY §fingerprint derivation](./CRYPTOGRAPHY.md#fingerprint-derivation);
+[CRYPTOGRAPHY § fingerprint derivation](./CRYPTOGRAPHY.md#fingerprint-derivation);
 the signed claim log they anchor is
-[PROTOCOL §identity claims](./PROTOCOL.md#identity-claims).
+[PROTOCOL § identity claims](./PROTOCOL.md#identity-claims).
 
 #### event log
 
@@ -931,7 +931,7 @@ simple user config:
 > [!TIP]
 > See [example.config.json](./example.config.json) for a fully annotated
 > config with all the default values. The complete config surface and color
-> system are specified in [CLI-SPEC §defaults](./CLI-SPEC.md#defaults).
+> system are specified in [CLI-SPEC § defaults](./CLI-SPEC.md#defaults).
 
 ### navigation
 
@@ -986,11 +986,11 @@ filenames get a numeric suffix.
 Once both sides complete the handshake, the chat opens. The server has relayed
 a sequence of encrypted blobs and learned nothing about the content. The full
 join ceremony is specified in
-[PROTOCOL §joining a room](./PROTOCOL.md#joining-a-room) and
-[§session lifecycle](./PROTOCOL.md#session-lifecycle).
+[PROTOCOL § joining a room](./PROTOCOL.md#joining-a-room) and
+[§ session lifecycle](./PROTOCOL.md#session-lifecycle).
 
 Clients and the server negotiate a wire-protocol version at create and join
-time ([PROTOCOL §versioning](./PROTOCOL.md#versioning)). If they disagree, the
+time ([PROTOCOL § versioning](./PROTOCOL.md#versioning)). If they disagree, the
 server refuses the connection up front and reports its own version, so a
 mismatched client sees "This server is running a different version" instead of
 a cryptic handshake failure. This is a compatibility gate, not a security
@@ -1051,7 +1051,7 @@ container start and will exhaust the rate limit.
 **"This server is running a different version."** The client and server
 disagree on the wire-protocol byte. Check both sides with `--version` and
 upgrade the older one; see [upgrading](#upgrading) and
-[PROTOCOL §versioning](./PROTOCOL.md#versioning).
+[PROTOCOL § versioning](./PROTOCOL.md#versioning).
 
 **"Room is full."** The room hit the server's `MAX_ROOM_SIZE` cap (default
 20). The operator can raise it or set `0` for unlimited; see
@@ -1080,7 +1080,7 @@ reverse proxy's job; see
 
 The release binaries and npm packages embed the runtime they were compiled
 with, so runtime security fixes ship as new COVCOM releases. See
-[SECURITY-POLICY §Supported Versions](../SECURITY.md#supported-versions) for
+[SECURITY-POLICY § Supported Versions](../SECURITY.md#supported-versions) for
 the patch policy.
 
 **Docker.** Pin `X.Y.Z` in production and bump it deliberately; `latest`
