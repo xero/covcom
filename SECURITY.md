@@ -21,7 +21,8 @@ version.
 
 | Version | Status       | Reason         |
 |---------|--------------|----------------|
-| [v3.0.0](https://github.com/xero/covcom/blob/main/CHANGELOG.md#v300) | ✓ supported  | Latest version |
+| [v3.1.0](https://github.com/xero/covcom/blob/main/CHANGELOG.md#v310) | ✓ supported  | Latest version |
+| [v3.0.0](https://github.com/xero/covcom/blob/main/CHANGELOG.md#v300) | ✗ deprecated | insufficient rendering sanitization |
 | [v1.0.0](https://github.com/xero/covcom/blob/main/CHANGELOG.md#v100) | ✗ deprecated | XChaCha20 seal wasn't key-committing, thus vulnerable to salamander style partitioning-oracle attacks |
 | v0.0.1 | ✗ deprecated | public beta |
 

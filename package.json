@@ -1,6 +1,6 @@
 {
 	"name": "@covcom/root",
-	"version": "3.0.0",
+	"version": "3.1.0",
 	"author": "xero (https://x-e.ro)",
 	"description": "COVCOM: Covert communications for private group conversations. Invite, talk, close the client, and the chat vanishes. Every message is encrypted with XChaCha20 and signed with Ed25519. A BLAKE3 fingerprint on each key allows peers to verify one another. SPQR's manual and epoch ratchets add forward secrecy, while post-quantum ML-KEM-768 encapsulation keeps recorded communications unreadable and secure against future cryptanalysis.",
 	"license": "MIT",
