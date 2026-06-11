@@ -30,26 +30,26 @@ XChaCha20 · ML-KEM-768 · Ed25519 · BLAKE3 · SPQR · E2EE · ephemeral · N-p
 >   - [production (no docker)](#production-no-docker)
 >   - [environment variables](#environment-variables)
 >   - [command-line flags](#command-line-flags)
-> - [web client](#web-client)
->   - [running](#running)
->   - [the interface](#the-interface)
->     - [header controls](#header-controls)
->     - [sidebar](#sidebar)
->     - [verify panel](#verify-panel)
->     - [event log](#event-log)
->     - [file attachments](#file-attachments)
->     - [commands](#commands)
->   - [no config, nothing stored](#no-config-nothing-stored)
 > - [cli client](#cli-client)
 >   - [invocation](#invocation)
 >   - [configuration](#configuration)
 >     - [top-level fields](#top-level-fields)
 >     - [copyCmd](#copycmd)
->     - [sidebar](#sidebar-1)
+>     - [sidebar](#sidebar)
 >     - [icons](#icons)
 >     - [theme](#theme)
 >     - [examples](#examples)
 >   - [navigation](#navigation)
+> - [web client](#web-client)
+>   - [running](#running)
+>   - [the interface](#the-interface)
+>     - [header controls](#header-controls)
+>     - [sidebar](#sidebar-1)
+>     - [verify panel](#verify-panel)
+>     - [event log](#event-log)
+>     - [file attachments](#file-attachments)
+>     - [commands](#commands)
+>   - [no config, nothing stored](#no-config-nothing-stored)
 > - [starting a session](#starting-a-session)
 > - [formatting messages](#formatting-messages)
 > - [troubleshooting](#troubleshooting)
@@ -162,16 +162,20 @@ sudo mv covcom-server-linux-x64 /usr/local/bin/covcom-server
 
 Swap the asset name for your platform. CLI targets:
 
-| Asset                | Target               |
-|----------------------|----------------------|
-| `covcom-macos-arm64` | macOS Apple Silicon  |
-| `covcom-macos-x64`   | macOS Intel          |
-| `covcom-linux-x64`   | Linux x86_64, glibc  |
-| `covcom-win-x64.exe` | Windows x86_64       |
+| Asset                     | Target                       |
+|---------------------------|------------------------------|
+| `covcom-macos-arm64`      | macOS Apple Silicon          |
+| `covcom-macos-x64`        | macOS Intel                  |
+| `covcom-linux-x64`        | Linux x86_64, glibc          |
+| `covcom-linux-x64-musl`   | Linux x86_64, musl (alpine)  |
+| `covcom-linux-arm64`      | Linux arm64, glibc           |
+| `covcom-linux-arm64-musl` | Linux arm64, musl (alpine)   |
+| `covcom-win-x64.exe`      | Windows x86_64               |
 
-The five server targets (Linux x64 and arm64 in glibc and musl flavors,
-plus macOS Apple Silicon) are tabled under
-[standalone binary](#standalone-binary).
+The server builds for the same seven targets; its assets are tabled under
+[standalone binary](#standalone-binary). The musl builds of both apps link
+the C++ support libraries dynamically, so a stock alpine container needs
+`apk add libstdc++ libgcc` before the binary runs.
 
 **Verify before unpacking.** The `SHA256SUMS` file and the GitHub
 build-provenance attestation cover the `.xz` assets as downloaded;
@@ -312,11 +316,13 @@ download first; the commands are in
 
 | Asset                            | Target                       |
 |----------------------------------|------------------------------|
+| `covcom-server-macos-arm64`      | macOS Apple Silicon          |
+| `covcom-server-macos-x64`        | macOS Intel                  |
 | `covcom-server-linux-x64`        | Linux x86_64, glibc          |
 | `covcom-server-linux-x64-musl`   | Linux x86_64, musl (alpine)  |
 | `covcom-server-linux-arm64`      | Linux arm64, glibc           |
 | `covcom-server-linux-arm64-musl` | Linux arm64, musl (alpine)   |
-| `covcom-server-macos-arm64`      | macOS Apple Silicon          |
+| `covcom-server-win-x64.exe`      | Windows x86_64               |
 | `covcom.html`                    | the web client, any browser  |
 
 Unpack and run:
@@ -358,11 +364,13 @@ shim picks the glibc or musl package by probing `process.report`.
 
 | platform | libc | package |
 |----------|------|---------|
+| darwin-arm64 | - | `@covcom/server-darwin-arm64` |
+| darwin-x64 | - | `@covcom/server-darwin-x64` |
 | linux-x64 | glibc | `@covcom/server-linux-x64` |
 | linux-x64-musl | musl | `@covcom/server-linux-x64-musl` |
 | linux-arm64 | glibc | `@covcom/server-linux-arm64` |
 | linux-arm64-musl | musl | `@covcom/server-linux-arm64-musl` |
-| darwin-arm64 | - | `@covcom/server-darwin-arm64` |
+| win32-x64 | - | `@covcom/server-win32-x64` |
 
 The musl packages carry the same dynamic-linking caveat as the release
 binaries: a stock alpine container needs `apk add libstdc++ libgcc`
@@ -451,160 +459,9 @@ and the binary, npm, and source entry paths in
 
 ---
 
-## web client
-
-The web client is a single-page app that runs entirely in the browser. It
-opens on a landing screen where you create or join a room, then moves through
-the lobby into the chat. The screen flow is the same as the CLI and is covered
-in [starting a session](#starting-a-session).
-
-### running
-
-**Release asset.** Every release attaches the entire client as one inlined
-page, `covcom.html`, checksummed and attested next to the binaries. No
-install, no build step: download it, open it straight from disk (`file://`)
-or serve it from any static host, and point the create screen at your
-relay.
-
-**Hosted.** The Docker image serves the same page behind Caddy, so a
-single-container deployment gives every participant a URL to open. The
-create screen prefills the server field with the host serving the page,
-which is the relay in that deployment.
-
-All crypto, including chunked encrypted file transfer, runs as WASM on the
-main thread, so the page works under the strictest possible content
-security policy, `default-src 'none'`, in Chrome, Firefox, and
-Safari/WebKit (see
-[leviathan-crypto/docs/csp.md](https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md)).
-
-Building the page from a checkout is covered in [building](#building).
-
-### the interface
-
-Once you are in a room, the chat fills the window and a row of controls sits
-in the header. Two of those controls open a sidebar on the right; the rest act
-on the chat directly. Everything below is per-session UI. None of it is saved.
-
-#### header controls
-
-Three buttons live in the top-right of the header. They appear only when they
-have something to act on.
-
-**Fingerprint badge.** Opens the [verify panel](#verify-panel). It shows from
-the lobby onward, and its background is the first swatch of your own
-fingerprint, so you carry a small splash of your identity color in the header.
-
-**Event log.** Toggles the [event log](#event-log) panel. It appears once the
-chat is open.
-
-**Hide system messages.** An eye that toggles the "joined", "left", and
-connection notices in the chat scroll. System messages show by default; click
-the eye to hide them and click again to bring them back. The icon flips between
-open and closed to show the current state. Hiding them in the chat does not
-remove them from the event log.
-
-#### sidebar
-
-The sidebar holds two panels, Verify and Event Log, each opened by its header
-button. Clicking a button while its panel is already open closes the sidebar.
-
-Drag the divider between the chat and the sidebar to resize it. Double-click
-the divider to snap back to the default. The width ranges from 10% to 70% of
-the window and starts at 30%. The width lasts for the session only.
-
-When the sidebar (or an item inside it) has keyboard focus, `+` / `-` resize it
-by 5% per press and `Esc` closes it and returns focus to the chat input. Tab
-into the sidebar to reach these: the event log's rows are focusable, and the
-verify panel is a single focus stop.
-
-#### verify panel
-
-The verify panel proves you are in the session you think you are in. It lists
-your own fingerprint under **You** and every peer under **Peers**. Each
-fingerprint is eight color swatches followed by a 16-character hex string;
-hover a swatch to read its hex value.
-
-Read your colors and hex aloud to the people you are talking to, over a channel
-the server does not control, and confirm theirs match what the panel shows. A
-mismatch means the session is not what one of you thinks it is. The derivation
-of these surfaces from the session signing key is described in
-[how it works](#how-it-works) and specified in
-[CRYPTOGRAPHY § fingerprint derivation](./CRYPTOGRAPHY.md#fingerprint-derivation);
-the signed claim log they anchor is
-[PROTOCOL § identity claims](./PROTOCOL.md#identity-claims).
-
-#### event log
-
-The event log records every WebSocket frame and every local crypto action as
-it happens. Each row has four columns: a timestamp, a direction glyph for
-inbound or outbound, the event kind, and a one-line summary. Payload bytes are
-redacted, so the log never exposes plaintext or key material.
-
-Click any row to expand a key/value table with the frame's structural detail.
-The log holds the most recent 500 entries; older ones drop off as new frames
-arrive. It is not saved and clears on reload.
-
-#### file attachments
-
-Send a file with the **Attach** button, or drag one anywhere onto the page. On
-drag a "drop file to send" overlay appears across the window; release to send.
-There is no paste-to-attach.
-
-Files travel in signed, encrypted 64 KiB chunks over the same broadcast path as
-messages, so the server sees only opaque blobs. A received file lands in the
-chat as a card with its name and size and a **Download** button that saves it
-locally.
-
-**Sending and formatting messages:**
-
-| Key                 | Action                                |
-|---------------------|---------------------------------------|
-| `Enter`             | Send the message                      |
-| `Shift+Enter`       | Insert a newline                      |
-
-The **Rotate** button next to the input triggers a key rotation (ratchet step)
-on demand. Message bodies render the same small markdown subset as the CLI; see
-[formatting messages](#formatting-messages).
-
-#### commands
-
-Type a `/`-prefixed command in the chat input and press `Enter`. Anything after
-the command word is ignored, and unknown commands print a hint. These mirror the
-CLI's commands; the actions also have buttons in the header and next to the
-input.
-
-| Command                     | Action                          |
-|-----------------------------|---------------------------------|
-| `/exit` `/quit` `/q` `/part`| Leave the room, back to landing |
-| `/ratchet`                  | Rotate encryption keys          |
-| `/events`                   | Toggle the event-log panel      |
-| `/verify`                   | Toggle the verify panel         |
-| `/help` `/?`                | List the commands               |
-
-The web client has no `Ctrl`-key hotkeys for rotate, events, and verify
-(`Ctrl+R/E/V` are taken by the browser). Use the commands, the buttons, or the
-keys-display: press `Esc` while the message box is focused to swap it for a row
-of `R` ratchet / `E` events / `V` verify / `Esc` return units, then press the
-key (shift does not matter). Any action closes the display and returns to the
-message box; `Esc` returns without doing anything.
-
-### no config, nothing stored
-
-The web client has no config file and writes nothing to the browser. Your
-messages, peers, fingerprints, event log, sidebar width, and the hide-system
-toggle all live in memory and are wiped when you reload or close the tab. There
-is no theme, no settings panel, and no persisted history.
-
-You set your username on the landing screen, then the server address and an
-optional server password on the create screen, each time. The server field
-defaults to the host serving the page, which is the relay in the single-container
-deployment; edit it to target a separate relay. The CLI can persist these and
-more in an optional [config file](#configuration); the web client always starts
-fresh.
-
----
-
 ## cli client
+
+[![lobby](https://raw.githubusercontent.com/wiki/xero/covcom/cli-lobby.png)](https://raw.githubusercontent.com/wiki/xero/covcom/cli-lobby.png)
 
 The CLI is a compiled standalone binary with a custom zero-dependency TUI.
 
@@ -658,6 +515,8 @@ path unset).
 
 ### configuration
 
+[![log](https://raw.githubusercontent.com/wiki/xero/covcom/cli-log.png)](https://raw.githubusercontent.com/wiki/xero/covcom/cli-log.png)
+
 config is read at startup and written back by the CLI when the user changes a
 persisted setting (currently just the sidebar width). the config file path is
 resolved in this order:
@@ -694,7 +553,7 @@ passed, `--clean` takes precedence.
 | `username`       | string                  | unset   | prefilled into the Username input on the landing screen. updated after a successful create. skipped under `--clean` and `--anon`.   |
 | `copyCmd`        | string                  | unset   | clipboard command for "Copy Code". whitespace-split into argv. see [copyCmd](#copycmd).     |
 | `showSystem`     | boolean                 | `true`  | when `false`, system messages (`<peer> joined`, server errors, etc.) are not appended to the chat scroll. event log still receives them. |
-| `sidebar`        | `{ width?: number }`    | `{}`    | see [sidebar](#sidebar-1).                                                                  |
+| `sidebar`        | `{ width?: number }`    | `{}`    | see [sidebar](#sidebar).                                                                  |
 | `icons`          | `{ send?, attach?, ratchet?, keys?, events?, verify?, escape?: string }` | `{}` | glyph overrides for the chat input bar, key-rotation status, and the keys-display units. see [icons](#icons). |
 | `theme`          | `Partial<Theme>`        | `{}`    | per-slot color overrides. see [theme](#theme).                                              |
 
@@ -935,6 +794,8 @@ simple user config:
 
 ### navigation
 
+[![modal](https://raw.githubusercontent.com/wiki/xero/covcom/cli-modal.png)](https://raw.githubusercontent.com/wiki/xero/covcom/cli-modal.png)
+
 | Key                 | Action                                |
 |---------------------|---------------------------------------|
 | `Tab` / `Shift+Tab` | Cycle focus                           |
@@ -962,7 +823,172 @@ filenames get a numeric suffix.
 
 ---
 
+## web client
+
+[![lobby](https://raw.githubusercontent.com/wiki/xero/covcom/web-lobby.png)](https://raw.githubusercontent.com/wiki/xero/covcom/web-lobby.png)
+
+The web client is a single-page app that runs entirely in the browser. It
+opens on a landing screen where you create or join a room, then moves through
+the lobby into the chat. The screen flow is the same as the CLI and is covered
+in [starting a session](#starting-a-session).
+
+### running
+
+[![login](https://raw.githubusercontent.com/wiki/xero/covcom/web-login.png)](https://raw.githubusercontent.com/wiki/xero/covcom/web-login.png)
+
+**Release asset.** Every release attaches the entire client as one inlined
+page, `covcom.html`, checksummed and attested next to the binaries. No
+install, no build step: download it, open it straight from disk (`file://`)
+or serve it from any static host, and point the create screen at your
+relay.
+
+**Hosted.** The Docker image serves the same page behind Caddy, so a
+single-container deployment gives every participant a URL to open. The
+create screen prefills the server field with the host serving the page,
+which is the relay in that deployment.
+
+All crypto, including chunked encrypted file transfer, runs as WASM on the
+main thread, so the page works under the strictest possible content
+security policy, `default-src 'none'`, in Chrome, Firefox, and
+Safari/WebKit (see
+[leviathan-crypto/docs/csp.md](https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md)).
+
+Building the page from a checkout is covered in [building](#building).
+
+### the interface
+
+Once you are in a room, the chat fills the window and a row of controls sits
+in the header. Two of those controls open a sidebar on the right; the rest act
+on the chat directly. Everything below is per-session UI. None of it is saved.
+
+#### header controls
+
+Three buttons live in the top-right of the header. They appear only when they
+have something to act on.
+
+**Fingerprint badge.** Opens the [verify panel](#verify-panel). It shows from
+the lobby onward, and its background is the first swatch of your own
+fingerprint, so you carry a small splash of your identity color in the header.
+
+**Event log.** Toggles the [event log](#event-log) panel. It appears once the
+chat is open.
+
+**Hide system messages.** An eye that toggles the "joined", "left", and
+connection notices in the chat scroll. System messages show by default; click
+the eye to hide them and click again to bring them back. The icon flips between
+open and closed to show the current state. Hiding them in the chat does not
+remove them from the event log.
+
+#### sidebar
+
+The sidebar holds two panels, Verify and Event Log, each opened by its header
+button. Clicking a button while its panel is already open closes the sidebar.
+
+Drag the divider between the chat and the sidebar to resize it. Double-click
+the divider to snap back to the default. The width ranges from 10% to 70% of
+the window and starts at 30%. The width lasts for the session only.
+
+When the sidebar (or an item inside it) has keyboard focus, `+` / `-` resize it
+by 5% per press and `Esc` closes it and returns focus to the chat input. Tab
+into the sidebar to reach these: the event log's rows are focusable, and the
+verify panel is a single focus stop.
+
+#### verify panel
+
+[![verify](https://raw.githubusercontent.com/wiki/xero/covcom/web-verify.png)](https://raw.githubusercontent.com/wiki/xero/covcom/web-verify.png)
+
+The verify panel proves you are in the session you think you are in. It lists
+your own fingerprint under **You** and every peer under **Peers**. Each
+fingerprint is eight color swatches followed by a 16-character hex string;
+hover a swatch to read its hex value.
+
+Read your colors and hex aloud to the people you are talking to, over a channel
+the server does not control, and confirm theirs match what the panel shows. A
+mismatch means the session is not what one of you thinks it is. The derivation
+of these surfaces from the session signing key is described in
+[how it works](#how-it-works) and specified in
+[CRYPTOGRAPHY § fingerprint derivation](./CRYPTOGRAPHY.md#fingerprint-derivation);
+the signed claim log they anchor is
+[PROTOCOL § identity claims](./PROTOCOL.md#identity-claims).
+
+#### event log
+
+[![log](https://raw.githubusercontent.com/wiki/xero/covcom/web-log.png)](https://raw.githubusercontent.com/wiki/xero/covcom/web-log.png)
+
+The event log records every WebSocket frame and every local crypto action as
+it happens. Each row has four columns: a timestamp, a direction glyph for
+inbound or outbound, the event kind, and a one-line summary. Payload bytes are
+redacted, so the log never exposes plaintext or key material.
+
+Click any row to expand a key/value table with the frame's structural detail.
+The log holds the most recent 500 entries; older ones drop off as new frames
+arrive. It is not saved and clears on reload.
+
+#### file attachments
+
+Send a file with the **Attach** button, or drag one anywhere onto the page. On
+drag a "drop file to send" overlay appears across the window; release to send.
+There is no paste-to-attach.
+
+Files travel in signed, encrypted 64 KiB chunks over the same broadcast path as
+messages, so the server sees only opaque blobs. A received file lands in the
+chat as a card with its name and size and a **Download** button that saves it
+locally.
+
+**Sending and formatting messages:**
+
+| Key                 | Action                                |
+|---------------------|---------------------------------------|
+| `Enter`             | Send the message                      |
+| `Shift+Enter`       | Insert a newline                      |
+
+The **Rotate** button next to the input triggers a key rotation (ratchet step)
+on demand. Message bodies render the same small markdown subset as the CLI; see
+[formatting messages](#formatting-messages).
+
+#### commands
+
+[![modal](https://raw.githubusercontent.com/wiki/xero/covcom/modal.png)](https://raw.githubusercontent.com/wiki/xero/covcom/modal.png)
+
+Type a `/`-prefixed command in the chat input and press `Enter`. Anything after
+the command word is ignored, and unknown commands print a hint. These mirror the
+CLI's commands; the actions also have buttons in the header and next to the
+input.
+
+| Command                     | Action                          |
+|-----------------------------|---------------------------------|
+| `/exit` `/quit` `/q` `/part`| Leave the room, back to landing |
+| `/ratchet`                  | Rotate encryption keys          |
+| `/events`                   | Toggle the event-log panel      |
+| `/verify`                   | Toggle the verify panel         |
+| `/help` `/?`                | List the commands               |
+
+The web client has no `Ctrl`-key hotkeys for rotate, events, and verify
+(`Ctrl+R/E/V` are taken by the browser). Use the commands, the buttons, or the
+keys-display: press `Esc` while the message box is focused to swap it for a row
+of `R` ratchet / `E` events / `V` verify / `Esc` return units, then press the
+key (shift does not matter). Any action closes the display and returns to the
+message box; `Esc` returns without doing anything.
+
+### no config, nothing stored
+
+The web client has no config file and writes nothing to the browser. Your
+messages, peers, fingerprints, event log, sidebar width, and the hide-system
+toggle all live in memory and are wiped when you reload or close the tab. There
+is no theme, no settings panel, and no persisted history.
+
+You set your username on the landing screen, then the server address and an
+optional server password on the create screen, each time. The server field
+defaults to the host serving the page, which is the relay in the single-container
+deployment; edit it to target a separate relay. The CLI can persist these and
+more in an optional [config file](#configuration); the web client always starts
+fresh.
+
+---
+
 ## starting a session
+
+[![invite](https://raw.githubusercontent.com/wiki/xero/covcom/cli-invite.png)](https://raw.githubusercontent.com/wiki/xero/covcom/cli-invite.png)
 
 **Create a room:**
 
@@ -975,6 +1001,8 @@ filenames get a numeric suffix.
    bytes, and Copy, Download, and Cancel buttons. Share it via any channel;
    Cancel tears down the room and returns to Landing.
 4. The screen waits until a peer joins.
+
+[![login](https://raw.githubusercontent.com/wiki/xero/covcom/cli-login.png)](https://raw.githubusercontent.com/wiki/xero/covcom/cli-login.png)
 
 **Join a room:**
 
@@ -1006,6 +1034,8 @@ lost; reconnecting…" and retries with exponential backoff, then shows
 time. Peers joining, leaving, and reconnecting appear as system messages. A
 peer who reconnects with a changed fingerprint is flagged "reconnected (fp
 changed)" so you can re-verify them.
+
+[![verify](https://raw.githubusercontent.com/wiki/xero/covcom/cli-verify.png)](https://raw.githubusercontent.com/wiki/xero/covcom/cli-verify.png)
 
 ---
 
@@ -1184,10 +1214,13 @@ The binary lands in `cli/dist/`.
 **CLI binary for a specific target:**
 
 ```sh
-bun run --cwd cli build:mac-arm # macOS Apple Silicon → cli/dist/covcom-macos-arm64
-bun run --cwd cli build:mac-x64 # macOS Intel         → cli/dist/covcom-macos-x64
-bun run --cwd cli build:linux   # Linux x86_64        → cli/dist/covcom-linux-x64
-bun run --cwd cli build:win     # Windows x86_64      → cli/dist/covcom-win-x64.exe
+bun run --cwd cli build:darwin-arm64     # macOS Apple Silicon → cli/dist/covcom-macos-arm64
+bun run --cwd cli build:darwin-x64       # macOS Intel         → cli/dist/covcom-macos-x64
+bun run --cwd cli build:linux-x64        # Linux x86_64, glibc → cli/dist/covcom-linux-x64
+bun run --cwd cli build:linux-x64-musl   # Linux x86_64, musl  → cli/dist/covcom-linux-x64-musl
+bun run --cwd cli build:linux-arm64      # Linux arm64, glibc  → cli/dist/covcom-linux-arm64
+bun run --cwd cli build:linux-arm64-musl # Linux arm64, musl   → cli/dist/covcom-linux-arm64-musl
+bun run --cwd cli build:win32-x64        # Windows x86_64      → cli/dist/covcom-win-x64.exe
 ```
 
 **All CLI platforms at once:**
@@ -1200,7 +1233,7 @@ bun build:cli:all
 
 ```sh
 bun build:server      # host target → server/dist/covcom-server
-bun build:server:all  # all five release targets
+bun build:server:all  # all seven release targets
 ```
 
 ### docker (local build)

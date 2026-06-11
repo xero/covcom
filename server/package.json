@@ -9,11 +9,13 @@
 		"bundle": "bun build.ts",
 		"build": "bun build.ts --compile",
 		"build:all": "bun build.ts --compile --targets all",
+		"build:darwin-arm64": "bun build.ts --compile --targets darwin-arm64",
+		"build:darwin-x64": "bun build.ts --compile --targets darwin-x64",
 		"build:linux-x64": "bun build.ts --compile --targets linux-x64",
 		"build:linux-x64-musl": "bun build.ts --compile --targets linux-x64-musl",
 		"build:linux-arm64": "bun build.ts --compile --targets linux-arm64",
 		"build:linux-arm64-musl": "bun build.ts --compile --targets linux-arm64-musl",
-		"build:mac-arm": "bun build.ts --compile --targets darwin-arm64"
+		"build:win32-x64": "bun build.ts --compile --targets win32-x64"
 	},
 	"dependencies": {
 		"@covcom/lib": "workspace:*"

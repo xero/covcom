@@ -239,5 +239,5 @@ into an image layer. The runtime image carries no build or development tooling.
 [crypto-doc]:                 ./docs/CRYPTOGRAPHY.md
 [protocol-doc]:               ./docs/PROTOCOL.md
 [threat-model-doc]:           ./docs/THREAT-MODEL.md
-[csp-doc]:                    https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md
-[csp-spa-example]:            https://github.com/xero/leviathan-crypto/blob/main/docs/csp.md#single-file-spa-no-pool
+[csp-doc]:                    https://github.com/xero/leviathan-crypto/wiki/csp.md
+[csp-spa-example]:            https://github.com/xero/leviathan-crypto/wiki/csp.md#strict-csp-without-blob

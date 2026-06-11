@@ -1226,8 +1226,12 @@ export function renderChat(
 				// check attachment chip hit
 				const hit = scrollView.hitTest(m.x, m.y);
 				if (hit?.attachment?.saved) {
-					const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
-					Bun.spawn([opener, hit.attachment.saved]);
+					// start is a cmd builtin; the empty arg is the window
+					// title, so paths with spaces are not mistaken for it
+					const opener = process.platform === 'win32'
+						? ['cmd', '/c', 'start', '']
+						: [process.platform === 'darwin' ? 'open' : 'xdg-open'];
+					Bun.spawn([...opener, hit.attachment.saved]);
 					return;
 				}
 				const aw = picking

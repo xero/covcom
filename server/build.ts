@@ -17,11 +17,13 @@ import { hostSuffix, pickTargets, stageNpm, type Target } from '../scripts/stage
 const DIR = import.meta.dir;
 
 export const TARGETS: Target[] = [
+	{ suffix: 'darwin-arm64', bun: 'bun-darwin-arm64', os: 'darwin', cpu: 'arm64', bin: 'covcom-server-macos-arm64' },
+	{ suffix: 'darwin-x64', bun: 'bun-darwin-x64', os: 'darwin', cpu: 'x64', bin: 'covcom-server-macos-x64' },
 	{ suffix: 'linux-x64', bun: 'bun-linux-x64', os: 'linux', cpu: 'x64', libc: 'glibc', bin: 'covcom-server-linux-x64' },
 	{ suffix: 'linux-x64-musl', bun: 'bun-linux-x64-musl', os: 'linux', cpu: 'x64', libc: 'musl', bin: 'covcom-server-linux-x64-musl' },
 	{ suffix: 'linux-arm64', bun: 'bun-linux-arm64', os: 'linux', cpu: 'arm64', libc: 'glibc', bin: 'covcom-server-linux-arm64' },
 	{ suffix: 'linux-arm64-musl', bun: 'bun-linux-arm64-musl', os: 'linux', cpu: 'arm64', libc: 'musl', bin: 'covcom-server-linux-arm64-musl' },
-	{ suffix: 'darwin-arm64', bun: 'bun-darwin-arm64', os: 'darwin', cpu: 'arm64', bin: 'covcom-server-macos-arm64' },
+	{ suffix: 'win32-x64', bun: 'bun-windows-x64', os: 'win32', cpu: 'x64', bin: 'covcom-server-win-x64.exe' },
 ];
 
 async function codegen(): Promise<void> {
